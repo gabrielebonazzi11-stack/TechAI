@@ -422,12 +422,40 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
     );
   }
 
-  if (analysisMode === "drawing") {
-    return (
-      `\n\n## MODALITÀ TAVOLA TECNICA\n` +
-      `Analizza cartiglio, materiale, scala, viste, sezioni, quote, tolleranze, GD&T, rugosità, filetti, fori, lamature, note e producibilità.\n`
-    );
-  }
+ if (analysisMode === "drawing") {
+  return (
+    `\n\n## MODALITÀ PRE-LETTURA TAVOLA TECNICA - STRICT MODE\n` +
+    `Devi analizzare la tavola tecnica in modo conservativo. Non devi comportarti come un verificatore automatico definitivo.\n\n` +
+
+    `REGOLE ANTI-ERRORE OBBLIGATORIE:\n` +
+    `- Non inventare quote, tolleranze, materiali, rugosità, filetti, fori, trattamenti o note.\n` +
+    `- Se un dato non è chiaramente leggibile, scrivi esattamente: "non rilevabile dalla tavola".\n` +
+    `- Non dichiarare un errore tecnico se non hai evidenza chiara dalla tavola.\n` +
+    `- Non dedurre materiale, scala, unità o trattamento se non sono visibili nel cartiglio o nelle note.\n` +
+    `- Non trasformare una mancanza di leggibilità in un errore di progettazione.\n` +
+    `- Se l'immagine/PDF è poco leggibile, segnala prima il limite di qualità.\n` +
+    `- Distingui sempre tra "rilevato", "incerto" e "non rilevabile".\n\n` +
+
+    `FORMATO RISPOSTA OBBLIGATORIO:\n` +
+    `1. Qualità lettura tavola: buona / media / bassa, con motivo.\n` +
+    `2. Dati rilevati con alta confidenza: cartiglio, materiale, scala, formato, unità, viste, sezioni, quote principali, tolleranze, rugosità, filetti, fori, note.\n` +
+    `3. Dati incerti o parzialmente leggibili: elenco con motivo dell'incertezza.\n` +
+    `4. Dati non rilevabili dalla tavola: elenco se assenti o non leggibili.\n` +
+    `5. Controlli consigliati al progettista: solo checklist, non conclusioni definitive.\n` +
+    `6. Possibili criticità: inserisci solo criticità supportate da evidenza chiara. Per ogni criticità scrivi: evidenza osservata, rischio, verifica consigliata.\n\n` +
+
+    `SOGLIA DI CONFIDENZA:\n` +
+    `- Alta confidenza: dato chiaramente leggibile.\n` +
+    `- Media confidenza: dato parzialmente leggibile; va confermato.\n` +
+    `- Bassa confidenza: non usare il dato per conclusioni.\n\n` +
+
+    `ESEMPI DI COMPORTAMENTO CORRETTO:\n` +
+    `- Se vedi "C45" chiaramente nel cartiglio, puoi scrivere materiale rilevato: C45.\n` +
+    `- Se il materiale sembra "C4..." ma non è chiaro, scrivi: materiale incerto, possibile C45 ma da confermare.\n` +
+    `- Se non leggi la rugosità, scrivi: rugosità non rilevabile dalla tavola.\n` +
+    `- Se non vedi tolleranze, non dire che sono sbagliate: scrivi tolleranze non rilevabili o non presenti nella porzione leggibile.\n`
+  );
+}
 
   if (analysisMode === "file") {
     return (
