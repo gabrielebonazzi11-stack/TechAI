@@ -425,7 +425,7 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
  if (analysisMode === "drawing") {
   return (
     `\n\n## MODALITÀ PRE-LETTURA TAVOLA TECNICA - STRICT MODE\n` +
-    `Devi analizzare la tavola tecnica in modo conservativo. Non devi comportarti come un verificatore automatico definitivo.\n\n` +
+    `Devi analizzare la tavola tecnica in modo accurato` +
 
     `REGOLE ANTI-ERRORE OBBLIGATORIE:\n` +
     `- Non inventare quote, tolleranze, materiali, rugosità, filetti, fori, trattamenti o note.\n` +
@@ -452,7 +452,7 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
     `ESEMPI DI COMPORTAMENTO CORRETTO:\n` +
     `- Se vedi "C45" chiaramente nel cartiglio, puoi scrivere materiale rilevato: C45.\n` +
     `- Se il materiale sembra "C4..." ma non è chiaro, scrivi: materiale incerto, possibile C45 ma da confermare.\n` +
-    `- Se non leggi la rugosità, scrivi: rugosità non rilevabile dalla tavola.\n` +
+    `- Se non leggi la rugosità, scrivi: rugosità non rilevabile dall'immagine.\n` +
     `- Se non vedi tolleranze, non dire che sono sbagliate: scrivi tolleranze non rilevabili o non presenti nella porzione leggibile.\n`
   );
 }
