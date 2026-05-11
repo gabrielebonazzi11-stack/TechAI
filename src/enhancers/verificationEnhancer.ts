@@ -8,6 +8,22 @@ function isCalcText(text: string) {
   return text.includes("=") || lower.includes("mpa") || lower.includes("goodman") || lower.includes("soderberg") || lower.includes("tensione");
 }
 
+function printReport(text: string) {
+  const win = window.open("", "_blank");
+  if (!win) return;
+
+  const rows = text.split("\n").filter(Boolean);
+  const body = rows
+    .map((row) => {
+      const safe = row.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+      return isCalcText(row) ? `<div class="calc">${safe}</div>` : `<p>${safe}</p>`;
+    })
+    .join("");
+
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Verifica tecnica</title><style>body{font-family:Arial,sans-serif;padding:32px;line-height:1.55;color:#111}h1{margin-bottom:20px}.calc{border:1px solid #ddd;border-radius:12px;padding:12px;margin:10px 0;background:#f6f6f6;font-family:monospace;white-space:pre-wrap}@media print{button{display:none}}</style></head><body><button onclick="window.print()" style="padding:10px 14px;border-radius:10px;border:0;font-weight:700;margin-bottom:18px;cursor:pointer">Salva come PDF</button><h1>Verifica tecnica</h1>${body}</body></html>`);
+  win.document.close();
+}
+
 function enhance(element: HTMLElement) {
   if (element.dataset.techaiVerification === "1") return;
 
@@ -25,17 +41,34 @@ function enhance(element: HTMLElement) {
   bar.style.justifyContent = "space-between";
   bar.style.alignItems = "center";
   bar.style.marginBottom = "12px";
+  bar.style.gap = "12px";
 
   const title = document.createElement("strong");
   title.textContent = "Report verifica tecnica";
+
+  const actions = document.createElement("div");
+  actions.style.display = "flex";
+  actions.style.alignItems = "center";
+  actions.style.gap = "8px";
 
   const hint = document.createElement("span");
   hint.textContent = "Output calcoli ordinato";
   hint.style.opacity = "0.7";
   hint.style.fontSize = "12px";
 
+  const btn = document.createElement("button");
+  btn.textContent = "Salva PDF";
+  btn.style.border = "0";
+  btn.style.borderRadius = "12px";
+  btn.style.padding = "9px 12px";
+  btn.style.fontWeight = "800";
+  btn.style.cursor = "pointer";
+  btn.onclick = () => printReport(text);
+
+  actions.appendChild(hint);
+  actions.appendChild(btn);
   bar.appendChild(title);
-  bar.appendChild(hint);
+  bar.appendChild(actions);
   element.prepend(bar);
 
   const nodes = Array.from(element.querySelectorAll("p, li, div")) as HTMLElement[];
