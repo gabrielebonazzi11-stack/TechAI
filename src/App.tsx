@@ -2196,7 +2196,7 @@ Struttura:
         const answer = data?.answer || data?.message || raw || "Nessuna risposta ricevuta dall'analisi immagine.";
         syncGuestUsageFromBackend(data);
 
-        setDrawingIssues(buildIssuesFromAiAnswer(String(answer)));
+        setDrawingIssues([]);
         setDrawingResults([
           {
             category: "Analisi AI immagine",
@@ -3687,7 +3687,7 @@ function DrawingPreview({ issues, previewUrl, fileName, theme, isDark }: { issue
 
       <div style={{ ...s.realDrawingPreviewBox, background: isDark ? "#0b0b0b" : "#ffffff", border: `1px solid ${theme.border}` }}>
         {previewUrl ? <img src={previewUrl} alt={fileName || "Anteprima tavola"} style={s.realDrawingPreviewImage} /> : <div style={s.noIssuesOverlay}>Nessuna anteprima immagine disponibile</div>}
-        {issues.map(issue => (
+        
           <div key={issue.id} title={issue.detail} style={{ ...s.issueMarker, left: `${issue.x}%`, top: `${issue.y}%`, background: issue.severity === "errore" ? "#dc2626" : issue.severity === "attenzione" ? "#f59e0b" : "#16a34a" }}>!</div>
         ))}
       </div>
