@@ -854,7 +854,7 @@ async function callOpenAIVision(params: {
             },
           ],
           temperature: 0.15,
-          max_tokens: 500,
+          max_tokens: 4000,
         }),
       },
       openAiTimeoutMs
