@@ -743,12 +743,12 @@ async function callOpenRouterVision(params: {
   fileMeta: string;
   analysisMode: AnalysisMode;
 }) {
- const openRouterKey =
-  process.env.OPENAI_DRAWING_READER_API_KEY ||
-  process.env.OPENROUTER_API_KEY;
- const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
+ const openAiDrawingKey =
+  process.env.OPENAI_DRAWING_READER_API_KEY;
 
-  if (!openRouterKey) {
+const model =
+  process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
+  if (!openAiDrawingKey) {
     return (
       "⚠️ Backend collegato, ma manca la chiave OpenRouter per analizzare immagini/tavole.\n\n" +
       "Su Vercel aggiungi queste variabili ambiente:\n\n" +
@@ -777,7 +777,7 @@ async function callOpenRouterVision(params: {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${openRouterKey}`,
+         Authorization: `Bearer ${openAiDrawingKey}`,
           "HTTP-Referer": "https://project-exdwv.vercel.app",
           "X-Title": "TechAI Metallurgy Copilot",
         },
