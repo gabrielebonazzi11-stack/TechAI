@@ -3,7 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 export const config = {
-  runtime: "edge",
+  runtime: "nodejs",
 };
 
 type ChatMessage = {
@@ -1236,37 +1236,28 @@ export default async function handler(req: Request) {
   if (req.method === "GET") {
     return jsonResponse({
       ok: true,
-   env: {
-  hasGroqKey: Boolean(process.env.GROQ_API_KEY),
-  groqModelFallback: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
-  groqModelFast: process.env.GROQ_MODEL_FAST || "llama-3.1-8b-instant",
-  groqModelMedium:
-    process.env.GROQ_MODEL_MEDIUM ||
-    process.env.GROQ_MODEL ||
-    "llama-3.1-8b-instant",
-  groqModelHard:
-    process.env.GROQ_MODEL_HARD ||
-    process.env.GROQ_MODEL_MEDIUM ||
-    process.env.GROQ_MODEL ||
-    "llama-3.3-70b-versatile",
-
-  hasOpenAIDrawingKey: Boolean(process.env.OPENAI_DRAWING_READER_API_KEY),
-  openAIDrawingKeyPreview:
-    process.env.OPENAI_DRAWING_READER_API_KEY?.slice(0, 8) || "MISSING",
-  openAIDrawingModel:
-    process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
-
-  hasSupabase: Boolean(
-    process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
-  ),
-  guestTextLimit24h: GUEST_TEXT_LIMIT_24H,
-  guestFileLimit24h: GUEST_FILE_LIMIT_24H,
-  guestWindowHours: GUEST_WINDOW_HOURS,
-},
-
-openAIDrawingModel:
- process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
-        hasSupabase: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
+      message: "API /api/chat funzionante",
+      env: {
+        hasGroqKey: Boolean(process.env.GROQ_API_KEY),
+        groqModelFallback: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
+        groqModelFast: process.env.GROQ_MODEL_FAST || "llama-3.1-8b-instant",
+        groqModelMedium:
+          process.env.GROQ_MODEL_MEDIUM ||
+          process.env.GROQ_MODEL ||
+          "llama-3.1-8b-instant",
+        groqModelHard:
+          process.env.GROQ_MODEL_HARD ||
+          process.env.GROQ_MODEL_MEDIUM ||
+          process.env.GROQ_MODEL ||
+          "llama-3.3-70b-versatile",
+        hasOpenAIDrawingKey: Boolean(process.env.OPENAI_DRAWING_READER_API_KEY),
+        openAIDrawingKeyPreview:
+          process.env.OPENAI_DRAWING_READER_API_KEY?.slice(0, 8) || "MISSING",
+        openAIDrawingModel:
+          process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
+        hasSupabase: Boolean(
+          process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+        ),
         guestTextLimit24h: GUEST_TEXT_LIMIT_24H,
         guestFileLimit24h: GUEST_FILE_LIMIT_24H,
         guestWindowHours: GUEST_WINDOW_HOURS,
