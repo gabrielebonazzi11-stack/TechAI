@@ -315,6 +315,51 @@ async function pdfPageToImageFile(file: File): Promise<{ dataUrl: string; jpegFi
   return { dataUrl, jpegFile, totalPages };
 }
 
+async function compressImageForVision(file: File, maxSide = 1600, quality = 0.82): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Impossibile leggere l'immagine."));
+    reader.readAsDataURL(file);
+  });
+
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Impossibile caricare l'immagine."));
+    image.src = dataUrl;
+  });
+
+  const longestSide = Math.max(img.width, img.height);
+  if (longestSide <= maxSide && file.size <= 1_200_000 && file.type === "image/jpeg") {
+    return file;
+  }
+
+  const scale = Math.min(1, maxSide / longestSide);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((result) => {
+      if (!result) reject(new Error("Compressione immagine non riuscita."));
+      else resolve(result);
+    }, "image/jpeg", quality);
+  });
+
+  const baseName = file.name.replace(/\.[^.]+$/i, "");
+  return new File([blob], `${baseName}_vision.jpg`, { type: "image/jpeg" });
+}
+
 async function extractPdfText(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -2122,7 +2167,8 @@ export default function App() {
       setDrawingIssues([]);
 
       try {
-        const fileToSend = drawingReviewFile!.convertedFile ?? drawingReviewFile!.file;
+        const sourceFileToSend = drawingReviewFile!.convertedFile ?? drawingReviewFile!.file;
+        const fileToSend = await compressImageForVision(sourceFileToSend, 1600, 0.82);
         const formData = new FormData();
 
         formData.append(
