@@ -1250,8 +1250,8 @@ export default async function handler(req: Request) {
           process.env.GROQ_MODEL_MEDIUM ||
           process.env.GROQ_MODEL ||
           "llama-3.3-70b-versatile",
-        hasOpenAIDrawingKey: Boolean(
- process.env.OPENAI_DRAWING_READER_API_KEY
+        hasOpenAIDrawingKey:
+  process.env.OPENAI_DRAWING_READER_API_KEY?.slice(0,8) || "MISSING",
 ),
 
 openAIDrawingModel:
