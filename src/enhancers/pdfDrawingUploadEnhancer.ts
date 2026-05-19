@@ -165,11 +165,11 @@ async function renderPdfAsHybridReader(file: File) {
   const sheet = buildHybridSheet(pageCanvas, extractedText);
 
   const blob = await new Promise<Blob>((resolve) => {
-    sheet.toBlob((result) => resolve(result as Blob), "image/png");
+    sheet.toBlob((result) => resolve(result as Blob), "image/jpeg", 0.9);
   });
 
-  return new File([blob], file.name.replace(/\.pdf$/i, "_reader_ibrido_tavola.png"), {
-    type: "image/png",
+  return new File([blob], file.name.replace(/\.pdf$/i, "_reader_ibrido_tavola.jpg"), {
+    type: "image/jpeg",
   });
 }
 
@@ -190,6 +190,11 @@ export function installPdfDrawingUploadEnhancer() {
 
       const file = input.files[0];
       if (!file || !isPdf(file)) return;
+
+      // Importante: l'enhancer deve lavorare solo sull'upload della funzione "Tavole".
+      // Senza questo controllo convertirebbe anche i PDF caricati nella chat normale,
+      // impedendo l'estrazione del testo PDF per Groq.
+      if (input.dataset.techaiPdfDrawing !== "1") return;
       if (input.dataset.pdfEnhanced === "1") return;
 
       input.dataset.pdfEnhanced = "1";
