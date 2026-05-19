@@ -743,8 +743,10 @@ async function callOpenRouterVision(params: {
   fileMeta: string;
   analysisMode: AnalysisMode;
 }) {
-  const openRouterKey = process.env.OPENROUTER_API_KEY;
-  const model = process.env.OPENROUTER_VISION_MODEL || "openai/gpt-4o-mini";
+ const openRouterKey =
+  process.env.OPENAI_DRAWING_READER_API_KEY ||
+  process.env.OPENROUTER_API_KEY;
+ const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
 
   if (!openRouterKey) {
     return (
@@ -770,7 +772,7 @@ async function callOpenRouterVision(params: {
 
   try {
     response = await fetchWithTimeout(
-      "https://openrouter.ai/api/v1/chat/completions",
+      "https://api.openai.com/v1/chat/completions",
       {
         method: "POST",
         headers: {
