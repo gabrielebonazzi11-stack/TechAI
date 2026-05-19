@@ -1247,8 +1247,12 @@ export default async function handler(req: Request) {
           process.env.GROQ_MODEL_MEDIUM ||
           process.env.GROQ_MODEL ||
           "llama-3.3-70b-versatile",
-        hasOpenRouterKey: Boolean(process.env.OPENROUTER_API_KEY),
-        openRouterVisionModel: process.env.OPENROUTER_VISION_MODEL || "openai/gpt-4o-mini",
+        hasOpenAIDrawingKey: Boolean(
+ process.env.OPENAI_DRAWING_READER_API_KEY
+),
+
+openAIDrawingModel:
+ process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
         hasSupabase: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
         guestTextLimit24h: GUEST_TEXT_LIMIT_24H,
         guestFileLimit24h: GUEST_FILE_LIMIT_24H,
