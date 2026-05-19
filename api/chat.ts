@@ -3,9 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 export const config = {
-  runtime: "nodejs",
-  // Aumenta il tempo massimo della funzione Vercel quando il piano lo consente.
-  maxDuration: 60,
+  runtime: "edge",
 };
 
 type ChatMessage = {
