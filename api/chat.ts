@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 
 export const config = {
   runtime: "nodejs",
+  // Aumenta il tempo massimo della funzione Vercel quando il piano lo consente.
+  maxDuration: 60,
 };
 
 type ChatMessage = {
@@ -746,6 +748,7 @@ async function callOpenAIVision(params: {
   const openAiDrawingKey = process.env.OPENAI_DRAWING_READER_API_KEY;
 
   const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
+  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "8500");
 
   if (!openAiDrawingKey) {
     return (
@@ -846,17 +849,17 @@ async function callOpenAIVision(params: {
                   type: "image_url",
                   image_url: {
                     url: params.imageDataUrl,
-                    detail: "high",
+                    detail: "auto",
                   },
                 },
               ],
             },
           ],
           temperature: 0.15,
-          max_tokens: 1800,
+          max_tokens: 950,
         }),
       },
-      30000
+      openAiTimeoutMs
     );
   } catch (error: any) {
     if (error?.name === "AbortError") {
