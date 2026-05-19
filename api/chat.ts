@@ -743,26 +743,28 @@ async function callOpenAIVision(params: {
   fileMeta: string;
   analysisMode: AnalysisMode;
 }) {
- const openAiDrawingKey =
-  process.env.OPENAI_DRAWING_READER_API_KEY;
+  const openAiDrawingKey =
+    process.env.OPENAI_DRAWING_READER_API_KEY ||
+    process.env.OPENAI_API_KEY;
 
-const model =
-  process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
-  console.log("VISION PROVIDER: OPENAI");
-console.log("MODEL:", model);
-console.log(
- "HAS KEY:",
- Boolean(process.env.OPENAI_DRAWING_READER_API_KEY)
-);
-if (!openAiDrawingKey) {
-  return (
-    "⚠️ Backend collegato, ma manca la chiave OpenAI per il lettore tavole.\n\n" +
-    "Su Vercel aggiungi:\n\n" +
-    "OPENAI_DRAWING_READER_API_KEY=sk-...\n" +
-    "OPENAI_DRAWING_READER_MODEL=gpt-4o-mini\n\n" +
-    "Poi fai Redeploy del progetto."
-  );
-}
+  const model =
+    process.env.OPENAI_DRAWING_READER_MODEL ||
+    process.env.OPENAI_MODEL ||
+    "gpt-4o-mini";
+
+  if (!openAiDrawingKey) {
+    return (
+      "⚠️ Backend collegato, ma manca la chiave OpenAI per il lettore tavole.\n\n" +
+      "Su Vercel aggiungi almeno una di queste variabili:\n\n" +
+      "```env\n" +
+      "OPENAI_DRAWING_READER_API_KEY=sk-...\n" +
+      "# oppure\n" +
+      "OPENAI_API_KEY=sk-...\n\n" +
+      "OPENAI_DRAWING_READER_MODEL=gpt-4o-mini\n" +
+      "```\n\n" +
+      "Poi fai Redeploy del progetto."
+    );
+  }
 
   const userName = params.profile?.userName || "Utente";
   const focus = params.profile?.focus || "Ingegneria Meccanica";
@@ -781,8 +783,7 @@ if (!openAiDrawingKey) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-         Authorization: `Bearer ${openAiDrawingKey}`,
-          
+          Authorization: `Bearer ${openAiDrawingKey}`,
         },
         body: JSON.stringify({
           model,
@@ -795,6 +796,7 @@ if (!openAiDrawingKey) {
                 "Il tuo compito è analizzare tavole tecniche meccaniche, immagini CAD, screenshot SolidWorks, componenti meccanici e distinte visive con la massima precisione. " +
                 "Leggi quote, tolleranze, rugosità, filetti, fori, lamature, scale, materiale, trattamento e cartiglio quando visibili. " +
                 "Non inventare valori: se un dato non è leggibile o non è presente, scrivi chiaramente 'non leggibile' oppure 'non indicato'. " +
+                "Quando la qualità dell'immagine è bassa, segnala il limite prima di giudicare la tavola. " +
                 "Rispondi in italiano tecnico preciso. " +
                 "\n\nREGOLE DI FORMATTAZIONE OBBLIGATORIE:\n" +
                 "Usa sempre emoji di stato all'inizio delle righe di controllo:\n" +
@@ -849,26 +851,27 @@ if (!openAiDrawingKey) {
                   type: "image_url",
                   image_url: {
                     url: params.imageDataUrl,
+                    detail: "high",
                   },
                 },
               ],
             },
           ],
-          temperature: 0.2,
-          max_tokens: 1400,
+          temperature: 0.15,
+          max_tokens: 1800,
         }),
       },
-      18000
+      30000
     );
   } catch (error: any) {
     if (error?.name === "AbortError") {
       return (
         "⚠️ Timeout OpenAI durante l'analisi immagine.\n\n" +
         `Modello usato: ${model}\n\n` +
-        "La funzione ha interrotto la chiamata prima del timeout di Vercel.\n\n" +
-        "Controlla che `OPENROUTER_VISION_MODEL` sia un modello vision reale, ad esempio:\n\n" +
+        "La funzione ha interrotto la chiamata prima della risposta del modello.\n\n" +
+        "Prova con un'immagine più leggera oppure imposta in Vercel:\n\n" +
         "```env\n" +
-        "OPENROUTER_VISION_MODEL=openai/gpt-4o-mini\n" +
+        "OPENAI_DRAWING_READER_MODEL=gpt-4o-mini\n" +
         "```"
       );
     }
@@ -885,13 +888,14 @@ if (!openAiDrawingKey) {
       `Modello usato: ${model}\n` +
       `Codice: ${response.status}\n\n` +
       `Dettaglio: ${raw || "nessun dettaglio ricevuto"}\n\n` +
-      "Controlla che la chiave OpenAI sia valida e che il modello scelto supporti immagini."
+      "Controlla che la chiave OpenAI sia valida e che il modello scelto supporti immagini. " +
+      "Variabili consigliate: OPENAI_DRAWING_READER_API_KEY e OPENAI_DRAWING_READER_MODEL."
     );
   }
 
   return (
     data?.choices?.[0]?.message?.content ||
-   "Ho ricevuto l'immagine, ma OpenAI non ha restituito una risposta valida."
+    "Ho ricevuto l'immagine, ma OpenAI non ha restituito una risposta valida."
   );
 }
 
@@ -1250,11 +1254,13 @@ export default async function handler(req: Request) {
           process.env.GROQ_MODEL_MEDIUM ||
           process.env.GROQ_MODEL ||
           "llama-3.3-70b-versatile",
-        hasOpenAIDrawingKey: Boolean(process.env.OPENAI_DRAWING_READER_API_KEY),
+        hasOpenAIDrawingKey: Boolean(
+          process.env.OPENAI_DRAWING_READER_API_KEY || process.env.OPENAI_API_KEY
+        ),
         openAIDrawingKeyPreview:
-          process.env.OPENAI_DRAWING_READER_API_KEY?.slice(0, 8) || "MISSING",
+          (process.env.OPENAI_DRAWING_READER_API_KEY || process.env.OPENAI_API_KEY)?.slice(0, 8) || "MISSING",
         openAIDrawingModel:
-          process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
+          process.env.OPENAI_DRAWING_READER_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini",
         hasSupabase: Boolean(
           process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
         ),
