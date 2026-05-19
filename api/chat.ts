@@ -748,6 +748,12 @@ async function callOpenRouterVision(params: {
 
 const model =
   process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
+  console.log("VISION PROVIDER: OPENAI");
+console.log("MODEL:", model);
+console.log(
+ "HAS KEY:",
+ Boolean(process.env.OPENAI_DRAWING_READER_API_KEY)
+);
   if (!openAiDrawingKey) {
     return (
       "⚠️ Backend collegato, ma manca la chiave OpenRouter per analizzare immagini/tavole.\n\n" +
