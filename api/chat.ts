@@ -735,7 +735,7 @@ async function callGroqText(params: {
   );
 }
 
-async function callOpenRouterVision(params: {
+async function callOpenAIVision(params: {
   message: string;
   messages: ChatMessage[];
   profile: any;
@@ -754,14 +754,15 @@ console.log(
  "HAS KEY:",
  Boolean(process.env.OPENAI_DRAWING_READER_API_KEY)
 );
-  if (!openAiDrawingKey) {
-    re"⚠️ Backend collegato, ma manca la chiave OpenAI per il lettore tavole.\n\n" +
-"Su Vercel aggiungi:\n\n" +
-"OPENAI_DRAWING_READER_API_KEY=sk-...\n" +
-"OPENAI_DRAWING_READER_MODEL=gpt-4o-mini"
-      "Poi fai Redeploy del progetto."
-    );
-  }
+if (!openAiDrawingKey) {
+  return (
+    "⚠️ Backend collegato, ma manca la chiave OpenAI per il lettore tavole.\n\n" +
+    "Su Vercel aggiungi:\n\n" +
+    "OPENAI_DRAWING_READER_API_KEY=sk-...\n" +
+    "OPENAI_DRAWING_READER_MODEL=gpt-4o-mini\n\n" +
+    "Poi fai Redeploy del progetto."
+  );
+}
 
   const userName = params.profile?.userName || "Utente";
   const focus = params.profile?.focus || "Ingegneria Meccanica";
@@ -1279,7 +1280,7 @@ openAIDrawingModel:
     }
 
     const answer = body.imageDataUrl
-      ? await callOpenRouterVision({
+      ? await callOpenAIVision({
           message: body.message,
           messages: body.messages,
           profile: body.profile,
