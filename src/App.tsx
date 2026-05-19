@@ -2215,7 +2215,7 @@ Struttura:
             status: "❌ Errore",
             item: drawingReviewFile?.fileAttachment.name || "immagine",
             reason: error?.message || "Non sono riuscito ad analizzare l'immagine.",
-            suggestion: "Controlla OPENAI_DRAWING_READER_API_KEY oppure OPENAI_API_KEY, OPENAI_DRAWING_READER_MODEL e fai redeploy su Vercel.",
+            suggestion: "Controlla OPENAI_DRAWING_READER_API_KEY, OPENAI_DRAWING_READER_MODEL e fai redeploy su Vercel.",
           },
         ]);
       } finally {
