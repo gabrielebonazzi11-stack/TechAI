@@ -755,13 +755,10 @@ console.log(
  Boolean(process.env.OPENAI_DRAWING_READER_API_KEY)
 );
   if (!openAiDrawingKey) {
-    return (
-      "⚠️ Backend collegato, ma manca la chiave OpenRouter per analizzare immagini/tavole.\n\n" +
-      "Su Vercel aggiungi queste variabili ambiente:\n\n" +
-      "```env\n" +
-      "OPENROUTER_API_KEY=la_tua_chiave_openrouter\n" +
-      "OPENROUTER_VISION_MODEL=openai/gpt-4o-mini\n" +
-      "```\n\n" +
+    re"⚠️ Backend collegato, ma manca la chiave OpenAI per il lettore tavole.\n\n" +
+"Su Vercel aggiungi:\n\n" +
+"OPENAI_DRAWING_READER_API_KEY=sk-...\n" +
+"OPENAI_DRAWING_READER_MODEL=gpt-4o-mini"
       "Poi fai Redeploy del progetto."
     );
   }
@@ -784,8 +781,7 @@ console.log(
         headers: {
           "Content-Type": "application/json",
          Authorization: `Bearer ${openAiDrawingKey}`,
-          "HTTP-Referer": "https://project-exdwv.vercel.app",
-          "X-Title": "TechAI Metallurgy Copilot",
+          
         },
         body: JSON.stringify({
           model,
@@ -866,7 +862,7 @@ console.log(
   } catch (error: any) {
     if (error?.name === "AbortError") {
       return (
-        "⚠️ Timeout OpenRouter durante l'analisi immagine.\n\n" +
+        "⚠️ Timeout OpenAI durante l'analisi immagine.\n\n" +
         `Modello usato: ${model}\n\n` +
         "La funzione ha interrotto la chiamata prima del timeout di Vercel.\n\n" +
         "Controlla che `OPENROUTER_VISION_MODEL` sia un modello vision reale, ad esempio:\n\n" +
@@ -884,17 +880,17 @@ console.log(
 
   if (!response.ok) {
     return (
-      "⚠️ OpenRouter ha restituito un errore durante l'analisi immagine.\n\n" +
+      "⚠️ OpenAI ha restituito un errore durante l'analisi immagine.\n\n" +
       `Modello usato: ${model}\n` +
       `Codice: ${response.status}\n\n` +
       `Dettaglio: ${raw || "nessun dettaglio ricevuto"}\n\n` +
-      "Controlla che la chiave OpenRouter sia valida e che il modello scelto supporti immagini."
+      "Controlla che la chiave OpenAI sia valida e che il modello scelto supporti immagini."
     );
   }
 
   return (
     data?.choices?.[0]?.message?.content ||
-    "Ho ricevuto l'immagine, ma OpenRouter non ha restituito una risposta valida."
+   "Ho ricevuto l'immagine, ma OpenAI non ha restituito una risposta valida."
   );
 }
 
