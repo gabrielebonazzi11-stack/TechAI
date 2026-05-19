@@ -2171,6 +2171,7 @@ Struttura:
         formData.append("file", fileToSend);
         formData.append("profile", JSON.stringify({ userName: user.name, focus: interest }));
         formData.append("messages", JSON.stringify([]));
+        formData.append("analysisMode", "drawing");
 
         const headers = await buildApiHeaders();
         if (!headers) throw new Error("Sessione scaduta. Effettua di nuovo il login oppure entra come ospite.");
@@ -2214,7 +2215,7 @@ Struttura:
             status: "❌ Errore",
             item: drawingReviewFile?.fileAttachment.name || "immagine",
             reason: error?.message || "Non sono riuscito ad analizzare l'immagine.",
-            suggestion: "Controlla OPENROUTER_API_KEY, OPENROUTER_VISION_MODEL e redeploy Vercel.",
+            suggestion: "Controlla OPENAI_DRAWING_READER_API_KEY oppure OPENAI_API_KEY, OPENAI_DRAWING_READER_MODEL e fai redeploy su Vercel.",
           },
         ]);
       } finally {
@@ -2733,7 +2734,14 @@ Struttura:
         <Modal title="Generatore tavole tecniche controllate" subtitle="Carica un'immagine della tavola per analisi AI o compila i dati per controllo base." theme={theme} isDark={isDark} onClose={() => setShowDrawingGenerator(false)} wide>
           <div style={s.drawingLayout}>
             <div style={s.checklistFormArea}>
-              <input ref={drawingReviewInputRef} type="file" accept=".png,.jpg,.jpeg,.webp,.pdf,image/*,application/pdf" style={{ display: "none" }} onChange={handleDrawingReviewUpload} />
+              <input
+                ref={drawingReviewInputRef}
+                type="file"
+                accept=".png,.jpg,.jpeg,.webp,.pdf,image/*,application/pdf"
+                data-techai-pdf-drawing="1"
+                style={{ display: "none" }}
+                onChange={handleDrawingReviewUpload}
+              />
               <div style={{ ...s.drawingUploadPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
                 <strong>Revisione tavola</strong>
                 <p style={s.muted}>Carica un'immagine o PDF della tavola. I PDF vengono convertiti automaticamente.</p>
