@@ -743,14 +743,9 @@ async function callOpenAIVision(params: {
   fileMeta: string;
   analysisMode: AnalysisMode;
 }) {
-  const openAiDrawingKey =
-    process.env.OPENAI_DRAWING_READER_API_KEY ||
-    process.env.OPENAI_API_KEY;
+  const openAiDrawingKey = process.env.OPENAI_DRAWING_READER_API_KEY;
 
-  const model =
-    process.env.OPENAI_DRAWING_READER_MODEL ||
-    process.env.OPENAI_MODEL ||
-    "gpt-4o-mini";
+  const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
 
   if (!openAiDrawingKey) {
     return (
@@ -889,7 +884,7 @@ async function callOpenAIVision(params: {
       `Codice: ${response.status}\n\n` +
       `Dettaglio: ${raw || "nessun dettaglio ricevuto"}\n\n` +
       "Controlla che la chiave OpenAI sia valida e che il modello scelto supporti immagini. " +
-      "Variabili consigliate: OPENAI_DRAWING_READER_API_KEY e OPENAI_DRAWING_READER_MODEL."
+      "Variabili richieste: OPENAI_DRAWING_READER_API_KEY e OPENAI_DRAWING_READER_MODEL."
     );
   }
 
@@ -1254,13 +1249,11 @@ export default async function handler(req: Request) {
           process.env.GROQ_MODEL_MEDIUM ||
           process.env.GROQ_MODEL ||
           "llama-3.3-70b-versatile",
-        hasOpenAIDrawingKey: Boolean(
-          process.env.OPENAI_DRAWING_READER_API_KEY || process.env.OPENAI_API_KEY
-        ),
+        hasOpenAIDrawingKey: Boolean(process.env.OPENAI_DRAWING_READER_API_KEY),
         openAIDrawingKeyPreview:
-          (process.env.OPENAI_DRAWING_READER_API_KEY || process.env.OPENAI_API_KEY)?.slice(0, 8) || "MISSING",
+          process.env.OPENAI_DRAWING_READER_API_KEY?.slice(0, 8) || "MISSING",
         openAIDrawingModel:
-          process.env.OPENAI_DRAWING_READER_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini",
+          process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
         hasSupabase: Boolean(
           process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
         ),
