@@ -8,27 +8,24 @@ type Props = {
 export default function PdfExportButton({ title, lines }: Props) {
   function handleExport() {
     const pdf = new jsPDF();
-
     let y = 20;
 
     pdf.setFontSize(18);
     pdf.text(title, 15, y);
-
     y += 14;
 
     pdf.setFontSize(11);
 
     lines.forEach((line) => {
-      const rows = pdf.splitTextToSize(line, 170);
+      const rows = pdf.splitTextToSize(line, 180);
 
-      pdf.text(rows, 15, y);
-
-      y += rows.length * 6 + 8;
-
-      if (y > 270) {
+      if (y + rows.length * 6 > 285) {
         pdf.addPage();
         y = 20;
       }
+
+      pdf.text(rows, 15, y);
+      y += rows.length * 6 + 8;
     });
 
     pdf.save("verifica-tecnica.pdf");
@@ -37,6 +34,7 @@ export default function PdfExportButton({ title, lines }: Props) {
   return (
     <button
       onClick={handleExport}
+      type="button"
       style={{
         border: "none",
         borderRadius: 12,
