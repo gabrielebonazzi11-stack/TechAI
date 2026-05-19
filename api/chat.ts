@@ -746,7 +746,7 @@ async function callOpenAIVision(params: {
   const openAiDrawingKey = process.env.OPENAI_DRAWING_READER_API_KEY;
 
   const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
-  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "8500");
+  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "45000");
 
   if (!openAiDrawingKey) {
     return (
