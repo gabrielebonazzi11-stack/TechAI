@@ -2749,6 +2749,8 @@ Struttura:
             }}
           >
             <MaterialsLibrary
+              theme={theme}
+              isDark={isDark}
               onUseMaterial={(material) => {
                 setMaterialSearch(material.name);
 
