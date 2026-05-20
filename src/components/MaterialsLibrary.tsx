@@ -1,6 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { MATERIALS_DB, MaterialInfo } from "../data/materials";
 
+type Theme = {
+  name: string;
+  primary: string;
+  bg: string;
+  surface: string;
+  text: string;
+  border: string;
+};
+
 type MaterialCategory =
   | "Tutti"
   | "Acciai"
@@ -14,6 +23,8 @@ type MaterialCategory =
   | "Speciali";
 
 type MaterialsLibraryProps = {
+  theme?: Theme;
+  isDark?: boolean;
   onUseMaterial?: (material: MaterialInfo) => void;
 };
 
@@ -187,7 +198,31 @@ function safeValue(value: any) {
   return value;
 }
 
-export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProps) {
+export default function MaterialsLibrary({
+  theme,
+  isDark = false,
+  onUseMaterial,
+}: MaterialsLibraryProps) {
+  const primary = theme?.primary || "#2563eb";
+
+  const c = {
+    primary,
+    pageBg: isDark
+      ? "radial-gradient(circle at top left, rgba(96,165,250,0.08), transparent 30%), #050505"
+      : "radial-gradient(circle at top left, rgba(59,130,246,0.12), transparent 30%), #f8fafc",
+    cardBg: isDark ? "#0b0b0b" : "#ffffff",
+    cardBg2: isDark ? "#111111" : "#f8fafc",
+    toolbarBg: isDark ? "rgba(17,17,17,0.92)" : "rgba(255,255,255,0.85)",
+    text: isDark ? "#f8fafc" : "#0f172a",
+    muted: isDark ? "#94a3b8" : "#64748b",
+    border: theme?.border || (isDark ? "#262626" : "#e2e8f0"),
+    inputBg: isDark ? "#050505" : "#f8fafc",
+    chipBg: isDark ? "rgba(96,165,250,0.10)" : "#eff6ff",
+    warningBg: isDark ? "rgba(245,158,11,0.10)" : "#fffbeb",
+    warningBorder: isDark ? "rgba(245,158,11,0.30)" : "#fde68a",
+    warningText: isDark ? "#fbbf24" : "#92400e",
+  };
+
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<MaterialCategory>("Tutti");
   const [customMaterials, setCustomMaterials] = useState<MaterialInfo[]>(() => loadCustomMaterials());
@@ -322,12 +357,12 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
   }
 
   return (
-    <div style={styles.page}>
+    <div style={{ ...styles.page, background: c.pageBg, color: c.text }}>
       <div style={styles.header}>
         <div>
-          <p style={styles.kicker}>Database tecnico</p>
-          <h1 style={styles.title}>Libreria materiali</h1>
-          <p style={styles.subtitle}>
+          <p style={{ ...styles.kicker, color: c.primary }}>Database tecnico</p>
+          <h1 style={{ ...styles.title, color: c.text }}>Libreria materiali</h1>
+          <p style={{ ...styles.subtitle, color: c.muted }}>
             Cerca, confronta e seleziona materiali per componenti meccanici,
             tavole, relazioni e progetti.
           </p>
@@ -335,7 +370,7 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
 
         <button
           type="button"
-          style={styles.addTopButton}
+          style={{ ...styles.addTopButton, background: c.primary }}
           onClick={() => setShowAddMaterial((prev) => !prev)}
         >
           {showAddMaterial ? "Chiudi inserimento" : "+ Aggiungi materiale"}
@@ -343,15 +378,20 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
       </div>
 
       {showAddMaterial && (
-        <div style={styles.addPanel}>
+        <div style={{ ...styles.addPanel, background: c.cardBg, border: `1px solid ${c.border}` }}>
           <div style={styles.addPanelHeader}>
             <div>
-              <p style={styles.kicker}>Materiale personalizzato</p>
-              <h2 style={styles.addPanelTitle}>Nuovo materiale</h2>
+              <p style={{ ...styles.kicker, color: c.primary }}>Materiale personalizzato</p>
+              <h2 style={{ ...styles.addPanelTitle, color: c.text }}>Nuovo materiale</h2>
             </div>
             <button
               type="button"
-              style={styles.smallCloseButton}
+              style={{
+                ...styles.smallCloseButton,
+                background: c.cardBg2,
+                border: `1px solid ${c.border}`,
+                color: c.text,
+              }}
               onClick={() => setShowAddMaterial(false)}
             >
               ×
@@ -361,9 +401,14 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
           <div style={styles.addGrid}>
             {(["name", "key", "en", "uni", "din", "aisi", "jis", "iso", "rm", "re"] as (keyof MaterialInfo)[]).map((field) => (
               <div key={String(field)}>
-                <label style={styles.formLabel}>{String(field).toUpperCase()}</label>
+                <label style={{ ...styles.formLabel, color: c.muted }}>{String(field).toUpperCase()}</label>
                 <input
-                  style={styles.formInput}
+                  style={{
+                    ...styles.formInput,
+                    background: c.inputBg,
+                    border: `1px solid ${c.border}`,
+                    color: c.text,
+                  }}
                   value={(newMaterial as any)[field] || ""}
                   onChange={(e) => updateNewMaterialField(field, e.target.value)}
                   placeholder={
@@ -383,9 +428,14 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
           <div style={styles.addGrid}>
             {(["hardness", "treatments", "weldability", "machinability", "uses"] as (keyof MaterialInfo)[]).map((field) => (
               <div key={String(field)}>
-                <label style={styles.formLabel}>{String(field)}</label>
+                <label style={{ ...styles.formLabel, color: c.muted }}>{String(field)}</label>
                 <input
-                  style={styles.formInput}
+                  style={{
+                    ...styles.formInput,
+                    background: c.inputBg,
+                    border: `1px solid ${c.border}`,
+                    color: c.text,
+                  }}
                   value={(newMaterial as any)[field] || ""}
                   onChange={(e) => updateNewMaterialField(field, e.target.value)}
                 />
@@ -393,27 +443,32 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
             ))}
           </div>
 
-          <label style={styles.formLabel}>Note</label>
+          <label style={{ ...styles.formLabel, color: c.muted }}>Note</label>
           <textarea
-            style={styles.formTextarea}
+            style={{
+              ...styles.formTextarea,
+              background: c.inputBg,
+              border: `1px solid ${c.border}`,
+              color: c.text,
+            }}
             value={newMaterial.notes}
             onChange={(e) => updateNewMaterialField("notes", e.target.value)}
           />
 
-          <button type="button" style={styles.saveMaterialButton} onClick={addCustomMaterial}>
+          <button type="button" style={{ ...styles.saveMaterialButton, background: c.primary }} onClick={addCustomMaterial}>
             Salva materiale
           </button>
         </div>
       )}
 
-      <div style={styles.toolbar}>
-        <div style={styles.searchBox}>
-          <span style={styles.searchIcon}>⌕</span>
+      <div style={{ ...styles.toolbar, background: c.toolbarBg, border: `1px solid ${c.border}` }}>
+        <div style={{ ...styles.searchBox, background: c.inputBg, border: `1px solid ${c.border}` }}>
+          <span style={{ ...styles.searchIcon, color: c.primary }}>⌕</span>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cerca materiale, norma, uso, trattamento..."
-            style={styles.searchInput}
+            style={{ ...styles.searchInput, color: c.text }}
           />
         </div>
 
@@ -424,7 +479,10 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
               onClick={() => setCategory(cat)}
               style={{
                 ...styles.filterButton,
-                ...(category === cat ? styles.filterButtonActive : {}),
+                background: category === cat ? c.primary : c.cardBg,
+                border: `1px solid ${category === cat ? c.primary : c.border}`,
+                color: category === cat ? "#ffffff" : c.text,
+                boxShadow: category === cat ? `0 10px 24px ${c.primary}33` : "none",
               }}
               type="button"
             >
@@ -437,8 +495,8 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
       <div style={styles.layout}>
         <div style={styles.materialList}>
           <div style={styles.sectionHeader}>
-            <h2 style={styles.sectionTitle}>Materiali trovati</h2>
-            <span style={styles.resultCount}>{filteredMaterials.length} risultati</span>
+            <h2 style={{ ...styles.sectionTitle, color: c.text }}>Materiali trovati</h2>
+            <span style={{ ...styles.resultCount, color: c.muted }}>{filteredMaterials.length} risultati</span>
           </div>
 
           <div style={styles.cardsGrid}>
@@ -453,43 +511,53 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
                   onClick={() => setSelectedMaterial(material)}
                   style={{
                     ...styles.materialCard,
-                    ...(isSelected ? styles.materialCardSelected : {}),
+                    background: c.cardBg,
+                    border: `1px solid ${isSelected ? c.primary : c.border}`,
+                    boxShadow: isSelected ? `0 18px 46px ${c.primary}24` : "0 10px 28px rgba(0,0,0,0.14)",
+                    transform: isSelected ? "translateY(-2px)" : "none",
                   }}
                   type="button"
                 >
                   <div style={styles.cardTop}>
                     <div>
-                      <h3 style={styles.materialName}>{material.name}</h3>
-                      <p style={styles.materialCode}>{safeValue(material.en)}</p>
+                      <h3 style={{ ...styles.materialName, color: c.text }}>{material.name}</h3>
+                      <p style={{ ...styles.materialCode, color: c.muted }}>{safeValue(material.en)}</p>
                     </div>
 
-                    <span style={styles.categoryBadge}>
+                    <span
+                      style={{
+                        ...styles.categoryBadge,
+                        background: c.chipBg,
+                        color: c.primary,
+                      }}
+                    >
                       {isCustom ? "Custom" : materialCategory}
                     </span>
                   </div>
 
                   <div style={styles.miniDataGrid}>
-                    <div style={styles.miniData}>
-                      <span style={styles.miniLabel}>Rm</span>
-                      <strong style={styles.miniValue}>{safeValue(material.rm)} MPa</strong>
+                    <div style={{ ...styles.miniData, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+                      <span style={{ ...styles.miniLabel, color: c.muted }}>Rm</span>
+                      <strong style={{ ...styles.miniValue, color: c.text }}>{safeValue(material.rm)} MPa</strong>
                     </div>
 
-                    <div style={styles.miniData}>
-                      <span style={styles.miniLabel}>Re</span>
-                      <strong style={styles.miniValue}>{safeValue(material.re)} MPa</strong>
+                    <div style={{ ...styles.miniData, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+                      <span style={{ ...styles.miniLabel, color: c.muted }}>Re</span>
+                      <strong style={{ ...styles.miniValue, color: c.text }}>{safeValue(material.re)} MPa</strong>
                     </div>
                   </div>
 
-                  <div style={styles.strengthBarOuter}>
+                  <div style={{ ...styles.strengthBarOuter, background: isDark ? "#262626" : "#e2e8f0" }}>
                     <div
                       style={{
                         ...styles.strengthBarInner,
+                        background: `linear-gradient(90deg, ${c.primary}88, ${c.primary})`,
                         width: `${getStrengthPercent(material)}%`,
                       }}
                     />
                   </div>
 
-                  <p style={styles.cardNote}>
+                  <p style={{ ...styles.cardNote, color: c.muted }}>
                     {material.uses || material.notes || "Materiale tecnico per progettazione."}
                   </p>
                 </button>
@@ -498,19 +566,25 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
           </div>
         </div>
 
-        <aside style={styles.detailPanel}>
+        <aside style={{ ...styles.detailPanel, background: c.cardBg, border: `1px solid ${c.border}` }}>
           {selectedMaterial ? (
             <>
               <div style={styles.detailHeader}>
                 <div>
-                  <p style={styles.kicker}>Scheda materiale</p>
-                  <h2 style={styles.detailTitle}>{selectedMaterial.name}</h2>
-                  <p style={styles.detailSubtitle}>
+                  <p style={{ ...styles.kicker, color: c.primary }}>Scheda materiale</p>
+                  <h2 style={{ ...styles.detailTitle, color: c.text }}>{selectedMaterial.name}</h2>
+                  <p style={{ ...styles.detailSubtitle, color: c.muted }}>
                     {getStrengthLabel(selectedMaterial)}
                   </p>
                 </div>
 
-                <span style={styles.detailCategory}>
+                <span
+                  style={{
+                    ...styles.detailCategory,
+                    background: c.chipBg,
+                    color: c.primary,
+                  }}
+                >
                   {customMaterials.some((item) => item.key === selectedMaterial.key)
                     ? "Custom"
                     : getMaterialCategory(selectedMaterial)}
@@ -519,7 +593,7 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
 
               <div style={styles.actionRow}>
                 <button
-                  style={styles.primaryButton}
+                  style={{ ...styles.primaryButton, background: c.primary }}
                   onClick={() => onUseMaterial?.(selectedMaterial)}
                   type="button"
                 >
@@ -527,7 +601,12 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
                 </button>
 
                 <button
-                  style={styles.secondaryButton}
+                  style={{
+                    ...styles.secondaryButton,
+                    background: c.cardBg2,
+                    border: `1px solid ${c.border}`,
+                    color: c.text,
+                  }}
                   onClick={() => setCompareA(selectedMaterial)}
                   type="button"
                 >
@@ -535,7 +614,12 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
                 </button>
 
                 <button
-                  style={styles.secondaryButton}
+                  style={{
+                    ...styles.secondaryButton,
+                    background: c.cardBg2,
+                    border: `1px solid ${c.border}`,
+                    color: c.text,
+                  }}
                   onClick={() => setCompareB(selectedMaterial)}
                   type="button"
                 >
@@ -554,67 +638,74 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
               )}
 
               <div style={styles.detailGrid}>
-                <Info label="EN" value={selectedMaterial.en} />
-                <Info label="UNI" value={selectedMaterial.uni} />
-                <Info label="DIN" value={selectedMaterial.din} />
-                <Info label="AISI / SAE" value={selectedMaterial.aisi} />
-                <Info label="JIS" value={selectedMaterial.jis} />
-                <Info label="ISO" value={selectedMaterial.iso} />
-                <Info label="Rm" value={`${safeValue(selectedMaterial.rm)} MPa`} />
-                <Info label="Re" value={`${safeValue(selectedMaterial.re)} MPa`} />
+                <Info c={c} label="EN" value={selectedMaterial.en} />
+                <Info c={c} label="UNI" value={selectedMaterial.uni} />
+                <Info c={c} label="DIN" value={selectedMaterial.din} />
+                <Info c={c} label="AISI / SAE" value={selectedMaterial.aisi} />
+                <Info c={c} label="JIS" value={selectedMaterial.jis} />
+                <Info c={c} label="ISO" value={selectedMaterial.iso} />
+                <Info c={c} label="Rm" value={`${safeValue(selectedMaterial.rm)} MPa`} />
+                <Info c={c} label="Re" value={`${safeValue(selectedMaterial.re)} MPa`} />
               </div>
 
-              <Block title="Durezza" value={selectedMaterial.hardness} />
-              <Block title="Trattamenti" value={selectedMaterial.treatments} />
-              <Block title="Saldabilità" value={selectedMaterial.weldability} />
-              <Block title="Lavorabilità" value={selectedMaterial.machinability} />
-              <Block title="Impieghi tipici" value={selectedMaterial.uses} />
-              <Block title="Note" value={selectedMaterial.notes} />
+              <Block c={c} title="Durezza" value={selectedMaterial.hardness} />
+              <Block c={c} title="Trattamenti" value={selectedMaterial.treatments} />
+              <Block c={c} title="Saldabilità" value={selectedMaterial.weldability} />
+              <Block c={c} title="Lavorabilità" value={selectedMaterial.machinability} />
+              <Block c={c} title="Impieghi tipici" value={selectedMaterial.uses} />
+              <Block c={c} title="Note" value={selectedMaterial.notes} />
 
-              <div style={styles.warningBox}>
+              <div
+                style={{
+                  ...styles.warningBox,
+                  background: c.warningBg,
+                  border: `1px solid ${c.warningBorder}`,
+                  color: c.warningText,
+                }}
+              >
                 I valori sono indicativi: per calcoli definitivi verifica sempre
                 scheda tecnica, certificato materiale e stato di fornitura.
               </div>
             </>
           ) : (
-            <div style={styles.emptyState}>
+            <div style={{ ...styles.emptyState, color: c.muted }}>
               Seleziona un materiale per vedere la scheda tecnica.
             </div>
           )}
         </aside>
       </div>
 
-      <div style={styles.comparePanel}>
+      <div style={{ ...styles.comparePanel, background: c.cardBg, border: `1px solid ${c.border}` }}>
         <div style={styles.sectionHeader}>
-          <h2 style={styles.sectionTitle}>Confronto materiali</h2>
-          <span style={styles.resultCount}>
+          <h2 style={{ ...styles.sectionTitle, color: c.text }}>Confronto materiali</h2>
+          <span style={{ ...styles.resultCount, color: c.muted }}>
             Seleziona “Confronta A” e “Confronta B”
           </span>
         </div>
 
         <div style={styles.compareGrid}>
-          <CompareColumn title="Materiale A" material={compareA} />
-          <CompareColumn title="Materiale B" material={compareB} />
+          <CompareColumn c={c} title="Materiale A" material={compareA} />
+          <CompareColumn c={c} title="Materiale B" material={compareB} />
         </div>
       </div>
     </div>
   );
 }
 
-function Info({ label, value }: { label: string; value: any }) {
+function Info({ label, value, c }: { label: string; value: any; c: any }) {
   return (
-    <div style={styles.infoBox}>
-      <span style={styles.infoLabel}>{label}</span>
-      <strong style={styles.infoValue}>{safeValue(value)}</strong>
+    <div style={{ ...styles.infoBox, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+      <span style={{ ...styles.infoLabel, color: c.muted }}>{label}</span>
+      <strong style={{ ...styles.infoValue, color: c.text }}>{safeValue(value)}</strong>
     </div>
   );
 }
 
-function Block({ title, value }: { title: string; value: any }) {
+function Block({ title, value, c }: { title: string; value: any; c: any }) {
   return (
-    <div style={styles.block}>
-      <h4 style={styles.blockTitle}>{title}</h4>
-      <p style={styles.blockText}>{safeValue(value)}</p>
+    <div style={{ ...styles.block, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+      <h4 style={{ ...styles.blockTitle, color: c.text }}>{title}</h4>
+      <p style={{ ...styles.blockText, color: c.muted }}>{safeValue(value)}</p>
     </div>
   );
 }
@@ -622,35 +713,37 @@ function Block({ title, value }: { title: string; value: any }) {
 function CompareColumn({
   title,
   material,
+  c,
 }: {
   title: string;
   material: MaterialInfo | null;
+  c: any;
 }) {
   if (!material) {
     return (
-      <div style={styles.compareColumn}>
-        <h3 style={styles.compareTitle}>{title}</h3>
-        <p style={styles.emptyCompare}>Nessun materiale selezionato.</p>
+      <div style={{ ...styles.compareColumn, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+        <h3 style={{ ...styles.compareTitle, color: c.text }}>{title}</h3>
+        <p style={{ ...styles.emptyCompare, color: c.muted }}>Nessun materiale selezionato.</p>
       </div>
     );
   }
 
   return (
-    <div style={styles.compareColumn}>
-      <h3 style={styles.compareTitle}>{title}</h3>
+    <div style={{ ...styles.compareColumn, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+      <h3 style={{ ...styles.compareTitle, color: c.text }}>{title}</h3>
 
-      <div style={styles.compareMaterialHeader}>
+      <div style={{ ...styles.compareMaterialHeader, background: c.cardBg, border: `1px solid ${c.border}`, color: c.text }}>
         <strong>{material.name}</strong>
         <span>{getMaterialCategory(material)}</span>
       </div>
 
-      <Info label="EN" value={material.en} />
-      <Info label="UNI" value={material.uni} />
-      <Info label="Rm" value={`${safeValue(material.rm)} MPa`} />
-      <Info label="Re" value={`${safeValue(material.re)} MPa`} />
-      <Info label="Durezza" value={material.hardness} />
-      <Info label="Lavorabilità" value={material.machinability} />
-      <Info label="Saldabilità" value={material.weldability} />
+      <Info c={c} label="EN" value={material.en} />
+      <Info c={c} label="UNI" value={material.uni} />
+      <Info c={c} label="Rm" value={`${safeValue(material.rm)} MPa`} />
+      <Info c={c} label="Re" value={`${safeValue(material.re)} MPa`} />
+      <Info c={c} label="Durezza" value={material.hardness} />
+      <Info c={c} label="Lavorabilità" value={material.machinability} />
+      <Info c={c} label="Saldabilità" value={material.weldability} />
     </div>
   );
 }
@@ -661,9 +754,6 @@ const styles: Record<string, React.CSSProperties> = {
     minHeight: "100%",
     padding: 24,
     boxSizing: "border-box",
-    color: "#0f172a",
-    background:
-      "radial-gradient(circle at top left, rgba(59,130,246,0.12), transparent 30%), #f8fafc",
   },
 
   header: {
@@ -681,7 +771,6 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: "uppercase",
     letterSpacing: 1.6,
     fontWeight: 900,
-    color: "#2563eb",
   },
 
   title: {
@@ -689,7 +778,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 34,
     lineHeight: 1.1,
     fontWeight: 900,
-    color: "#0f172a",
   },
 
   subtitle: {
@@ -697,13 +785,11 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: 720,
     fontSize: 15,
     lineHeight: 1.6,
-    color: "#475569",
   },
 
   addTopButton: {
     flexShrink: 0,
     border: "none",
-    background: "#2563eb",
     color: "#ffffff",
     borderRadius: 16,
     padding: "13px 18px",
@@ -715,9 +801,7 @@ const styles: Record<string, React.CSSProperties> = {
   addPanel: {
     padding: 18,
     borderRadius: 24,
-    background: "#ffffff",
-    border: "1px solid #dbe3ee",
-    boxShadow: "0 14px 40px rgba(15,23,42,0.08)",
+    boxShadow: "0 14px 40px rgba(0,0,0,0.12)",
     marginBottom: 22,
   },
 
@@ -733,19 +817,15 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 24,
     fontWeight: 900,
-    color: "#0f172a",
   },
 
   smallCloseButton: {
     width: 36,
     height: 36,
     borderRadius: "50%",
-    border: "1px solid #cbd5e1",
-    background: "#ffffff",
     cursor: "pointer",
     fontSize: 22,
     fontWeight: 900,
-    color: "#0f172a",
   },
 
   addGrid: {
@@ -762,14 +842,10 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: "uppercase",
     letterSpacing: 0.7,
     fontWeight: 900,
-    color: "#64748b",
   },
 
   formInput: {
     width: "100%",
-    border: "1px solid #cbd5e1",
-    background: "#f8fafc",
-    color: "#0f172a",
     borderRadius: 14,
     padding: "11px 12px",
     outline: "none",
@@ -779,9 +855,6 @@ const styles: Record<string, React.CSSProperties> = {
   formTextarea: {
     width: "100%",
     minHeight: 84,
-    border: "1px solid #cbd5e1",
-    background: "#f8fafc",
-    color: "#0f172a",
     borderRadius: 14,
     padding: "11px 12px",
     outline: "none",
@@ -792,7 +865,6 @@ const styles: Record<string, React.CSSProperties> = {
   saveMaterialButton: {
     marginTop: 12,
     border: "none",
-    background: "#2563eb",
     color: "#ffffff",
     borderRadius: 14,
     padding: "12px 16px",
@@ -802,10 +874,8 @@ const styles: Record<string, React.CSSProperties> = {
 
   toolbar: {
     padding: 16,
-    background: "rgba(255,255,255,0.85)",
-    border: "1px solid #e2e8f0",
     borderRadius: 24,
-    boxShadow: "0 14px 40px rgba(15,23,42,0.06)",
+    boxShadow: "0 14px 40px rgba(0,0,0,0.10)",
     marginBottom: 22,
   },
 
@@ -816,15 +886,12 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "0 14px",
     height: 48,
     borderRadius: 16,
-    background: "#f8fafc",
-    border: "1px solid #cbd5e1",
     marginBottom: 14,
   },
 
   searchIcon: {
     fontSize: 22,
     fontWeight: 900,
-    color: "#2563eb",
   },
 
   searchInput: {
@@ -833,7 +900,6 @@ const styles: Record<string, React.CSSProperties> = {
     outline: "none",
     background: "transparent",
     fontSize: 15,
-    color: "#0f172a",
   },
 
   filters: {
@@ -843,21 +909,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   filterButton: {
-    border: "1px solid #cbd5e1",
-    background: "#ffffff",
-    color: "#334155",
     borderRadius: 999,
     padding: "8px 12px",
     fontSize: 13,
     fontWeight: 800,
     cursor: "pointer",
-  },
-
-  filterButtonActive: {
-    background: "#2563eb",
-    borderColor: "#2563eb",
-    color: "#ffffff",
-    boxShadow: "0 10px 24px rgba(37,99,235,0.25)",
   },
 
   layout: {
@@ -883,12 +939,10 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 20,
     fontWeight: 900,
-    color: "#0f172a",
   },
 
   resultCount: {
     fontSize: 13,
-    color: "#64748b",
     fontWeight: 800,
   },
 
@@ -900,19 +954,10 @@ const styles: Record<string, React.CSSProperties> = {
 
   materialCard: {
     textAlign: "left",
-    border: "1px solid #e2e8f0",
-    background: "#ffffff",
     borderRadius: 22,
     padding: 16,
     cursor: "pointer",
-    boxShadow: "0 10px 28px rgba(15,23,42,0.05)",
     transition: "transform 0.15s ease, box-shadow 0.15s ease, border 0.15s ease",
-  },
-
-  materialCardSelected: {
-    border: "1px solid #2563eb",
-    boxShadow: "0 18px 46px rgba(37,99,235,0.16)",
-    transform: "translateY(-2px)",
   },
 
   cardTop: {
@@ -927,13 +972,11 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 18,
     fontWeight: 900,
-    color: "#0f172a",
   },
 
   materialCode: {
     margin: "4px 0 0",
     fontSize: 13,
-    color: "#64748b",
     fontWeight: 800,
   },
 
@@ -941,8 +984,6 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     padding: "5px 8px",
     borderRadius: 999,
-    background: "#eff6ff",
-    color: "#1d4ed8",
     fontSize: 11,
     fontWeight: 900,
   },
@@ -956,15 +997,12 @@ const styles: Record<string, React.CSSProperties> = {
 
   miniData: {
     padding: 10,
-    background: "#f8fafc",
     borderRadius: 14,
-    border: "1px solid #e2e8f0",
   },
 
   miniLabel: {
     display: "block",
     fontSize: 11,
-    color: "#64748b",
     fontWeight: 900,
     marginBottom: 4,
   },
@@ -972,13 +1010,11 @@ const styles: Record<string, React.CSSProperties> = {
   miniValue: {
     display: "block",
     fontSize: 14,
-    color: "#0f172a",
   },
 
   strengthBarOuter: {
     width: "100%",
     height: 8,
-    background: "#e2e8f0",
     borderRadius: 999,
     overflow: "hidden",
     marginBottom: 12,
@@ -987,14 +1023,12 @@ const styles: Record<string, React.CSSProperties> = {
   strengthBarInner: {
     height: "100%",
     borderRadius: 999,
-    background: "linear-gradient(90deg, #60a5fa, #2563eb)",
   },
 
   cardNote: {
     margin: 0,
     fontSize: 13,
     lineHeight: 1.45,
-    color: "#475569",
     display: "-webkit-box",
     WebkitLineClamp: 3,
     WebkitBoxOrient: "vertical",
@@ -1006,9 +1040,7 @@ const styles: Record<string, React.CSSProperties> = {
     top: 20,
     padding: 18,
     borderRadius: 26,
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
-    boxShadow: "0 18px 50px rgba(15,23,42,0.08)",
+    boxShadow: "0 18px 50px rgba(0,0,0,0.14)",
   },
 
   detailHeader: {
@@ -1023,13 +1055,11 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 26,
     lineHeight: 1.1,
-    color: "#0f172a",
     fontWeight: 900,
   },
 
   detailSubtitle: {
     margin: "8px 0 0",
-    color: "#64748b",
     fontSize: 14,
     fontWeight: 800,
   },
@@ -1037,8 +1067,6 @@ const styles: Record<string, React.CSSProperties> = {
   detailCategory: {
     padding: "7px 10px",
     borderRadius: 999,
-    background: "#eff6ff",
-    color: "#1d4ed8",
     fontSize: 12,
     fontWeight: 900,
     whiteSpace: "nowrap",
@@ -1053,7 +1081,6 @@ const styles: Record<string, React.CSSProperties> = {
 
   primaryButton: {
     border: "none",
-    background: "#2563eb",
     color: "#ffffff",
     borderRadius: 14,
     padding: "11px 12px",
@@ -1062,9 +1089,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   secondaryButton: {
-    border: "1px solid #cbd5e1",
-    background: "#ffffff",
-    color: "#334155",
     borderRadius: 14,
     padding: "11px 12px",
     fontWeight: 900,
@@ -1092,8 +1116,6 @@ const styles: Record<string, React.CSSProperties> = {
 
   infoBox: {
     padding: 10,
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
     borderRadius: 14,
     minWidth: 0,
   },
@@ -1101,14 +1123,12 @@ const styles: Record<string, React.CSSProperties> = {
   infoLabel: {
     display: "block",
     fontSize: 11,
-    color: "#64748b",
     fontWeight: 900,
     marginBottom: 4,
   },
 
   infoValue: {
     display: "block",
-    color: "#0f172a",
     fontSize: 13,
     lineHeight: 1.35,
     wordBreak: "break-word",
@@ -1117,15 +1137,12 @@ const styles: Record<string, React.CSSProperties> = {
   block: {
     padding: 12,
     borderRadius: 16,
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
     marginBottom: 8,
   },
 
   blockTitle: {
     margin: "0 0 6px",
     fontSize: 13,
-    color: "#0f172a",
     fontWeight: 900,
   },
 
@@ -1133,16 +1150,12 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 13,
     lineHeight: 1.5,
-    color: "#475569",
   },
 
   warningBox: {
     marginTop: 12,
     padding: 12,
     borderRadius: 16,
-    background: "#fffbeb",
-    border: "1px solid #fde68a",
-    color: "#92400e",
     fontSize: 13,
     lineHeight: 1.5,
     fontWeight: 800,
@@ -1151,7 +1164,6 @@ const styles: Record<string, React.CSSProperties> = {
   emptyState: {
     padding: 24,
     textAlign: "center",
-    color: "#64748b",
     fontWeight: 800,
   },
 
@@ -1159,9 +1171,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 22,
     padding: 18,
     borderRadius: 26,
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
-    boxShadow: "0 14px 40px rgba(15,23,42,0.06)",
+    boxShadow: "0 14px 40px rgba(0,0,0,0.10)",
   },
 
   compareGrid: {
@@ -1173,15 +1183,12 @@ const styles: Record<string, React.CSSProperties> = {
   compareColumn: {
     padding: 14,
     borderRadius: 20,
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
   },
 
   compareTitle: {
     margin: "0 0 12px",
     fontSize: 16,
     fontWeight: 900,
-    color: "#0f172a",
   },
 
   compareMaterialHeader: {
@@ -1192,14 +1199,10 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 12,
     padding: 12,
     borderRadius: 16,
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
-    color: "#0f172a",
   },
 
   emptyCompare: {
     margin: 0,
-    color: "#64748b",
     fontSize: 14,
   },
 };
