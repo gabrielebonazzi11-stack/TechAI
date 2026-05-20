@@ -243,9 +243,6 @@ const THEMES: Theme[] = [
   { name: "Deep Burgundy", primary: "#dc2626", bg: "#fef2f2", surface: "#fee2e2", text: "#7f1d1d", border: "#fecaca" },
   { name: "Sandstone", primary: "#a8a29e", bg: "#fafaf9", surface: "#f5f5f4", text: "#44403c", border: "#e7e5e4" },
   { name: "Dark Black", primary: "#60a5fa", bg: "#050505", surface: "#111111", text: "#f8fafc", border: "#262626" },
-
-  { name: "Black Red", primary: "#ef4444", bg: "#050505", surface: "#111111", text: "#ef4444", border: "#262626" },
-  { name: "Black Green", primary: "#22c55e", bg: "#050505", surface: "#111111", text: "#22c55e", border: "#262626" },
 ];
 
 const STORAGE_KEY_BASE = "techai_stable_app_v7_scoped";
@@ -573,10 +570,7 @@ export default function App() {
   const bomFileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const isDark =
-  theme.name === "Dark Black" ||
-  theme.name === "Black Red" ||
-  theme.name === "Black Green";
+  const isDark = theme.name === "Dark Black";
   const activeChat = chats.find(chat => chat.id === activeChatId);
   const currentMessages = activeChat?.messages || [];
   const allMaterials = useMemo(() => [...MATERIALS_DB, ...customMaterials], [customMaterials]);
@@ -3170,30 +3164,13 @@ Struttura:
                 <div style={s.settingsThemeGrid}>
                   {THEMES.map(t => {
                     const selected = theme.name === t.name;
-                    const optionTextColor =
-                      t.name === "Black Red"
-                        ? "#ef4444"
-                        : t.name === "Black Green"
-                          ? "#22c55e"
-                          : isDark
-                            ? "#f8fafc"
-                            : "#1e293b";
+                    const optionTextColor = isDark ? "#f8fafc" : "#1e293b";
 
                     const optionDotBackground =
-                      t.name === "Dark Black"
-                        ? "#050505"
-                        : t.name === "Black Red"
-                          ? "linear-gradient(90deg, #050505 50%, #ef4444 50%)"
-                          : t.name === "Black Green"
-                            ? "linear-gradient(90deg, #050505 50%, #22c55e 50%)"
-                            : t.primary;
+                      t.name === "Dark Black" ? "#050505" : t.primary;
 
                     const optionDotBorder =
-                      t.name === "Dark Black" ||
-                      t.name === "Black Red" ||
-                      t.name === "Black Green"
-                        ? "1px solid #cbd5e1"
-                        : "none";
+                      t.name === "Dark Black" ? "1px solid #cbd5e1" : "none";
 
                     return (
                       <button
