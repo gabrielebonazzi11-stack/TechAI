@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { MATERIALS_DB, MaterialInfo } from "./data/materials";
+import MaterialsLibrary from "./components/MaterialsLibrary";
 import * as pdfjsLib from "pdfjs-dist";
 import { supabase, isSupabaseConfigured } from "./lib/supabaseClient";
-import MaterialsLibrary from "./components/MaterialsLibrary";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
@@ -2738,41 +2738,44 @@ Struttura:
       )}
 
       {showMaterials && (
-        <Modal title="Libreria materiali" subtitle="Conversioni normative e proprietà meccaniche indicative." theme={theme} isDark={isDark} onClose={() => setShowMaterials(false)} wide>
-          <div style={s.materialToolbar}>
-            <input style={{ ...s.input, background: isDark ? "#050505" : "#fff", color: theme.text, border: `1px solid ${theme.border}`, marginBottom: 0 }} value={materialSearch} onChange={e => setMaterialSearch(e.target.value)} placeholder="Cerca materiale, EN, DIN, AISI, JIS..." />
-            <button style={{ ...s.addMaterialBtn, background: theme.primary }} onClick={() => setShowAddMaterial(prev => !prev)} type="button">{showAddMaterial ? "Chiudi" : "+ Aggiungi materiale"}</button>
-          </div>
+        <Modal
+          title="Libreria materiali"
+          subtitle="Catalogo tecnico materiali con ricerca, filtri, schede e confronto."
+          theme={theme}
+          isDark={isDark}
+          onClose={() => setShowMaterials(false)}
+          wide
+        >
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflow: "auto",
+              borderRadius: 20,
+            }}
+          >
+            <MaterialsLibrary
+              onUseMaterial={(material) => {
+                setMaterialSearch(material.name);
 
-          {showAddMaterial && (
-            <div style={{ ...s.addMaterialPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
-              <h3 style={{ marginTop: 0 }}>Nuovo materiale personalizzato</h3>
-              <p style={s.muted}>Compila i dati che conosci. Gli altri resteranno “Non specificato”.</p>
-              <div style={s.addMaterialGrid}>
-                {(["name", "key", "en", "uni", "din", "aisi", "jis", "iso", "rm", "re"] as (keyof MaterialInfo)[]).map(field => (
-                  <div key={String(field)}>
-                    <label style={s.label}>{String(field).toUpperCase()}</label>
-                    <input style={{ ...s.input, background: isDark ? "#111" : "#fff", color: theme.text, border: `1px solid ${theme.border}` }} value={(newMaterial as any)[field] || ""} onChange={e => updateNewMaterialField(field, e.target.value)} />
-                  </div>
-                ))}
-              </div>
-              {(["hardness", "treatments", "weldability", "machinability", "uses"] as (keyof MaterialInfo)[]).map(field => (
-                <div key={String(field)}>
-                  <label style={s.label}>{String(field)}</label>
-                  <input style={{ ...s.input, background: isDark ? "#111" : "#fff", color: theme.text, border: `1px solid ${theme.border}` }} value={(newMaterial as any)[field] || ""} onChange={e => updateNewMaterialField(field, e.target.value)} />
-                </div>
-              ))}
-              <label style={s.label}>Note</label>
-              <textarea style={{ ...s.addMaterialTextarea, background: isDark ? "#111" : "#fff", color: theme.text, border: `1px solid ${theme.border}` }} value={newMaterial.notes} onChange={e => updateNewMaterialField("notes", e.target.value)} />
-              <button style={{ ...s.primaryBtn, background: theme.primary }} onClick={addCustomMaterial} type="button">Salva materiale</button>
-            </div>
-          )}
+                setChecklistForm((prev) => ({
+                  ...prev,
+                  material: material.name,
+                }));
 
-          <div style={s.materialGrid}>
-            {filteredMaterials.map((m: MaterialInfo) => {
-              const isCustom = customMaterials.some(item => item.key === m.key);
-              return <MaterialCard key={m.key} material={m} isCustom={isCustom} theme={theme} isDark={isDark} onDelete={() => deleteCustomMaterial(m.key)} />;
-            })}
+                setQuickCalcForm((prev) => ({
+                  ...prev,
+                  material: material.name,
+                }));
+
+                setDrawingForm((prev) => ({
+                  ...prev,
+                  material: material.name,
+                }));
+
+                setShowMaterials(false);
+              }}
+            />
           </div>
         </Modal>
       )}
