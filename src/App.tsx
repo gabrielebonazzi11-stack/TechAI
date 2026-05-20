@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { MATERIALS_DB, MaterialInfo } from "./data/materials";
 import * as pdfjsLib from "pdfjs-dist";
 import { supabase, isSupabaseConfigured } from "./lib/supabaseClient";
+import MaterialsLibrary from "./components/MaterialsLibrary";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
