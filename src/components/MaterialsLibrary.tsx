@@ -17,6 +17,55 @@ type MaterialsLibraryProps = {
   onUseMaterial?: (material: MaterialInfo) => void;
 };
 
+const CUSTOM_MATERIALS_KEY = "techai_custom_materials_library_v1";
+
+const EMPTY_MATERIAL: MaterialInfo = {
+  key: "",
+  name: "",
+  en: "",
+  uni: "",
+  din: "",
+  aisi: "",
+  jis: "",
+  iso: "",
+  rm: 0,
+  re: 0,
+  hardness: "",
+  treatments: "",
+  weldability: "",
+  machinability: "",
+  uses: "",
+  notes: "Materiale aggiunto dall'utente. Verificare sempre i dati prima di usarlo in calcoli reali.",
+};
+
+function loadCustomMaterials(): MaterialInfo[] {
+  try {
+    const saved = localStorage.getItem(CUSTOM_MATERIALS_KEY);
+    const parsed = saved ? JSON.parse(saved) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomMaterials(materials: MaterialInfo[]) {
+  try {
+    localStorage.setItem(CUSTOM_MATERIALS_KEY, JSON.stringify(materials));
+  } catch {
+    // localStorage non disponibile
+  }
+}
+
+function normalizeMaterialKey(value?: string) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll(" ", "")
+    .replaceAll("-", "")
+    .replaceAll("_", "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
 function getMaterialCategory(material: MaterialInfo): MaterialCategory {
   const text = `${material.name} ${material.en} ${material.uni} ${material.din} ${material.aisi} ${material.iso} ${material.notes} ${material.uses}`.toLowerCase();
 
@@ -106,7 +155,9 @@ function getMaterialCategory(material: MaterialInfo): MaterialCategory {
     text.includes("oro") ||
     text.includes("piombo") ||
     text.includes("monel") ||
-    text.includes("nichel")
+    text.includes("nichel") ||
+    text.includes("11smnpb37") ||
+    text.includes("36smnpb14")
   ) {
     return "Speciali";
   }
@@ -119,7 +170,6 @@ function getStrengthLabel(material: MaterialInfo) {
   const re = Number(material.re || 0);
 
   if (!rm && !re) return "Dati indicativi";
-
   if (rm >= 900 || re >= 700) return "Alta resistenza";
   if (rm >= 600 || re >= 350) return "Media resistenza";
   return "Bassa / media resistenza";
@@ -129,8 +179,7 @@ function getStrengthPercent(material: MaterialInfo) {
   const rm = Number(material.rm || 0);
   if (!rm) return 12;
 
-  const value = Math.min(Math.max((rm / 1200) * 100, 10), 100);
-  return value;
+  return Math.min(Math.max((rm / 1200) * 100, 10), 100);
 }
 
 function safeValue(value: any) {
@@ -141,11 +190,19 @@ function safeValue(value: any) {
 export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProps) {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<MaterialCategory>("Tutti");
+  const [customMaterials, setCustomMaterials] = useState<MaterialInfo[]>(() => loadCustomMaterials());
   const [selectedMaterial, setSelectedMaterial] = useState<MaterialInfo | null>(
     MATERIALS_DB[0] ?? null
   );
   const [compareA, setCompareA] = useState<MaterialInfo | null>(null);
   const [compareB, setCompareB] = useState<MaterialInfo | null>(null);
+  const [showAddMaterial, setShowAddMaterial] = useState(false);
+  const [newMaterial, setNewMaterial] = useState<MaterialInfo>(EMPTY_MATERIAL);
+
+  const allMaterials = useMemo(
+    () => [...MATERIALS_DB, ...customMaterials],
+    [customMaterials]
+  );
 
   const categories: MaterialCategory[] = [
     "Tutti",
@@ -163,7 +220,7 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
   const filteredMaterials = useMemo(() => {
     const q = search.trim().toLowerCase();
 
-    return MATERIALS_DB.filter((material) => {
+    return allMaterials.filter((material) => {
       const materialCategory = getMaterialCategory(material);
 
       const text = `
@@ -189,7 +246,80 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
 
       return matchesSearch && matchesCategory;
     });
-  }, [search, category]);
+  }, [search, category, allMaterials]);
+
+  function updateNewMaterialField(field: keyof MaterialInfo, value: string) {
+    setNewMaterial((prev) => ({
+      ...prev,
+      [field]: field === "rm" || field === "re" ? Number(value.replace(",", ".")) || 0 : value,
+    }));
+  }
+
+  function addCustomMaterial() {
+    const materialName = newMaterial.name.trim();
+
+    if (!materialName) {
+      alert("Inserisci almeno il nome del materiale.");
+      return;
+    }
+
+    const generatedKey = normalizeMaterialKey(newMaterial.key || materialName);
+
+    const exists = allMaterials.some(
+      (m) =>
+        normalizeMaterialKey(m.key) === generatedKey ||
+        normalizeMaterialKey(m.name) === normalizeMaterialKey(materialName)
+    );
+
+    if (exists) {
+      alert("Questo materiale sembra già presente nella libreria.");
+      return;
+    }
+
+    const materialToSave: MaterialInfo = {
+      ...newMaterial,
+      key: generatedKey,
+      name: materialName,
+      en: newMaterial.en || "Non specificato",
+      uni: newMaterial.uni || "Non specificato",
+      din: newMaterial.din || "Non specificato",
+      aisi: newMaterial.aisi || "Non specificato",
+      jis: newMaterial.jis || "Non specificato",
+      iso: newMaterial.iso || "Non specificato",
+      rm: newMaterial.rm || 0,
+      re: newMaterial.re || 0,
+      hardness: newMaterial.hardness || "Non specificato",
+      treatments: newMaterial.treatments || "Non specificato",
+      weldability: newMaterial.weldability || "Non specificato",
+      machinability: newMaterial.machinability || "Non specificato",
+      uses: newMaterial.uses || "Non specificato",
+      notes:
+        newMaterial.notes ||
+        "Materiale aggiunto dall'utente. Verificare sempre i dati prima di usarlo in calcoli reali.",
+    };
+
+    const updated = [...customMaterials, materialToSave];
+    setCustomMaterials(updated);
+    saveCustomMaterials(updated);
+
+    setSelectedMaterial(materialToSave);
+    setNewMaterial(EMPTY_MATERIAL);
+    setShowAddMaterial(false);
+    setSearch(materialName);
+  }
+
+  function deleteCustomMaterial(key: string) {
+    const updated = customMaterials.filter((material) => material.key !== key);
+    setCustomMaterials(updated);
+    saveCustomMaterials(updated);
+
+    if (selectedMaterial?.key === key) {
+      setSelectedMaterial(MATERIALS_DB[0] ?? null);
+    }
+
+    if (compareA?.key === key) setCompareA(null);
+    if (compareB?.key === key) setCompareB(null);
+  }
 
   return (
     <div style={styles.page}>
@@ -203,11 +333,78 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
           </p>
         </div>
 
-        <div style={styles.statsBox}>
-          <span style={styles.statsNumber}>{MATERIALS_DB.length}</span>
-          <span style={styles.statsText}>materiali disponibili</span>
-        </div>
+        <button
+          type="button"
+          style={styles.addTopButton}
+          onClick={() => setShowAddMaterial((prev) => !prev)}
+        >
+          {showAddMaterial ? "Chiudi inserimento" : "+ Aggiungi materiale"}
+        </button>
       </div>
+
+      {showAddMaterial && (
+        <div style={styles.addPanel}>
+          <div style={styles.addPanelHeader}>
+            <div>
+              <p style={styles.kicker}>Materiale personalizzato</p>
+              <h2 style={styles.addPanelTitle}>Nuovo materiale</h2>
+            </div>
+            <button
+              type="button"
+              style={styles.smallCloseButton}
+              onClick={() => setShowAddMaterial(false)}
+            >
+              ×
+            </button>
+          </div>
+
+          <div style={styles.addGrid}>
+            {(["name", "key", "en", "uni", "din", "aisi", "jis", "iso", "rm", "re"] as (keyof MaterialInfo)[]).map((field) => (
+              <div key={String(field)}>
+                <label style={styles.formLabel}>{String(field).toUpperCase()}</label>
+                <input
+                  style={styles.formInput}
+                  value={(newMaterial as any)[field] || ""}
+                  onChange={(e) => updateNewMaterialField(field, e.target.value)}
+                  placeholder={
+                    field === "name"
+                      ? "Es. 36SMnPb14"
+                      : field === "rm"
+                        ? "Es. 510"
+                        : field === "re"
+                          ? "Es. 390"
+                          : ""
+                  }
+                />
+              </div>
+            ))}
+          </div>
+
+          <div style={styles.addGrid}>
+            {(["hardness", "treatments", "weldability", "machinability", "uses"] as (keyof MaterialInfo)[]).map((field) => (
+              <div key={String(field)}>
+                <label style={styles.formLabel}>{String(field)}</label>
+                <input
+                  style={styles.formInput}
+                  value={(newMaterial as any)[field] || ""}
+                  onChange={(e) => updateNewMaterialField(field, e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+
+          <label style={styles.formLabel}>Note</label>
+          <textarea
+            style={styles.formTextarea}
+            value={newMaterial.notes}
+            onChange={(e) => updateNewMaterialField("notes", e.target.value)}
+          />
+
+          <button type="button" style={styles.saveMaterialButton} onClick={addCustomMaterial}>
+            Salva materiale
+          </button>
+        </div>
+      )}
 
       <div style={styles.toolbar}>
         <div style={styles.searchBox}>
@@ -229,6 +426,7 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
                 ...styles.filterButton,
                 ...(category === cat ? styles.filterButtonActive : {}),
               }}
+              type="button"
             >
               {cat}
             </button>
@@ -247,6 +445,7 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
             {filteredMaterials.map((material) => {
               const materialCategory = getMaterialCategory(material);
               const isSelected = selectedMaterial?.key === material.key;
+              const isCustom = customMaterials.some((item) => item.key === material.key);
 
               return (
                 <button
@@ -256,6 +455,7 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
                     ...styles.materialCard,
                     ...(isSelected ? styles.materialCardSelected : {}),
                   }}
+                  type="button"
                 >
                   <div style={styles.cardTop}>
                     <div>
@@ -263,7 +463,9 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
                       <p style={styles.materialCode}>{safeValue(material.en)}</p>
                     </div>
 
-                    <span style={styles.categoryBadge}>{materialCategory}</span>
+                    <span style={styles.categoryBadge}>
+                      {isCustom ? "Custom" : materialCategory}
+                    </span>
                   </div>
 
                   <div style={styles.miniDataGrid}>
@@ -309,7 +511,9 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
                 </div>
 
                 <span style={styles.detailCategory}>
-                  {getMaterialCategory(selectedMaterial)}
+                  {customMaterials.some((item) => item.key === selectedMaterial.key)
+                    ? "Custom"
+                    : getMaterialCategory(selectedMaterial)}
                 </span>
               </div>
 
@@ -317,6 +521,7 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
                 <button
                   style={styles.primaryButton}
                   onClick={() => onUseMaterial?.(selectedMaterial)}
+                  type="button"
                 >
                   Usa questo materiale
                 </button>
@@ -324,6 +529,7 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
                 <button
                   style={styles.secondaryButton}
                   onClick={() => setCompareA(selectedMaterial)}
+                  type="button"
                 >
                   Confronta A
                 </button>
@@ -331,10 +537,21 @@ export default function MaterialsLibrary({ onUseMaterial }: MaterialsLibraryProp
                 <button
                   style={styles.secondaryButton}
                   onClick={() => setCompareB(selectedMaterial)}
+                  type="button"
                 >
                   Confronta B
                 </button>
               </div>
+
+              {customMaterials.some((item) => item.key === selectedMaterial.key) && (
+                <button
+                  type="button"
+                  style={styles.deleteMaterialButton}
+                  onClick={() => deleteCustomMaterial(selectedMaterial.key)}
+                >
+                  Elimina materiale personalizzato
+                </button>
+              )}
 
               <div style={styles.detailGrid}>
                 <Info label="EN" value={selectedMaterial.en} />
@@ -462,8 +679,8 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 6,
     fontSize: 12,
     textTransform: "uppercase",
-    letterSpacing: 1,
-    fontWeight: 800,
+    letterSpacing: 1.6,
+    fontWeight: 900,
     color: "#2563eb",
   },
 
@@ -483,28 +700,104 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#475569",
   },
 
-  statsBox: {
-    minWidth: 150,
-    padding: 18,
-    borderRadius: 22,
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
-    boxShadow: "0 14px 40px rgba(15,23,42,0.08)",
-    textAlign: "center",
-  },
-
-  statsNumber: {
-    display: "block",
-    fontSize: 32,
+  addTopButton: {
+    flexShrink: 0,
+    border: "none",
+    background: "#2563eb",
+    color: "#ffffff",
+    borderRadius: 16,
+    padding: "13px 18px",
     fontWeight: 900,
-    color: "#2563eb",
+    cursor: "pointer",
+    boxShadow: "0 12px 28px rgba(37,99,235,0.25)",
   },
 
-  statsText: {
+  addPanel: {
+    padding: 18,
+    borderRadius: 24,
+    background: "#ffffff",
+    border: "1px solid #dbe3ee",
+    boxShadow: "0 14px 40px rgba(15,23,42,0.08)",
+    marginBottom: 22,
+  },
+
+  addPanelHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 16,
+    marginBottom: 14,
+  },
+
+  addPanelTitle: {
+    margin: 0,
+    fontSize: 24,
+    fontWeight: 900,
+    color: "#0f172a",
+  },
+
+  smallCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: "50%",
+    border: "1px solid #cbd5e1",
+    background: "#ffffff",
+    cursor: "pointer",
+    fontSize: 22,
+    fontWeight: 900,
+    color: "#0f172a",
+  },
+
+  addGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 12,
+    marginBottom: 12,
+  },
+
+  formLabel: {
     display: "block",
-    fontSize: 13,
+    marginBottom: 6,
+    fontSize: 11,
+    textTransform: "uppercase",
+    letterSpacing: 0.7,
+    fontWeight: 900,
     color: "#64748b",
-    marginTop: 4,
+  },
+
+  formInput: {
+    width: "100%",
+    border: "1px solid #cbd5e1",
+    background: "#f8fafc",
+    color: "#0f172a",
+    borderRadius: 14,
+    padding: "11px 12px",
+    outline: "none",
+    fontSize: 14,
+  },
+
+  formTextarea: {
+    width: "100%",
+    minHeight: 84,
+    border: "1px solid #cbd5e1",
+    background: "#f8fafc",
+    color: "#0f172a",
+    borderRadius: 14,
+    padding: "11px 12px",
+    outline: "none",
+    resize: "vertical",
+    fontSize: 14,
+  },
+
+  saveMaterialButton: {
+    marginTop: 12,
+    border: "none",
+    background: "#2563eb",
+    color: "#ffffff",
+    borderRadius: 14,
+    padding: "12px 16px",
+    fontWeight: 900,
+    cursor: "pointer",
   },
 
   toolbar: {
@@ -556,7 +849,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     padding: "8px 12px",
     fontSize: 13,
-    fontWeight: 700,
+    fontWeight: 800,
     cursor: "pointer",
   },
 
@@ -596,7 +889,7 @@ const styles: Record<string, React.CSSProperties> = {
   resultCount: {
     fontSize: 13,
     color: "#64748b",
-    fontWeight: 700,
+    fontWeight: 800,
   },
 
   cardsGrid: {
@@ -641,7 +934,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: "4px 0 0",
     fontSize: 13,
     color: "#64748b",
-    fontWeight: 700,
+    fontWeight: 800,
   },
 
   categoryBadge: {
@@ -651,7 +944,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#eff6ff",
     color: "#1d4ed8",
     fontSize: 11,
-    fontWeight: 800,
+    fontWeight: 900,
   },
 
   miniDataGrid: {
@@ -672,7 +965,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "block",
     fontSize: 11,
     color: "#64748b",
-    fontWeight: 800,
+    fontWeight: 900,
     marginBottom: 4,
   },
 
@@ -738,7 +1031,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: "8px 0 0",
     color: "#64748b",
     fontSize: 14,
-    fontWeight: 700,
+    fontWeight: 800,
   },
 
   detailCategory: {
@@ -755,7 +1048,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "1fr 1fr 1fr",
     gap: 8,
-    marginBottom: 16,
+    marginBottom: 12,
   },
 
   primaryButton: {
@@ -776,6 +1069,18 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "11px 12px",
     fontWeight: 900,
     cursor: "pointer",
+  },
+
+  deleteMaterialButton: {
+    width: "100%",
+    border: "1px solid #fecaca",
+    background: "#fef2f2",
+    color: "#dc2626",
+    borderRadius: 14,
+    padding: "10px 12px",
+    fontWeight: 900,
+    cursor: "pointer",
+    marginBottom: 14,
   },
 
   detailGrid: {
@@ -840,14 +1145,14 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#92400e",
     fontSize: 13,
     lineHeight: 1.5,
-    fontWeight: 700,
+    fontWeight: 800,
   },
 
   emptyState: {
     padding: 24,
     textAlign: "center",
     color: "#64748b",
-    fontWeight: 700,
+    fontWeight: 800,
   },
 
   comparePanel: {
