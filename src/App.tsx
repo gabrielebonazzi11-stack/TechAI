@@ -2874,7 +2874,7 @@ Struttura:
                 {projects.length === 0 ? (
                   <div style={s.emptyText}>Nessun progetto creato. Carica un file o premi “Crea progetto”.</div>
                 ) : projects.map(project => (
-                  <div key={project.id} style={{ ...s.projectListItem, border: `1px solid ${project.id === activeProject?.id ? theme.primary : theme.border}`, background: project.id === activeProject?.id ? "rgba(96,165,250,0.10)" : "transparent" }}>
+                  <div key={project.id} style={{ ...s.projectListItem, border: `1px solid ${project.id === activeProject?.id ? theme.primary : theme.border}`, background: project.id === activeProject?.id ? `${theme.primary}1A` : "transparent" }}>
                     <button style={s.projectListMain} onClick={() => setActiveProjectId(project.id)} type="button">
                       <strong>{project.name}</strong>
                       <span>{project.items.length} elementi · {new Date(project.updatedAt).toLocaleDateString("it-IT")}</span>
@@ -3030,7 +3030,7 @@ Struttura:
       )}
 
       {showSettings && (
-        <div style={s.settingsOverlay}>
+        <div style={{ ...s.settingsOverlay, background: `radial-gradient(circle at 30% 20%, ${theme.primary}2E, transparent 30%), rgba(15,23,42,0.72)` }}>
           <div style={{ ...s.settingsModal, color: isDark ? "#f8fafc" : "#0f172a" }}>
             <div style={s.settingsSidePanel}>
               <div style={s.settingsTabsArea}>
@@ -3046,9 +3046,9 @@ Struttura:
                       key={tab.key}
                       style={{
                         ...s.settingsTabBtn,
-                        background: selected ? "rgba(96,165,250,0.16)" : "transparent",
-                        color: selected ? "#60a5fa" : "rgba(226,232,240,0.78)",
-                        boxShadow: selected ? "inset 3px 0 0 #60a5fa" : "none",
+                        background: selected ? `${theme.primary}29` : "transparent",
+                        color: selected ? theme.primary : "rgba(226,232,240,0.78)",
+                        boxShadow: selected ? `inset 3px 0 0 ${theme.primary}` : "none",
                       }}
                       onClick={() => setActiveTab(tab.key)}
                       type="button"
@@ -3056,8 +3056,8 @@ Struttura:
                       <span
                         style={{
                           ...s.settingsTabIcon,
-                          borderColor: selected ? "rgba(96,165,250,0.62)" : "rgba(148,163,184,0.22)",
-                          color: selected ? "#60a5fa" : "rgba(226,232,240,0.72)",
+                          borderColor: selected ? `${theme.primary}9E` : "rgba(148,163,184,0.22)",
+                          color: selected ? theme.primary : "rgba(226,232,240,0.72)",
                         }}
                       >
                         {tab.icon}
@@ -3247,8 +3247,8 @@ Struttura:
                   <div
                     style={{
                       ...s.settingsGuestNotice,
-                      background: isDark ? "rgba(96,165,250,0.08)" : "#eff6ff",
-                      border: `1px solid ${isDark ? "rgba(96,165,250,0.26)" : "#bfdbfe"}`,
+                      background: isDark ? `${theme.primary}14` : `${theme.primary}14`,
+                      border: `1px solid ${theme.primary}42`,
                     }}
                   >
                     <strong>Consiglio</strong>
