@@ -123,11 +123,17 @@ type QuickCalcResult = {
   notes: string[];
 };
 
+type DrawingCropImage = {
+  label: string;
+  dataUrl: string;
+};
+
 type DrawingUpload = {
   file: File;
   fileAttachment: FileAttachment;
   previewUrl?: string;
   convertedFile?: File;
+  drawingImages?: DrawingCropImage[];
   isPdf?: boolean;
   totalPages?: number;
 };
@@ -291,26 +297,141 @@ function toNumber(value: string, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-async function pdfPageToImageFile(file: File): Promise<{ dataUrl: string; jpegFile: File; totalPages: number }> {
+type DrawingCropDefinition = {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  maxSide: number;
+  quality: number;
+};
+
+const DRAWING_CROP_DEFINITIONS: DrawingCropDefinition[] = [
+  { id: "full", label: "Vista completa tavola", x: 0, y: 0, w: 1, h: 1, maxSide: 1800, quality: 0.82 },
+  { id: "title_block", label: "Cartiglio basso destra", x: 0.58, y: 0.70, w: 0.42, h: 0.30, maxSide: 2200, quality: 0.92 },
+  { id: "left_top", label: "Zona alta sinistra - vista principale", x: 0.00, y: 0.00, w: 0.46, h: 0.50, maxSide: 2200, quality: 0.9 },
+  { id: "left_bottom", label: "Zona bassa sinistra - sezioni e dettagli", x: 0.00, y: 0.45, w: 0.48, h: 0.55, maxSide: 2200, quality: 0.9 },
+  { id: "center", label: "Zona centrale - viste laterali e dettagli", x: 0.32, y: 0.00, w: 0.36, h: 1.00, maxSide: 2200, quality: 0.9 },
+  { id: "right_top", label: "Zona alta destra - vista e dettaglio", x: 0.62, y: 0.00, w: 0.38, h: 0.56, maxSide: 2200, quality: 0.9 },
+  { id: "right_bottom", label: "Zona bassa destra - assonometria e cartiglio", x: 0.54, y: 0.44, w: 0.46, h: 0.56, maxSide: 2200, quality: 0.9 },
+];
+
+function canvasToBlob(canvas: HTMLCanvasElement, quality = 0.9): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) reject(new Error("Conversione canvas non riuscita."));
+      else resolve(blob);
+    }, "image/jpeg", quality);
+  });
+}
+
+async function canvasToDataUrlResized(
+  sourceCanvas: HTMLCanvasElement,
+  crop: DrawingCropDefinition
+): Promise<string> {
+  const sx = Math.max(0, Math.round(sourceCanvas.width * crop.x));
+  const sy = Math.max(0, Math.round(sourceCanvas.height * crop.y));
+  const sw = Math.max(1, Math.round(sourceCanvas.width * crop.w));
+  const sh = Math.max(1, Math.round(sourceCanvas.height * crop.h));
+
+  const longest = Math.max(sw, sh);
+  const resizeScale = Math.min(1, crop.maxSide / longest);
+  const outW = Math.max(1, Math.round(sw * resizeScale));
+  const outH = Math.max(1, Math.round(sh * resizeScale));
+
+  const out = document.createElement("canvas");
+  out.width = outW;
+  out.height = outH;
+
+  const ctx = out.getContext("2d");
+  if (!ctx) throw new Error("Impossibile creare il crop della tavola.");
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, outW, outH);
+  ctx.drawImage(sourceCanvas, sx, sy, sw, sh, 0, 0, outW, outH);
+
+  return out.toDataURL("image/jpeg", crop.quality);
+}
+
+async function imageFileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Impossibile leggere l'immagine."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function makeDrawingImagesFromImageFile(file: File): Promise<DrawingCropImage[]> {
+  const dataUrl = await imageFileToDataUrl(file);
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Impossibile caricare l'immagine della tavola."));
+    image.src = dataUrl;
+  });
+
+  const canvas = document.createElement("canvas");
+  canvas.width = img.width;
+  canvas.height = img.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return [{ label: "Immagine tavola caricata", dataUrl }];
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0);
+
+  const crops: DrawingCropImage[] = [];
+  for (const crop of DRAWING_CROP_DEFINITIONS) {
+    crops.push({ label: crop.label, dataUrl: await canvasToDataUrlResized(canvas, crop) });
+  }
+
+  return crops;
+}
+
+async function pdfPageToImageFile(file: File): Promise<{ dataUrl: string; jpegFile: File; totalPages: number; drawingImages: DrawingCropImage[] }> {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const totalPages = pdf.numPages;
   const page = await pdf.getPage(1);
-  const scale = 2.5;
+
+  // Scala alta: le tavole A1/A0 hanno cartigli e quote molto piccoli.
+  // Poi non mandiamo il canvas gigante intero al modello: mandiamo crop ridimensionati.
+  const scale = 4;
   const viewport = page.getViewport({ scale });
 
   const canvas = document.createElement("canvas");
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
+  canvas.width = Math.round(viewport.width);
+  canvas.height = Math.round(viewport.height);
 
   const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   await page.render({ canvasContext: ctx as any, viewport }).promise;
 
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
-  const blob = await new Promise<Blob>(resolve => canvas.toBlob(b => resolve(b!), "image/jpeg", 0.95));
-  const jpegFile = new File([blob], file.name.replace(/\.pdf$/i, "_p1.jpg"), { type: "image/jpeg" });
+  const previewCrop = DRAWING_CROP_DEFINITIONS[0];
+  const dataUrl = await canvasToDataUrlResized(canvas, previewCrop);
+  const previewCanvas = document.createElement("canvas");
+  const previewImg = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Impossibile creare anteprima PDF."));
+    image.src = dataUrl;
+  });
+  previewCanvas.width = previewImg.width;
+  previewCanvas.height = previewImg.height;
+  previewCanvas.getContext("2d")?.drawImage(previewImg, 0, 0);
+  const blob = await canvasToBlob(previewCanvas, 0.86);
+  const jpegFile = new File([blob], file.name.replace(/\.pdf$/i, "_p1_preview.jpg"), { type: "image/jpeg" });
 
-  return { dataUrl, jpegFile, totalPages };
+  const drawingImages: DrawingCropImage[] = [];
+  for (const crop of DRAWING_CROP_DEFINITIONS) {
+    drawingImages.push({ label: crop.label, dataUrl: await canvasToDataUrlResized(canvas, crop) });
+  }
+
+  return { dataUrl, jpegFile, totalPages, drawingImages };
 }
 
 async function compressImageForVision(file: File, maxSide = 1600, quality = 0.82): Promise<File> {
@@ -2131,15 +2252,23 @@ export default function App() {
     if (isPdf) {
       setDrawingAiLoading(true);
       try {
-        const { dataUrl, jpegFile, totalPages } = await pdfPageToImageFile(file);
-        setDrawingReviewFile({ file, fileAttachment: makeAttachment(file), previewUrl: dataUrl, convertedFile: jpegFile, isPdf: true, totalPages });
+        const { dataUrl, jpegFile, totalPages, drawingImages } = await pdfPageToImageFile(file);
+        setDrawingReviewFile({ file, fileAttachment: makeAttachment(file), previewUrl: dataUrl, convertedFile: jpegFile, drawingImages, isPdf: true, totalPages });
       } catch {
         alert("Errore nella conversione del PDF. Prova con un altro file.");
       } finally {
         setDrawingAiLoading(false);
       }
     } else {
-      setDrawingReviewFile({ file, fileAttachment: makeAttachment(file), previewUrl: URL.createObjectURL(file) });
+      setDrawingAiLoading(true);
+      try {
+        const drawingImages = await makeDrawingImagesFromImageFile(file);
+        setDrawingReviewFile({ file, fileAttachment: makeAttachment(file), previewUrl: URL.createObjectURL(file), drawingImages });
+      } catch {
+        setDrawingReviewFile({ file, fileAttachment: makeAttachment(file), previewUrl: URL.createObjectURL(file) });
+      } finally {
+        setDrawingAiLoading(false);
+      }
     }
 
     event.target.value = "";
@@ -2163,7 +2292,10 @@ export default function App() {
 
       try {
         const sourceFileToSend = drawingReviewFile!.convertedFile ?? drawingReviewFile!.file;
-        const fileToSend = await compressImageForVision(sourceFileToSend, 1600, 0.82);
+        const fileToSend = await compressImageForVision(sourceFileToSend, 1800, 0.86);
+        const drawingImages = drawingReviewFile!.drawingImages?.length
+          ? drawingReviewFile!.drawingImages
+          : await makeDrawingImagesFromImageFile(fileToSend);
         const formData = new FormData();
 
         formData.append(
@@ -2210,6 +2342,7 @@ Struttura:
 ## 10. Giudizio finale (Approvata / Da correggere / Non producibile)`
         );
         formData.append("file", fileToSend);
+        formData.append("drawingImages", JSON.stringify(drawingImages.slice(0, 10)));
         formData.append("profile", JSON.stringify({ userName: user.name, focus: interest }));
         formData.append("messages", JSON.stringify([]));
         formData.append("analysisMode", "drawing");
@@ -2790,12 +2923,12 @@ Struttura:
               />
               <div style={{ ...s.drawingUploadPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
                 <strong>Revisione tavola</strong>
-                <p style={s.muted}>Carica un'immagine o PDF della tavola. I PDF vengono convertiti automaticamente.</p>
+                <p style={s.muted}>Carica un'immagine o PDF della tavola. I PDF vengono convertiti automaticamente in vista completa + crop leggibili di cartiglio, viste, sezioni e dettagli.</p>
                 <div style={s.drawingUploadGridSingle}>
                   <button style={{ ...s.drawingUploadBtn, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => drawingReviewInputRef.current?.click()} type="button">📐 Carica tavola tecnica<small>PNG, JPG, JPEG, WebP, PDF</small></button>
                 </div>
                 {drawingReviewFile && <FileCard upload={drawingReviewFile} icon={drawingReviewFile.isPdf ? "📄" : "🖼️"} theme={theme} isDark={isDark} onRemove={removeDrawingReviewFile} />}
-                {drawingReviewFile?.isPdf && drawingReviewFile.totalPages && <p style={{ ...s.muted, marginTop: 4 }}>PDF · {drawingReviewFile.totalPages} {drawingReviewFile.totalPages === 1 ? "pagina" : "pagine"} · analisi sulla pagina 1</p>}
+                {drawingReviewFile?.isPdf && drawingReviewFile.totalPages && <p style={{ ...s.muted, marginTop: 4 }}>PDF · {drawingReviewFile.totalPages} {drawingReviewFile.totalPages === 1 ? "pagina" : "pagine"} · analisi pagina 1 con crop automatici</p>}
               </div>
 
               <div style={s.checklistGrid}>
