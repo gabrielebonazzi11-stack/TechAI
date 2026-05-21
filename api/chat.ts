@@ -228,7 +228,7 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
           label: String(img.label || "Crop tavola"),
           dataUrl: String(img.dataUrl),
         }))
-        .slice(0, 10);
+        .slice(0, 12);
     }
 
     return {
@@ -762,6 +762,7 @@ async function callOpenAIVision(params: {
   profile: any;
   imageDataUrl: string;
   drawingImages: DrawingImageInput[];
+  fileText: string;
   fileMeta: string;
   analysisMode: AnalysisMode;
 }) {
@@ -787,10 +788,23 @@ async function callOpenAIVision(params: {
   const userName = params.profile?.userName || "Utente";
   const focus = params.profile?.focus || "Ingegneria Meccanica";
 
+  const extractedPdfText = String(params.fileText || "").trim();
+
   const prompt =
-    `${params.message || "Analizza questa immagine tecnica con la massima precisione."}\n\n` +
-    `${params.fileMeta ? `${params.fileMeta}\n` : ""}` +
-    `Modalità analisi: ${params.analysisMode}\n`;
+    `${params.message || "Analizza questa immagine tecnica con la massima precisione."}
+
+` +
+    `${params.fileMeta ? `${params.fileMeta}
+` : ""}` +
+    `Modalità analisi: ${params.analysisMode}
+` +
+    (extractedPdfText
+      ? `
+
+TESTO ESTRATTO DAL PDF, DA USARE COME SUPPORTO E NON COME UNICA FONTE:
+${extractedPdfText.slice(0, 26000)}
+`
+      : "");
 
   const imageInputs =
     params.drawingImages && params.drawingImages.length > 0
@@ -805,15 +819,14 @@ async function callOpenAIVision(params: {
       text:
         prompt +
         "\n\nIMPORTANTE LETTURA TAVOLA PDF/A1/A0:\n" +
-        "Le immagini allegate possono essere crop della stessa tavola tecnica. Non trattarle come tavole separate.\n" +
+        "Le immagini allegate sono crop della stessa tavola tecnica: alcuni automatici da testo PDF, alcuni da aree grafiche dense, più crop di sicurezza. Non trattarle come tavole separate.\n" +
         "Usa la vista completa solo per orientarti.\n" +
-        "Usa il crop del cartiglio per leggere materiale, scala, formato, revisione, rugosità generale e tolleranze generali.\n" +
-        "Usa i crop delle viste, sezioni e dettagli per leggere quote, fori, filetti, sezioni e lavorazioni.\n" +
-        "Distingui chiaramente: rilevato / incerto / non leggibile. Non inventare dati mancanti.\n",
-    },
+        "Usa i crop dinamici per leggere cartiglio, note, viste, sezioni, quote, fori, filetti, lamature e lavorazioni.\n" +
+        "Il testo estratto dal PDF serve come aiuto per riconoscere dati e parole, ma le conclusioni devono restare collegate alla tavola/crop visibili.\n" +
+        "Distingui chiaramente: rilevato / incerto / non leggibile. Non inventare dati mancanti e non trasformare la scarsa leggibilità in errore tecnico.\n",    },
   ];
 
-  for (const img of imageInputs.slice(0, 10)) {
+  for (const img of imageInputs.slice(0, 12)) {
     visionContent.push({ type: "text", text: `Immagine/crop: ${img.label}` });
     visionContent.push({
       type: "image_url",
@@ -1333,6 +1346,7 @@ export default async function handler(req: Request) {
           profile: body.profile,
           imageDataUrl: body.imageDataUrl,
           drawingImages: body.drawingImages,
+          fileText: body.fileText,
           fileMeta: body.fileMeta,
           analysisMode: body.analysisMode,
         })
