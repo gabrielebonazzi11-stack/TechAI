@@ -21,12 +21,18 @@ type AnalysisMode =
   | "step"
   | "file";
 
+type DrawingImageInput = {
+  label: string;
+  dataUrl: string;
+};
+
 type RequestBodyData = {
   message: string;
   messages: ChatMessage[];
   profile: any;
   fileText: string;
   imageDataUrl: string;
+  drawingImages: DrawingImageInput[];
   fileMeta: string;
   hasFile: boolean;
   analysisMode: AnalysisMode;
@@ -158,13 +164,16 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
     const profileRaw = String(formData.get("profile") || "{}");
     const file = formData.get("file");
     const preExtractedText = formData.get("fileText");
+    const drawingImagesRaw = String(formData.get("drawingImages") || "[]");
     const analysisMode = normalizeAnalysisMode(String(formData.get("analysisMode") || "chat"));
 
     const messages = safeJsonParse<ChatMessage[]>(messagesRaw, []);
     const profile = safeJsonParse<any>(profileRaw, {});
+    const drawingImagesParsed = safeJsonParse<DrawingImageInput[]>(drawingImagesRaw, []);
 
     let fileText = "";
     let imageDataUrl = "";
+    let drawingImages: DrawingImageInput[] = [];
     let fileMeta = "";
     let hasFile = false;
 
@@ -212,12 +221,23 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
       }
     }
 
+    if (Array.isArray(drawingImagesParsed) && drawingImagesParsed.length > 0) {
+      drawingImages = drawingImagesParsed
+        .filter((img) => img?.dataUrl && String(img.dataUrl).startsWith("data:image/"))
+        .map((img) => ({
+          label: String(img.label || "Crop tavola"),
+          dataUrl: String(img.dataUrl),
+        }))
+        .slice(0, 10);
+    }
+
     return {
       message,
       messages,
       profile,
       fileText,
       imageDataUrl,
+      drawingImages,
       fileMeta,
       hasFile,
       analysisMode,
@@ -232,6 +252,7 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
     profile: body.profile || {},
     fileText: body.fileText || "",
     imageDataUrl: "",
+    drawingImages: Array.isArray(body.drawingImages) ? body.drawingImages : [],
     fileMeta: body.fileMeta || "",
     hasFile: Boolean(body.hasFile),
     analysisMode: normalizeAnalysisMode(body.analysisMode),
@@ -740,6 +761,7 @@ async function callOpenAIVision(params: {
   messages: ChatMessage[];
   profile: any;
   imageDataUrl: string;
+  drawingImages: DrawingImageInput[];
   fileMeta: string;
   analysisMode: AnalysisMode;
 }) {
@@ -769,6 +791,38 @@ async function callOpenAIVision(params: {
     `${params.message || "Analizza questa immagine tecnica con la massima precisione."}\n\n` +
     `${params.fileMeta ? `${params.fileMeta}\n` : ""}` +
     `Modalità analisi: ${params.analysisMode}\n`;
+
+  const imageInputs =
+    params.drawingImages && params.drawingImages.length > 0
+      ? params.drawingImages
+      : params.imageDataUrl
+        ? [{ label: "Immagine tecnica caricata", dataUrl: params.imageDataUrl }]
+        : [];
+
+  const visionContent: any[] = [
+    {
+      type: "text",
+      text:
+        prompt +
+        "\n\nIMPORTANTE LETTURA TAVOLA PDF/A1/A0:\n" +
+        "Le immagini allegate possono essere crop della stessa tavola tecnica. Non trattarle come tavole separate.\n" +
+        "Usa la vista completa solo per orientarti.\n" +
+        "Usa il crop del cartiglio per leggere materiale, scala, formato, revisione, rugosità generale e tolleranze generali.\n" +
+        "Usa i crop delle viste, sezioni e dettagli per leggere quote, fori, filetti, sezioni e lavorazioni.\n" +
+        "Distingui chiaramente: rilevato / incerto / non leggibile. Non inventare dati mancanti.\n",
+    },
+  ];
+
+  for (const img of imageInputs.slice(0, 10)) {
+    visionContent.push({ type: "text", text: `Immagine/crop: ${img.label}` });
+    visionContent.push({
+      type: "image_url",
+      image_url: {
+        url: img.dataUrl,
+        detail: "high",
+      },
+    });
+  }
 
   let response: Response;
 
@@ -838,19 +892,7 @@ async function callOpenAIVision(params: {
             },
             {
               role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: prompt,
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: params.imageDataUrl,
-                    detail: "auto",
-                  },
-                },
-              ],
+              content: visionContent,
             },
           ],
           temperature: 0.15,
@@ -1280,12 +1322,17 @@ export default async function handler(req: Request) {
       return auth.response;
     }
 
-    const answer = body.imageDataUrl
+    const hasVisionInput =
+      Boolean(body.imageDataUrl) ||
+      Boolean(body.drawingImages && body.drawingImages.length > 0);
+
+    const answer = hasVisionInput
       ? await callOpenAIVision({
           message: body.message,
           messages: body.messages,
           profile: body.profile,
           imageDataUrl: body.imageDataUrl,
+          drawingImages: body.drawingImages,
           fileMeta: body.fileMeta,
           analysisMode: body.analysisMode,
         })
