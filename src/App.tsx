@@ -4003,42 +4003,6 @@ Struttura:
           <div style={s.projectLayout}>
             <div style={s.projectLeft}>
               <div style={{ ...s.projectPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
-                <h3 style={s.projectTitle}>Crea progetto</h3>
-                <Field label="Nome progetto" value={newProjectName} onChange={setNewProjectName} placeholder="Es. Rullatrice risana filetti" theme={theme} isDark={isDark} />
-                <Field label="Descrizione" value={newProjectDescription} onChange={setNewProjectDescription} placeholder="Cliente, assieme, revisione, obiettivo..." theme={theme} isDark={isDark} />
-                <button style={{ ...s.primaryBtn, background: theme.primary }} onClick={() => createProject()} type="button">Crea progetto</button>
-              </div>
-
-              <div style={{ ...s.projectPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
-                <h3 style={s.projectTitle}>Progetti salvati</h3>
-                {projects.length === 0 ? (
-                  <div style={s.emptyText}>Nessun progetto creato. Carica un file o premi “Crea progetto”.</div>
-                ) : projects.map(project => (
-                  <div key={project.id} style={{ ...s.projectListItem, border: `1px solid ${project.id === activeProject?.id ? theme.primary : theme.border}`, background: project.id === activeProject?.id ? `${theme.primary}1A` : "transparent" }}>
-                    <button style={s.projectListMain} onClick={() => setActiveProjectId(project.id)} type="button">
-                      <strong>{project.name}</strong>
-                      <span>{project.items.length} elementi · {new Date(project.updatedAt).toLocaleDateString("it-IT")}</span>
-                    </button>
-                    <button style={s.smallDeleteMaterialBtn} onClick={() => deleteProject(project.id)} type="button">Elimina</button>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ ...s.projectPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
-                <h3 style={s.projectTitle}>Upload intelligente</h3>
-                <p style={s.muted}>Carica PDF, STEP/STP, immagini o file tecnici. TechAI crea automaticamente un progetto se non esiste e salva metadata iniziali.</p>
-                <input ref={projectFileInputRef} type="file" accept=".pdf,.step,.stp,.txt,.csv,.json,image/*" style={{ display: "none" }} onChange={handleProjectSmartFileUpload} />
-                <button style={{ ...s.secondaryBtn, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => projectFileInputRef.current?.click()} type="button">Carica file progetto</button>
-                {projectSmartFile && (
-                  <div style={{ ...s.projectMiniCard, border: `1px solid ${theme.border}` }}>
-                    <strong>{projectSmartFile.category}</strong>
-                    <span>{projectSmartFile.name} · {projectSmartFile.sizeKb} KB</span>
-                    <p>{projectSmartFile.note}</p>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ ...s.projectPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
                 <h3 style={s.projectTitle}>Strumenti progetto</h3>
                 <p style={s.muted}>Scegli cosa visualizzare nella parte destra.</p>
 
@@ -4078,9 +4042,53 @@ Struttura:
                   <span>CSV/JSON, codici duplicati, materiali, quantità e norme.</span>
                 </button>
               </div>
+
+              <div style={{ ...s.projectPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
+                <h3 style={s.projectTitle}>Progetti salvati</h3>
+                {projects.length === 0 ? (
+                  <div style={s.emptyText}>Nessun progetto creato. Carica un file o premi “Crea progetto”.</div>
+                ) : projects.map(project => (
+                  <div key={project.id} style={{ ...s.projectListItem, border: `1px solid ${project.id === activeProject?.id ? theme.primary : theme.border}`, background: project.id === activeProject?.id ? `${theme.primary}1A` : "transparent" }}>
+                    <button style={s.projectListMain} onClick={() => setActiveProjectId(project.id)} type="button">
+                      <strong>{project.name}</strong>
+                      <span>{project.items.length} elementi · {new Date(project.updatedAt).toLocaleDateString("it-IT")}</span>
+                    </button>
+                    <button style={s.smallDeleteMaterialBtn} onClick={() => deleteProject(project.id)} type="button">Elimina</button>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ ...s.projectPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
+                <h3 style={s.projectTitle}>Upload intelligente</h3>
+                <p style={s.muted}>Carica PDF, STEP/STP, immagini o file tecnici. TechAI crea automaticamente un progetto se non esiste e salva metadata iniziali.</p>
+                <input ref={projectFileInputRef} type="file" accept=".pdf,.step,.stp,.txt,.csv,.json,image/*" style={{ display: "none" }} onChange={handleProjectSmartFileUpload} />
+                <button style={{ ...s.secondaryBtn, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => projectFileInputRef.current?.click()} type="button">Carica file progetto</button>
+                {projectSmartFile && (
+                  <div style={{ ...s.projectMiniCard, border: `1px solid ${theme.border}` }}>
+                    <strong>{projectSmartFile.category}</strong>
+                    <span>{projectSmartFile.name} · {projectSmartFile.sizeKb} KB</span>
+                    <p>{projectSmartFile.note}</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={s.projectRight}>
+              <div style={{ ...s.projectPanel, ...s.projectCreateFixedPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
+                <div style={s.projectCreateCompactHeader}>
+                  <div>
+                    <h3 style={s.projectTitle}>Crea progetto</h3>
+                    <p style={s.muted}>Crea o aggiorna subito il contenitore di lavoro.</p>
+                  </div>
+                  <button style={{ ...s.primaryBtn, ...s.projectCreateCompactButton, background: theme.primary }} onClick={() => createProject()} type="button">Crea progetto</button>
+                </div>
+
+                <div style={s.projectCreateCompactGrid}>
+                  <Field label="Nome progetto" value={newProjectName} onChange={setNewProjectName} placeholder="Es. Rullatrice risana filetti" theme={theme} isDark={isDark} />
+                  <Field label="Descrizione" value={newProjectDescription} onChange={setNewProjectDescription} placeholder="Cliente, assieme, revisione, obiettivo..." theme={theme} isDark={isDark} />
+                </div>
+              </div>
+
               <div style={{ ...s.projectPanel, display: projectToolView === "memory" ? "block" : "none", background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
                 <h3 style={s.projectTitle}>Memoria progetto</h3>
                 {renderProjectMemory()}
@@ -5585,6 +5593,10 @@ quickNoteText: {
   fontWeight: 700,
   opacity: 0.82,
 },
+  projectCreateFixedPanel: { position: "sticky", top: 0, zIndex: 5 },
+  projectCreateCompactHeader: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, marginBottom: 10 },
+  projectCreateCompactGrid: { display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 12, alignItems: "end" },
+  projectCreateCompactButton: { width: 190, marginTop: 0, flexShrink: 0 },
   projectLayout: { flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "minmax(300px, 0.72fr) minmax(520px, 1.28fr)", gap: 18, overflow: "hidden" },
   projectLeft: { overflowY: "auto", display: "flex", flexDirection: "column", gap: 14, paddingRight: 4 },
   projectRight: { overflowY: "auto", display: "flex", flexDirection: "column", gap: 14, paddingRight: 6 },
