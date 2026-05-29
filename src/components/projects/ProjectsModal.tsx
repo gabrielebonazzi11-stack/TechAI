@@ -81,12 +81,6 @@ export default function ProjectsModal({
   runSeriousVerification,
   resetSeriousVerification,
   seriousResult,
-  solidWorksTask,
-  setSolidWorksTask,
-  solidWorksNotes,
-  setSolidWorksNotes,
-  solidWorksGuide,
-  saveSolidWorksGuideToProject,
   bomFileInputRef,
   handleBomFileUpload,
   bomText,
@@ -202,17 +196,8 @@ export default function ProjectsModal({
                   onClick={() => setProjectToolView("serious")}
                   type="button"
                 >
-                  <strong>Verifiche serie</strong>
-                  <span>Fatica, bulloni, alberi, perni, saldature, cuscinetti e forzamenti.</span>
-                </button>
-
-                <button
-                  style={{ ...s.projectToolButton, background: projectToolView === "solidworks" ? `${theme.primary}22` : "transparent", border: `1px solid ${projectToolView === "solidworks" ? theme.primary : theme.border}`, color: theme.text }}
-                  onClick={() => setProjectToolView("solidworks")}
-                  type="button"
-                >
-                  <strong>Consigli CAD 3D</strong>
-                  <span>Procedure pratiche per SolidWorks, STEP, assiemi e cartiglio.</span>
+                  <strong>Verifiche tecniche</strong>
+                  <span>Fatica, bulloni, alberi, perni, saldature, cuscinetti e accoppiamenti.</span>
                 </button>
 
                 <button
@@ -353,7 +338,7 @@ export default function ProjectsModal({
               </div>
 
               <div style={{ ...s.projectPanel, display: projectToolView === "serious" ? "block" : "none", background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
-                <h3 style={s.projectTitle}>Verifiche serie</h3>
+                <h3 style={s.projectTitle}>Verifiche tecniche</h3>
                 <div style={s.checklistGrid}>
                   <div>
                     <label style={s.label}>Tipo verifica</label>
@@ -479,33 +464,6 @@ export default function ProjectsModal({
                     {seriousResult.suggestions.map((row, index) => <p key={index} style={{ ...s.resultSuggestion, borderLeft: `3px solid ${theme.primary}` }}>{row}</p>)}
                   </div>
                 )}
-              </div>
-
-              <div style={{ ...s.projectPanel, display: projectToolView === "solidworks" ? "block" : "none", background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
-                <h3 style={s.projectTitle}>Assistente SolidWorks pratico</h3>
-                <div>
-                  <label style={s.label}>Procedura guidata</label>
-                  <select style={{ ...s.input, background: isDark ? "#050505" : "#fff", color: theme.text, border: `1px solid ${theme.border}` }} value={solidWorksTask} onChange={e => setSolidWorksTask(e.target.value)}>
-                    <option value="modellare_pezzo">Devo modellare questo pezzo</option>
-                    <option value="tubo_piegato">Devo fare un tubo piegato</option>
-                    <option value="sottoassieme">Devo creare un sottoassieme</option>
-                    <option value="cartiglio">Collegare materiale al cartiglio</option>
-                    <option value="step_modificabile">Rendere un file STEP modificabile</option>
-                  </select>
-                </div>
-                <Field label="Note sul caso" value={solidWorksNotes} onChange={setSolidWorksNotes} placeholder="Es. pezzo tornito con cave e fori..." theme={theme} isDark={isDark} />
-                <div style={{ ...s.resultCard, background: isDark ? "#0b0b0b" : "#fff", border: `1px solid ${theme.border}` }}>
-                  <h3 style={{ marginTop: 0, color: theme.primary }}>{solidWorksGuide.title}</h3>
-                  <strong>Metodo consigliato</strong>
-                  {solidWorksGuide.method.map((row, i) => <p key={`m-${i}`} style={s.valueRow}>• {row}</p>)}
-                  <strong>Comandi SolidWorks in italiano</strong>
-                  {solidWorksGuide.commands.map((row, i) => <p key={`c-${i}`} style={s.valueRow}>• {row}</p>)}
-                  <strong>Errori comuni</strong>
-                  {solidWorksGuide.errors.map((row, i) => <p key={`e-${i}`} style={s.valueRow}>• {row}</p>)}
-                  <strong>Quando NON usare questo metodo</strong>
-                  {solidWorksGuide.avoid.map((row, i) => <p key={`a-${i}`} style={s.valueRow}>• {row}</p>)}
-                </div>
-                <button style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}` }} onClick={saveSolidWorksGuideToProject} type="button">Salva procedura nel progetto</button>
               </div>
 
               <div style={{ ...s.projectPanel, display: projectToolView === "bom" ? "block" : "none", background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
