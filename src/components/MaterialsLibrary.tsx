@@ -756,7 +756,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     height: "100%",
     minHeight: 0,
-    padding: 24,
+    padding: 18,
     boxSizing: "border-box",
     display: "flex",
     flexDirection: "column",
@@ -768,7 +768,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: "space-between",
     gap: 24,
     alignItems: "flex-start",
-    marginBottom: 22,
+    marginBottom: 14,
   },
 
   kicker: {
@@ -782,7 +782,7 @@ const styles: Record<string, React.CSSProperties> = {
 
   title: {
     margin: 0,
-    fontSize: 34,
+    fontSize: 28,
     lineHeight: 1.1,
     fontWeight: 900,
   },
@@ -790,8 +790,8 @@ const styles: Record<string, React.CSSProperties> = {
   subtitle: {
     margin: "10px 0 0",
     maxWidth: 720,
-    fontSize: 15,
-    lineHeight: 1.6,
+    fontSize: 14,
+    lineHeight: 1.45,
   },
 
   addTopButton: {
@@ -809,7 +809,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 18,
     borderRadius: 24,
     boxShadow: "0 14px 40px rgba(0,0,0,0.12)",
-    marginBottom: 22,
+    marginBottom: 14,
   },
 
   addPanelHeader: {
@@ -880,8 +880,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   toolbar: {
-    padding: 16,
-    borderRadius: 24,
+    padding: 12,
+    borderRadius: 22,
     boxShadow: "0 14px 40px rgba(0,0,0,0.10)",
     marginBottom: 22,
   },
@@ -891,7 +891,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     gap: 10,
     padding: "0 14px",
-    height: 48,
+    height: 44,
     borderRadius: 16,
     marginBottom: 14,
   },
@@ -934,7 +934,7 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     minHeight: 0,
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) 520px",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(470px, 520px)",
     gap: 22,
     overflow: "hidden",
     alignItems: "stretch",
