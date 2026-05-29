@@ -6,8 +6,10 @@ type ProjectsModalProps = {
   isDark: boolean;
   onClose: () => void;
 
-  projectToolView: "memory" | "serious" | "solidworks" | "bom";
-  setProjectToolView: React.Dispatch<React.SetStateAction<"memory" | "serious" | "solidworks" | "bom">>;
+  projectToolView: "memory" | "revisions" | "serious" | "solidworks" | "bom";
+  setProjectToolView: React.Dispatch<React.SetStateAction<"memory" | "revisions" | "serious" | "solidworks" | "bom">>;
+  projectMemoryTab: string;
+  setProjectMemoryTab: React.Dispatch<React.SetStateAction<any>>;
 
   projectSearch: string;
   setProjectSearch: React.Dispatch<React.SetStateAction<string>>;
@@ -52,6 +54,42 @@ type ProjectsModalProps = {
   bomIssues: any[];
 };
 
+
+function ProjectField({
+  s,
+  theme,
+  isDark,
+  label,
+  value,
+  onChange,
+  placeholder = "",
+}: {
+  s: Record<string, React.CSSProperties>;
+  theme: any;
+  isDark: boolean;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label style={s.label}>{label}</label>
+      <input
+        style={{
+          ...s.input,
+          background: isDark ? "#050505" : "#fff",
+          color: theme.text,
+          border: `1px solid ${theme.border}`,
+        }}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+    </div>
+  );
+}
+
 export default function ProjectsModal({
   s,
   theme,
@@ -59,6 +97,8 @@ export default function ProjectsModal({
   onClose,
   projectToolView,
   setProjectToolView,
+  projectMemoryTab,
+  setProjectMemoryTab,
   projectSearch,
   setProjectSearch,
   projects,
@@ -88,37 +128,6 @@ export default function ProjectsModal({
   runBomCheck,
   bomIssues,
 }: ProjectsModalProps) {
-  function Field({
-    label,
-    value,
-    onChange,
-    placeholder = "",
-  }: {
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    placeholder?: string;
-  }) {
-    return (
-      <div>
-        <label style={s.label}>{label}</label>
-        <input
-          style={{
-            ...s.input,
-            background: isDark ? "#050505" : "#fff",
-            color: theme.text,
-            border: `1px solid ${theme.border}`,
-          }}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-        />
-      </div>
-    );
-  }
-
-
-
   const [editingProjectId, setEditingProjectId] = React.useState<string | null>(null);
   const [editingProjectName, setEditingProjectName] = React.useState("");
   const [editingProjectDescription, setEditingProjectDescription] = React.useState("");
@@ -184,11 +193,20 @@ export default function ProjectsModal({
 
                 <button
                   style={{ ...s.projectToolButton, background: projectToolView === "memory" ? `${theme.primary}22` : "transparent", border: `1px solid ${projectToolView === "memory" ? theme.primary : theme.border}`, color: theme.text }}
-                  onClick={() => setProjectToolView("memory")}
+                  onClick={() => { setProjectToolView("memory"); setProjectMemoryTab("Panoramica"); }}
                   type="button"
                 >
                   <strong>Memoria progetti</strong>
-                  <span>Chat, documenti, tavole, materiali, verifiche, decisioni, revisioni e note.</span>
+                  <span>Chat, documenti, tavole, materiali, verifiche, decisioni e note.</span>
+                </button>
+
+                <button
+                  style={{ ...s.projectToolButton, background: projectToolView === "revisions" ? `${theme.primary}22` : "transparent", border: `1px solid ${projectToolView === "revisions" ? theme.primary : theme.border}`, color: theme.text }}
+                  onClick={() => { setProjectToolView("revisions"); setProjectMemoryTab("Revisioni"); }}
+                  type="button"
+                >
+                  <strong>Storico revisioni</strong>
+                  <span>Revisioni con codice, data, autore, modifiche effettuate e note.</span>
                 </button>
 
                 <button
@@ -242,14 +260,14 @@ export default function ProjectsModal({
                     >
                       {isEditing ? (
                         <div style={{ display: "grid", gap: 8, width: "100%" }}>
-                          <Field
+                          <ProjectField s={s} theme={theme} isDark={isDark}
                             label="Nome progetto"
                             value={editingProjectName}
                             onChange={setEditingProjectName}
                             placeholder="Nome progetto"
                           />
 
-                          <Field
+                          <ProjectField s={s} theme={theme} isDark={isDark}
                             label="Descrizione"
                             value={editingProjectDescription}
                             onChange={setEditingProjectDescription}
@@ -327,13 +345,18 @@ export default function ProjectsModal({
                 </div>
 
                 <div style={s.projectCreateCompactGrid}>
-                  <Field label="Nome progetto" value={newProjectName} onChange={setNewProjectName} placeholder="Es. Rullatrice risana filetti" theme={theme} isDark={isDark} />
-                  <Field label="Descrizione" value={newProjectDescription} onChange={setNewProjectDescription} placeholder="Cliente, assieme, revisione, obiettivo..." theme={theme} isDark={isDark} />
+                  <ProjectField s={s} theme={theme} isDark={isDark} label="Nome progetto" value={newProjectName} onChange={setNewProjectName} placeholder="Es. Rullatrice risana filetti" />
+                  <ProjectField s={s} theme={theme} isDark={isDark} label="Descrizione" value={newProjectDescription} onChange={setNewProjectDescription} placeholder="Cliente, assieme, revisione, obiettivo..." />
                 </div>
               </div>
 
               <div style={{ ...s.projectPanel, display: projectToolView === "memory" ? "block" : "none", background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
                 <h3 style={s.projectTitle}>Memoria progetto</h3>
+                {renderProjectMemory()}
+              </div>
+
+              <div style={{ ...s.projectPanel, display: projectToolView === "revisions" ? "block" : "none", background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
+                <h3 style={s.projectTitle}>Storico revisioni</h3>
                 {renderProjectMemory()}
               </div>
 
@@ -355,100 +378,100 @@ export default function ProjectsModal({
                       <option value="interference">Forzamento albero-mozzo</option>
                     </select>
                   </div>
-                  <Field label="Materiale" value={seriousForm.material} onChange={v => updateSeriousField("material", v)} placeholder="C45" theme={theme} isDark={isDark} />
-                  <Field label="Rm [MPa]" value={seriousForm.rm} onChange={v => updateSeriousField("rm", v)} placeholder="650" theme={theme} isDark={isDark} />
-                  <Field label="Re/Rp0.2 [MPa]" value={seriousForm.re} onChange={v => updateSeriousField("re", v)} placeholder="370" theme={theme} isDark={isDark} />
+                  <ProjectField s={s} theme={theme} isDark={isDark} label="Materiale" value={seriousForm.material} onChange={v => updateSeriousField("material", v)} placeholder="C45" />
+                  <ProjectField s={s} theme={theme} isDark={isDark} label="Rm [MPa]" value={seriousForm.rm} onChange={v => updateSeriousField("rm", v)} placeholder="650" />
+                  <ProjectField s={s} theme={theme} isDark={isDark} label="Re/Rp0.2 [MPa]" value={seriousForm.re} onChange={v => updateSeriousField("re", v)} placeholder="370" />
                 </div>
 
                 {seriousForm.mode === "fatigue" && (
                   <div style={s.checklistGrid}>
-                    <Field label="Sn [MPa]" value={seriousForm.sn} onChange={v => updateSeriousField("sn", v)} placeholder="260" theme={theme} isDark={isDark} />
-                    <Field label="σmax [MPa]" value={seriousForm.sigmaMax} onChange={v => updateSeriousField("sigmaMax", v)} placeholder="180" theme={theme} isDark={isDark} />
-                    <Field label="σmin [MPa]" value={seriousForm.sigmaMin} onChange={v => updateSeriousField("sigmaMin", v)} placeholder="20" theme={theme} isDark={isDark} />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Sn [MPa]" value={seriousForm.sn} onChange={v => updateSeriousField("sn", v)} placeholder="260" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="σmax [MPa]" value={seriousForm.sigmaMax} onChange={v => updateSeriousField("sigmaMax", v)} placeholder="180" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="σmin [MPa]" value={seriousForm.sigmaMin} onChange={v => updateSeriousField("sigmaMin", v)} placeholder="20" />
                   </div>
                 )}
 
                 {seriousForm.mode === "contact" && (
                   <div style={s.checklistGrid}>
-                    <Field label="Carico normale F [N]" value={seriousForm.normalLoad} onChange={v => updateSeriousField("normalLoad", v)} placeholder="2500" theme={theme} isDark={isDark} />
-                    <Field label="Area contatto [mm²]" value={seriousForm.contactArea} onChange={v => updateSeriousField("contactArea", v)} placeholder="120" theme={theme} isDark={isDark} />
-                    <Field label="Diametro d [mm]" value={seriousForm.contactDiameter} onChange={v => updateSeriousField("contactDiameter", v)} placeholder="20" theme={theme} isDark={isDark} />
-                    <Field label="Lunghezza L [mm]" value={seriousForm.contactLength} onChange={v => updateSeriousField("contactLength", v)} placeholder="15" theme={theme} isDark={isDark} />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Carico normale F [N]" value={seriousForm.normalLoad} onChange={v => updateSeriousField("normalLoad", v)} placeholder="2500" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Area contatto [mm²]" value={seriousForm.contactArea} onChange={v => updateSeriousField("contactArea", v)} placeholder="120" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Diametro d [mm]" value={seriousForm.contactDiameter} onChange={v => updateSeriousField("contactDiameter", v)} placeholder="20" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Lunghezza L [mm]" value={seriousForm.contactLength} onChange={v => updateSeriousField("contactLength", v)} placeholder="15" />
                   </div>
                 )}
 
                 {seriousForm.mode === "bolts" && (
                   <div style={s.checklistGrid}>
-                    <Field label="Classe vite" value={seriousForm.boltClass} onChange={v => updateSeriousField("boltClass", v)} placeholder="8.8" theme={theme} isDark={isDark} />
-                    <Field label="Vite" value={seriousForm.boltSize} onChange={v => updateSeriousField("boltSize", v)} placeholder="M8" theme={theme} isDark={isDark} />
-                    <Field label="Ares [mm²]" value={seriousForm.boltArea} onChange={v => updateSeriousField("boltArea", v)} placeholder="36.6" theme={theme} isDark={isDark} />
-                    <Field label="Numero viti" value={seriousForm.boltCount} onChange={v => updateSeriousField("boltCount", v)} placeholder="4" theme={theme} isDark={isDark} />
-                    <Field label="Forza taglio totale [N]" value={seriousForm.shearForce} onChange={v => updateSeriousField("shearForce", v)} placeholder="4000" theme={theme} isDark={isDark} />
-                    <Field label="Forza trazione totale [N]" value={seriousForm.tensileForce} onChange={v => updateSeriousField("tensileForce", v)} placeholder="2000" theme={theme} isDark={isDark} />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Classe vite" value={seriousForm.boltClass} onChange={v => updateSeriousField("boltClass", v)} placeholder="8.8" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Vite" value={seriousForm.boltSize} onChange={v => updateSeriousField("boltSize", v)} placeholder="M8" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Ares [mm²]" value={seriousForm.boltArea} onChange={v => updateSeriousField("boltArea", v)} placeholder="36.6" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Numero viti" value={seriousForm.boltCount} onChange={v => updateSeriousField("boltCount", v)} placeholder="4" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Forza taglio totale [N]" value={seriousForm.shearForce} onChange={v => updateSeriousField("shearForce", v)} placeholder="4000" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Forza trazione totale [N]" value={seriousForm.tensileForce} onChange={v => updateSeriousField("tensileForce", v)} placeholder="2000" />
                   </div>
                 )}
 
                 {seriousForm.mode === "shaft" && (
                   <div style={s.checklistGrid}>
-                    <Field label="Diametro albero d [mm]" value={seriousForm.diameter} onChange={v => updateSeriousField("diameter", v)} placeholder="25" theme={theme} isDark={isDark} />
-                    <Field label="Forza radiale F [N]" value={seriousForm.shearForce} onChange={v => updateSeriousField("shearForce", v)} placeholder="2500" theme={theme} isDark={isDark} />
-                    <Field label="Braccio L [mm]" value={seriousForm.distance} onChange={v => updateSeriousField("distance", v)} placeholder="120" theme={theme} isDark={isDark} />
-                    <Field label="Momento flettente M [Nmm]" value={seriousForm.bendingMoment} onChange={v => updateSeriousField("bendingMoment", v)} placeholder="0 = F·L" theme={theme} isDark={isDark} />
-                    <Field label="Momento torcente Mt [Nmm]" value={seriousForm.torque} onChange={v => updateSeriousField("torque", v)} placeholder="80000" theme={theme} isDark={isDark} />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Diametro albero d [mm]" value={seriousForm.diameter} onChange={v => updateSeriousField("diameter", v)} placeholder="25" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Forza radiale F [N]" value={seriousForm.shearForce} onChange={v => updateSeriousField("shearForce", v)} placeholder="2500" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Braccio L [mm]" value={seriousForm.distance} onChange={v => updateSeriousField("distance", v)} placeholder="120" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Momento flettente M [Nmm]" value={seriousForm.bendingMoment} onChange={v => updateSeriousField("bendingMoment", v)} placeholder="0 = F·L" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Momento torcente Mt [Nmm]" value={seriousForm.torque} onChange={v => updateSeriousField("torque", v)} placeholder="80000" />
                   </div>
                 )}
 
                 {seriousForm.mode === "pin" && (
                   <div style={s.checklistGrid}>
-                    <Field label="Diametro perno d [mm]" value={seriousForm.diameter} onChange={v => updateSeriousField("diameter", v)} placeholder="20" theme={theme} isDark={isDark} />
-                    <Field label="Forza F [N]" value={seriousForm.shearForce} onChange={v => updateSeriousField("shearForce", v)} placeholder="4000" theme={theme} isDark={isDark} />
-                    <Field label="Lunghezza contatto L [mm]" value={seriousForm.contactLength} onChange={v => updateSeriousField("contactLength", v)} placeholder="15" theme={theme} isDark={isDark} />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Diametro perno d [mm]" value={seriousForm.diameter} onChange={v => updateSeriousField("diameter", v)} placeholder="20" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Forza F [N]" value={seriousForm.shearForce} onChange={v => updateSeriousField("shearForce", v)} placeholder="4000" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Lunghezza contatto L [mm]" value={seriousForm.contactLength} onChange={v => updateSeriousField("contactLength", v)} placeholder="15" />
                   </div>
                 )}
 
                 {seriousForm.mode === "pressure" && (
                   <div style={s.checklistGrid}>
-                    <Field label="Pressione p [bar]" value={seriousForm.pressure} onChange={v => updateSeriousField("pressure", v)} placeholder="30" theme={theme} isDark={isDark} />
-                    <Field label="Raggio medio r [mm]" value={seriousForm.radius} onChange={v => updateSeriousField("radius", v)} placeholder="150" theme={theme} isDark={isDark} />
-                    <Field label="Spessore s [mm]" value={seriousForm.thickness} onChange={v => updateSeriousField("thickness", v)} placeholder="4" theme={theme} isDark={isDark} />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Pressione p [bar]" value={seriousForm.pressure} onChange={v => updateSeriousField("pressure", v)} placeholder="30" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Raggio medio r [mm]" value={seriousForm.radius} onChange={v => updateSeriousField("radius", v)} placeholder="150" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Spessore s [mm]" value={seriousForm.thickness} onChange={v => updateSeriousField("thickness", v)} placeholder="4" />
                   </div>
                 )}
 
                 {seriousForm.mode === "weld" && (
                   <div style={s.checklistGrid}>
-                    <Field label="Trazione Ft [N]" value={seriousForm.tensileForce} onChange={v => updateSeriousField("tensileForce", v)} placeholder="2000" theme={theme} isDark={isDark} />
-                    <Field label="Taglio Fs [N]" value={seriousForm.shearForce} onChange={v => updateSeriousField("shearForce", v)} placeholder="4000" theme={theme} isDark={isDark} />
-                    <Field label="Lunghezza cordone L [mm]" value={seriousForm.weldLength} onChange={v => updateSeriousField("weldLength", v)} placeholder="80" theme={theme} isDark={isDark} />
-                    <Field label="Gola efficace a [mm]" value={seriousForm.weldThroat} onChange={v => updateSeriousField("weldThroat", v)} placeholder="3" theme={theme} isDark={isDark} />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Trazione Ft [N]" value={seriousForm.tensileForce} onChange={v => updateSeriousField("tensileForce", v)} placeholder="2000" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Taglio Fs [N]" value={seriousForm.shearForce} onChange={v => updateSeriousField("shearForce", v)} placeholder="4000" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Lunghezza cordone L [mm]" value={seriousForm.weldLength} onChange={v => updateSeriousField("weldLength", v)} placeholder="80" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Gola efficace a [mm]" value={seriousForm.weldThroat} onChange={v => updateSeriousField("weldThroat", v)} placeholder="3" />
                   </div>
                 )}
 
                 {seriousForm.mode === "key" && (
                   <div style={s.checklistGrid}>
-                    <Field label="Momento torcente Mt [Nmm]" value={seriousForm.torque} onChange={v => updateSeriousField("torque", v)} placeholder="80000" theme={theme} isDark={isDark} />
-                    <Field label="Diametro albero d [mm]" value={seriousForm.diameter} onChange={v => updateSeriousField("diameter", v)} placeholder="25" theme={theme} isDark={isDark} />
-                    <Field label="Larghezza linguetta b [mm]" value={seriousForm.keyWidth} onChange={v => updateSeriousField("keyWidth", v)} placeholder="8" theme={theme} isDark={isDark} />
-                    <Field label="Altezza linguetta h [mm]" value={seriousForm.keyHeight} onChange={v => updateSeriousField("keyHeight", v)} placeholder="7" theme={theme} isDark={isDark} />
-                    <Field label="Lunghezza linguetta L [mm]" value={seriousForm.keyLength} onChange={v => updateSeriousField("keyLength", v)} placeholder="40" theme={theme} isDark={isDark} />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Momento torcente Mt [Nmm]" value={seriousForm.torque} onChange={v => updateSeriousField("torque", v)} placeholder="80000" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Diametro albero d [mm]" value={seriousForm.diameter} onChange={v => updateSeriousField("diameter", v)} placeholder="25" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Larghezza linguetta b [mm]" value={seriousForm.keyWidth} onChange={v => updateSeriousField("keyWidth", v)} placeholder="8" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Altezza linguetta h [mm]" value={seriousForm.keyHeight} onChange={v => updateSeriousField("keyHeight", v)} placeholder="7" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Lunghezza linguetta L [mm]" value={seriousForm.keyLength} onChange={v => updateSeriousField("keyLength", v)} placeholder="40" />
                   </div>
                 )}
 
                 {seriousForm.mode === "bearing" && (
                   <div style={s.checklistGrid}>
-                    <Field label="Carico equivalente P [N]" value={seriousForm.normalLoad} onChange={v => updateSeriousField("normalLoad", v)} placeholder="2500" theme={theme} isDark={isDark} />
-                    <Field label="Velocità n [rpm]" value={seriousForm.rpm} onChange={v => updateSeriousField("rpm", v)} placeholder="500" theme={theme} isDark={isDark} />
-                    <Field label="Vita richiesta [h]" value={seriousForm.lifeHours} onChange={v => updateSeriousField("lifeHours", v)} placeholder="10000" theme={theme} isDark={isDark} />
-                    <Field label="Carico dinamico C [N]" value={seriousForm.dynamicLoadRating} onChange={v => updateSeriousField("dynamicLoadRating", v)} placeholder="12000" theme={theme} isDark={isDark} />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Carico equivalente P [N]" value={seriousForm.normalLoad} onChange={v => updateSeriousField("normalLoad", v)} placeholder="2500" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Velocità n [rpm]" value={seriousForm.rpm} onChange={v => updateSeriousField("rpm", v)} placeholder="500" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Vita richiesta [h]" value={seriousForm.lifeHours} onChange={v => updateSeriousField("lifeHours", v)} placeholder="10000" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Carico dinamico C [N]" value={seriousForm.dynamicLoadRating} onChange={v => updateSeriousField("dynamicLoadRating", v)} placeholder="12000" />
                   </div>
                 )}
 
                 {seriousForm.mode === "interference" && (
                   <div style={s.checklistGrid}>
-                    <Field label="Diametro d [mm]" value={seriousForm.diameter} onChange={v => updateSeriousField("diameter", v)} placeholder="25" theme={theme} isDark={isDark} />
-                    <Field label="Lunghezza accoppiamento L [mm]" value={seriousForm.contactLength} onChange={v => updateSeriousField("contactLength", v)} placeholder="30" theme={theme} isDark={isDark} />
-                    <Field label="Pressione contatto p [MPa]" value={seriousForm.interferencePressure} onChange={v => updateSeriousField("interferencePressure", v)} placeholder="30" theme={theme} isDark={isDark} />
-                    <Field label="Attrito μ" value={seriousForm.frictionCoeff} onChange={v => updateSeriousField("frictionCoeff", v)} placeholder="0.15" theme={theme} isDark={isDark} />
-                    <Field label="Coppia richiesta Mt [Nmm]" value={seriousForm.torque} onChange={v => updateSeriousField("torque", v)} placeholder="80000" theme={theme} isDark={isDark} />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Diametro d [mm]" value={seriousForm.diameter} onChange={v => updateSeriousField("diameter", v)} placeholder="25" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Lunghezza accoppiamento L [mm]" value={seriousForm.contactLength} onChange={v => updateSeriousField("contactLength", v)} placeholder="30" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Pressione contatto p [MPa]" value={seriousForm.interferencePressure} onChange={v => updateSeriousField("interferencePressure", v)} placeholder="30" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Attrito μ" value={seriousForm.frictionCoeff} onChange={v => updateSeriousField("frictionCoeff", v)} placeholder="0.15" />
+                    <ProjectField s={s} theme={theme} isDark={isDark} label="Coppia richiesta Mt [Nmm]" value={seriousForm.torque} onChange={v => updateSeriousField("torque", v)} placeholder="80000" />
                   </div>
                 )}
 
