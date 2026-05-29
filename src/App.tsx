@@ -174,6 +174,7 @@ type ProjectSavedItem = {
     | "verification"
     | "decision"
     | "note"
+    | "revision"
     | "checklist"
     | "quickcalc"
     | "file"
@@ -193,6 +194,7 @@ type ProjectMaterial = ProjectSavedItem;
 type ProjectVerification = ProjectSavedItem;
 type ProjectDecision = ProjectSavedItem;
 type ProjectNote = ProjectSavedItem;
+type ProjectRevision = ProjectSavedItem;
 
 type ProjectMemoryTab =
   | "Panoramica"
@@ -202,6 +204,7 @@ type ProjectMemoryTab =
   | "Materiali"
   | "Verifiche"
   | "Decisioni"
+  | "Revisioni"
   | "Note";
 
 type ProjectRecord = {
@@ -218,6 +221,7 @@ type ProjectRecord = {
   materials: ProjectMaterial[];
   verifications: ProjectVerification[];
   decisions: ProjectDecision[];
+  revisions: ProjectRevision[];
   notes: ProjectNote[];
 };
 
@@ -332,6 +336,7 @@ function projectMemoryBucketFromType(type: ProjectSavedItem["type"]) {
   if (type === "drawing") return "drawings" as const;
   if (type === "material") return "materials" as const;
   if (type === "decision") return "decisions" as const;
+  if (type === "revision") return "revisions" as const;
   if (type === "note") return "notes" as const;
 
   return "verifications" as const;
@@ -358,6 +363,7 @@ function normalizeProjectRecord(rawProject: any): ProjectRecord {
       ? rawProject.verifications
       : byType(["checklist", "quickcalc", "bom", "solidworks", "advanced", "verification"]),
     decisions: Array.isArray(rawProject?.decisions) ? rawProject.decisions : byType(["decision"]),
+    revisions: Array.isArray(rawProject?.revisions) ? rawProject.revisions : byType(["revision"]),
     notes: Array.isArray(rawProject?.notes) ? rawProject.notes : byType(["note"]),
   };
 }
@@ -523,6 +529,11 @@ export default function App() {
   const [projectDecisionText, setProjectDecisionText] = useState("");
   const [projectDecisionReason, setProjectDecisionReason] = useState("");
   const [projectNoteText, setProjectNoteText] = useState("");
+  const [projectRevisionCode, setProjectRevisionCode] = useState("A");
+  const [projectRevisionDate, setProjectRevisionDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [projectRevisionAuthor, setProjectRevisionAuthor] = useState("");
+  const [projectRevisionChanges, setProjectRevisionChanges] = useState("");
+  const [projectRevisionNotes, setProjectRevisionNotes] = useState("");
 
   const [seriousForm, setSeriousForm] = useState<SeriousVerificationForm>({
     mode: "fatigue",
@@ -941,6 +952,7 @@ export default function App() {
       materials: [],
       verifications: [],
       decisions: [],
+      revisions: [],
       notes: [],
     };
 
@@ -1067,6 +1079,44 @@ export default function App() {
 
     setProjectNoteText("");
     setProjectMemoryTab("Note");
+  };
+
+  const saveProjectRevision = () => {
+    const code = projectRevisionCode.trim();
+    const date = projectRevisionDate.trim() || new Date().toISOString().slice(0, 10);
+    const author = projectRevisionAuthor.trim() || user.name || "Utente";
+    const changes = projectRevisionChanges.trim();
+    const notes = projectRevisionNotes.trim();
+
+    if (!code) {
+      alert("Inserisci il codice revisione, ad esempio A, B, C, 00 o 01.");
+      return;
+    }
+
+    if (!changes) {
+      alert("Scrivi le modifiche effettuate nella revisione.");
+      return;
+    }
+
+    addProjectItem({
+      type: "revision",
+      title: `Rev. ${code}`,
+      summary: `${date} · ${author} · ${changes}`,
+      payload: {
+        code,
+        date,
+        author,
+        changes,
+        notes,
+      },
+    });
+
+    setProjectRevisionCode("");
+    setProjectRevisionDate(new Date().toISOString().slice(0, 10));
+    setProjectRevisionAuthor("");
+    setProjectRevisionChanges("");
+    setProjectRevisionNotes("");
+    setProjectMemoryTab("Revisioni");
   };
 
 
@@ -2860,6 +2910,7 @@ Struttura:
     "Materiali",
     "Verifiche",
     "Decisioni",
+    "Revisioni",
     "Note",
   ];
 
@@ -2873,6 +2924,7 @@ Struttura:
       materiali: p?.materials || [],
       verifiche: p?.verifications || [],
       decisioni: p?.decisions || [],
+      revisioni: p?.revisions || [],
       note: p?.notes || [],
       tutti: p?.items || [],
     };
@@ -2887,6 +2939,7 @@ Struttura:
     if (tab === "Materiali") return sections.materiali;
     if (tab === "Verifiche") return sections.verifiche;
     if (tab === "Decisioni") return sections.decisioni;
+    if (tab === "Revisioni") return sections.revisioni;
     if (tab === "Note") return sections.note;
 
     return sections.tutti;
@@ -2906,6 +2959,7 @@ Struttura:
       solidworks: "SolidWorks",
       advanced: "Verifica avanzata",
       decision: "Decisione",
+      revision: "Revisione",
       note: "Nota",
     };
 
@@ -2932,6 +2986,20 @@ Struttura:
           </p>
         )}
 
+        {item.type === "revision" && item.payload && (
+          <div style={s.projectInlineDataGrid}>
+            <span>Data: {item.payload.date || "—"}</span>
+            <span>Autore: {item.payload.author || "—"}</span>
+            <span>Rev.: {item.payload.code || "—"}</span>
+          </div>
+        )}
+
+        {item.type === "revision" && item.payload?.notes && (
+          <p style={{ ...s.resultSuggestion, borderLeft: `3px solid ${theme.primary}` }}>
+            Note: {item.payload.notes}
+          </p>
+        )}
+
         {item.type === "material" && item.payload?.material && (
           <div style={s.projectInlineDataGrid}>
             <span>Rm: {item.payload.material.rm || "—"} MPa</span>
@@ -2947,7 +3015,7 @@ Struttura:
     if (!activeProject) {
       return (
         <div style={s.emptyChecklist}>
-          Seleziona o crea un progetto per rivedere chat, documenti, tavole, materiali, verifiche e decisioni.
+          Seleziona o crea un progetto per rivedere chat, documenti, tavole, materiali, verifiche, decisioni e revisioni.
         </div>
       );
     }
@@ -2963,6 +3031,7 @@ Struttura:
       { label: "Materiali", value: sections.materiali.length },
       { label: "Verifiche", value: sections.verifiche.length },
       { label: "Decisioni", value: sections.decisioni.length },
+      { label: "Revisioni", value: sections.revisioni.length },
     ];
 
     return (
@@ -3007,6 +3076,14 @@ Struttura:
           >
             Nuova decisione
           </button>
+
+          <button
+            type="button"
+            style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}` }}
+            onClick={() => setProjectMemoryTab("Revisioni")}
+          >
+            Nuova revisione
+          </button>
         </div>
 
         {projectMemoryTab === "Panoramica" && (
@@ -3020,7 +3097,7 @@ Struttura:
             <strong>Memoria progetto</strong>
             <span>
               Qui trovi tutto quello che serve per riaprire il lavoro anche dopo mesi: chat, documenti, tavole,
-              materiali, verifiche, decisioni prese e note tecniche.
+              materiali, verifiche, decisioni prese, storico revisioni e note tecniche.
             </span>
           </div>
         )}
@@ -3096,6 +3173,75 @@ Struttura:
           </div>
         )}
 
+        {projectMemoryTab === "Revisioni" && (
+          <div
+            style={{
+              ...s.projectDecisionBox,
+              background: isDark ? "#050505" : "#f8fafc",
+              border: `1px solid ${theme.border}`,
+            }}
+          >
+            <div style={s.checklistGrid}>
+              <Field
+                label="Codice revisione"
+                value={projectRevisionCode}
+                onChange={setProjectRevisionCode}
+                placeholder="A, B, C, 00, 01..."
+                theme={theme}
+                isDark={isDark}
+              />
+
+              <Field
+                label="Data revisione"
+                value={projectRevisionDate}
+                onChange={setProjectRevisionDate}
+                placeholder="AAAA-MM-GG"
+                theme={theme}
+                isDark={isDark}
+              />
+
+              <Field
+                label="Autore"
+                value={projectRevisionAuthor}
+                onChange={setProjectRevisionAuthor}
+                placeholder={user.name || "Autore"}
+                theme={theme}
+                isDark={isDark}
+              />
+            </div>
+
+            <label style={s.label}>Modifiche effettuate</label>
+            <textarea
+              style={{
+                ...s.projectMiniTextarea,
+                background: isDark ? "#050505" : "#fff",
+                color: theme.text,
+                border: `1px solid ${theme.border}`,
+              }}
+              value={projectRevisionChanges}
+              onChange={(e) => setProjectRevisionChanges(e.target.value)}
+              placeholder="Es. Aggiunta tolleranza Ø20 H7, aggiornata rugosità Ra 1.6, modificato materiale..."
+            />
+
+            <label style={s.label}>Note revisione</label>
+            <textarea
+              style={{
+                ...s.projectMiniTextarea,
+                background: isDark ? "#050505" : "#fff",
+                color: theme.text,
+                border: `1px solid ${theme.border}`,
+              }}
+              value={projectRevisionNotes}
+              onChange={(e) => setProjectRevisionNotes(e.target.value)}
+              placeholder="Motivo della revisione, file/tavola collegata, cliente, approvazione..."
+            />
+
+            <button type="button" style={{ ...s.primaryBtn, background: theme.primary }} onClick={saveProjectRevision}>
+              Salva revisione
+            </button>
+          </div>
+        )}
+
         {projectMemoryTab === "Note" && (
           <div
             style={{
@@ -3125,7 +3271,7 @@ Struttura:
 
         {visibleItems.length === 0 ? (
           <div style={s.emptyText}>
-            Nessun elemento in questa sezione. Salva chat, file, tavole, materiali, verifiche o decisioni nel progetto.
+            Nessun elemento in questa sezione. Salva chat, file, tavole, materiali, verifiche, decisioni, revisioni o note nel progetto.
           </div>
         ) : (
           visibleItems.map(renderProjectItemCard)
