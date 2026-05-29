@@ -4020,6 +4020,12 @@ Struttura:
             <div style={s.checklistResultsArea}>
               <DrawingPreview issues={drawingIssues} previewUrl={drawingReviewFile?.previewUrl} fileName={drawingReviewFile?.fileAttachment.name} theme={theme} isDark={isDark} />
               {drawingResults.length === 0 ? <div style={{ ...s.emptyChecklist, border: `1px dashed ${theme.border}` }}>Carica una tavola e premi il pulsante di analisi, oppure compila i dati per il controllo base.</div> : drawingResults.map((item, index) => <DrawingResultCard key={index} item={item} theme={theme} isDark={isDark} renderFormattedText={renderFormattedText} />)}
+
+              </div>
+          </div>
+        </Modal>
+      )}
+
     {showProjects && (
         <ProjectsModal
           s={s}
@@ -4062,11 +4068,6 @@ Struttura:
           runBomCheck={runBomCheck}
           bomIssues={bomIssues}
         />
-      )}
-
-              </div>
-          </div>
-        </Modal>
       )}
 
       {showSettings && (
