@@ -17,6 +17,7 @@ type ProjectsModalProps = {
   activeProject: any;
   setActiveProjectId: React.Dispatch<React.SetStateAction<string | null>>;
   deleteProject: (projectId: string) => void;
+  updateProject: (projectId: string, name: string, description: string) => void;
 
   projectFileInputRef: React.RefObject<HTMLInputElement>;
   handleProjectSmartFileUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
@@ -65,6 +66,7 @@ export default function ProjectsModal({
   activeProject,
   setActiveProjectId,
   deleteProject,
+  updateProject,
   projectFileInputRef,
   handleProjectSmartFileUpload,
   projectSmartFile,
@@ -120,6 +122,37 @@ export default function ProjectsModal({
       </div>
     );
   }
+
+
+
+  const [editingProjectId, setEditingProjectId] = React.useState<string | null>(null);
+  const [editingProjectName, setEditingProjectName] = React.useState("");
+  const [editingProjectDescription, setEditingProjectDescription] = React.useState("");
+
+  const startEditProject = (project: any) => {
+    setEditingProjectId(project.id);
+    setEditingProjectName(project.name || "");
+    setEditingProjectDescription(project.description || "");
+  };
+
+  const cancelEditProject = () => {
+    setEditingProjectId(null);
+    setEditingProjectName("");
+    setEditingProjectDescription("");
+  };
+
+  const saveEditProject = () => {
+    if (!editingProjectId) return;
+
+    const cleanName = editingProjectName.trim();
+    if (!cleanName) {
+      alert("Inserisci un nome progetto valido.");
+      return;
+    }
+
+    updateProject(editingProjectId, cleanName, editingProjectDescription.trim());
+    cancelEditProject();
+  };
 
   return (
     <div style={s.overlay}>
@@ -209,15 +242,78 @@ export default function ProjectsModal({
                   <div style={s.emptyText}>Nessun progetto creato. Carica un file o premi “Crea progetto”.</div>
                 ) : filteredProjects.length === 0 ? (
                   <div style={s.emptyText}>Nessun progetto trovato con questa ricerca.</div>
-                ) : filteredProjects.map(project => (
-                  <div key={project.id} style={{ ...s.projectListItem, border: `1px solid ${project.id === activeProject?.id ? theme.primary : theme.border}`, background: project.id === activeProject?.id ? `${theme.primary}1A` : "transparent" }}>
-                    <button style={s.projectListMain} onClick={() => setActiveProjectId(project.id)} type="button">
-                      <strong>{project.name}</strong>
-                      <span>{project.items.length} elementi · {new Date(project.updatedAt).toLocaleDateString("it-IT")}</span>
-                    </button>
-                    <button style={s.smallDeleteMaterialBtn} onClick={() => deleteProject(project.id)} type="button">Elimina</button>
-                  </div>
-                ))}
+                ) : filteredProjects.map(project => {
+                  const isEditing = editingProjectId === project.id;
+
+                  return (
+                    <div
+                      key={project.id}
+                      style={{
+                        ...s.projectListItem,
+                        alignItems: isEditing ? "stretch" : "center",
+                        border: `1px solid ${project.id === activeProject?.id ? theme.primary : theme.border}`,
+                        background: project.id === activeProject?.id ? `${theme.primary}1A` : "transparent",
+                      }}
+                    >
+                      {isEditing ? (
+                        <div style={{ display: "grid", gap: 8, width: "100%" }}>
+                          <Field
+                            label="Nome progetto"
+                            value={editingProjectName}
+                            onChange={setEditingProjectName}
+                            placeholder="Nome progetto"
+                          />
+
+                          <Field
+                            label="Descrizione"
+                            value={editingProjectDescription}
+                            onChange={setEditingProjectDescription}
+                            placeholder="Descrizione progetto"
+                          />
+
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                            <button
+                              style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}`, marginTop: 0 }}
+                              onClick={saveEditProject}
+                              type="button"
+                            >
+                              Salva
+                            </button>
+
+                            <button
+                              style={{ ...s.secondaryBtn, color: theme.text, border: `1px solid ${theme.border}`, marginTop: 0 }}
+                              onClick={cancelEditProject}
+                              type="button"
+                            >
+                              Annulla
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <button style={s.projectListMain} onClick={() => setActiveProjectId(project.id)} type="button">
+                            <strong>{project.name}</strong>
+                            <span>{project.items.length} elementi · {new Date(project.updatedAt).toLocaleDateString("it-IT")}</span>
+                          </button>
+
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <button
+                              style={{ ...s.smallDeleteMaterialBtn, color: theme.primary }}
+                              onClick={() => startEditProject(project)}
+                              type="button"
+                            >
+                              Modifica
+                            </button>
+
+                            <button style={s.smallDeleteMaterialBtn} onClick={() => deleteProject(project.id)} type="button">
+                              Elimina
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               <div style={{ ...s.projectPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
