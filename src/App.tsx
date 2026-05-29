@@ -1059,6 +1059,8 @@ export default function App() {
     safetyFactorRequired: "2",
   });
   const [quickCalcResult, setQuickCalcResult] = useState<QuickCalcResult | null>(null);
+  const [quickCalcSaveTitle, setQuickCalcSaveTitle] = useState("");
+  const [quickCalcTargetProjectId, setQuickCalcTargetProjectId] = useState("");
 
   const [drawingReviewFile, setDrawingReviewFile] = useState<DrawingUpload | null>(null);
   const [drawingAiLoading, setDrawingAiLoading] = useState(false);
@@ -1631,12 +1633,27 @@ export default function App() {
       return;
     }
 
-    addProjectItem({
-      type: "quickcalc",
-      title: quickCalcResult.title,
-      summary: `Esito ${quickCalcResult.outcome}. σeq = ${quickCalcResult.equivalentStress.toFixed(2)} MPa, n = ${quickCalcResult.safetyFactor.toFixed(2)}.`,
-      payload: { quickCalcForm, quickCalcResult },
-    });
+    const targetProjectId = quickCalcTargetProjectId || activeProject?.id || undefined;
+    const savedTitle = quickCalcSaveTitle.trim() || `Verifica - ${quickCalcResult.title}`;
+
+    addProjectItem(
+      {
+        type: "quickcalc",
+        title: savedTitle,
+        summary: `Esito ${quickCalcResult.outcome}. σeq = ${quickCalcResult.equivalentStress.toFixed(2)} MPa, n = ${quickCalcResult.safetyFactor.toFixed(2)}.`,
+        payload: {
+          quickCalcForm,
+          quickCalcResult,
+          savedTitle,
+          targetProjectId: targetProjectId || "automatico",
+        },
+      },
+      targetProjectId
+    );
+
+    setQuickCalcSaveTitle("");
+    setQuickCalcTargetProjectId("");
+    setProjectMemoryTab("Verifiche");
   };
 
   const saveDrawingToProject = () => {
@@ -3871,13 +3888,60 @@ Struttura:
                 </button>
               </div>
 
-              <button
-                style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}` }}
-                onClick={saveQuickCalcToProject}
-                type="button"
-              >
-                Salva verifica nel progetto
-              </button>
+              {quickCalcResult && (
+                <div
+                  style={{
+                    ...s.projectDecisionBox,
+                    background: isDark ? "#050505" : "#f8fafc",
+                    border: `1px solid ${theme.border}`,
+                    marginTop: 10,
+                  }}
+                >
+                  <h3 style={{ ...s.projectTitle, marginTop: 0 }}>Salvataggio verifica</h3>
+
+                  <Field
+                    label="Nome salvataggio"
+                    value={quickCalcSaveTitle}
+                    onChange={setQuickCalcSaveTitle}
+                    placeholder={`Es. ${quickCalcResult.title} - albero principale`}
+                    theme={theme}
+                    isDark={isDark}
+                  />
+
+                  <div>
+                    <label style={s.label}>Progetto destinazione</label>
+                    <select
+                      style={{
+                        ...s.input,
+                        background: isDark ? "#050505" : "#fff",
+                        color: theme.text,
+                        border: `1px solid ${theme.border}`,
+                      }}
+                      value={quickCalcTargetProjectId || activeProject?.id || ""}
+                      onChange={(e) => setQuickCalcTargetProjectId(e.target.value)}
+                    >
+                      {projects.length === 0 ? (
+                        <option value="">Crea progetto automatico</option>
+                      ) : (
+                        projects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  <button
+                    style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}` }}
+                    onClick={saveQuickCalcToProject}
+                    type="button"
+                  >
+                    Salva verifica nel progetto scelto
+                  </button>
+                </div>
+              )}
+
               <div style={{ ...s.warningBox, border: `1px solid ${theme.border}` }}>
                 Calcolo preliminare. Per progetto reale controllare norme, intagli, fatica, saldature, vincoli, frecce, instabilità, coefficienti correttivi e dati certificati del materiale.
               </div>
