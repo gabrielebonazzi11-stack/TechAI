@@ -173,12 +173,43 @@ type DrawingForm = {
 
 type ProjectSavedItem = {
   id: string;
-  type: "checklist" | "quickcalc" | "drawing" | "file" | "bom" | "solidworks" | "advanced";
+  type:
+    | "chat"
+    | "document"
+    | "drawing"
+    | "material"
+    | "verification"
+    | "decision"
+    | "note"
+    | "checklist"
+    | "quickcalc"
+    | "file"
+    | "bom"
+    | "solidworks"
+    | "advanced";
   title: string;
   createdAt: string;
   summary: string;
   payload?: any;
 };
+
+type ProjectChat = ProjectSavedItem;
+type ProjectDocument = ProjectSavedItem;
+type ProjectDrawing = ProjectSavedItem;
+type ProjectMaterial = ProjectSavedItem;
+type ProjectVerification = ProjectSavedItem;
+type ProjectDecision = ProjectSavedItem;
+type ProjectNote = ProjectSavedItem;
+
+type ProjectMemoryTab =
+  | "Panoramica"
+  | "Chat"
+  | "Documenti"
+  | "Tavole"
+  | "Materiali"
+  | "Verifiche"
+  | "Decisioni"
+  | "Note";
 
 type ProjectRecord = {
   id: string;
@@ -187,6 +218,14 @@ type ProjectRecord = {
   createdAt: string;
   updatedAt: string;
   items: ProjectSavedItem[];
+
+  chats: ProjectChat[];
+  documents: ProjectDocument[];
+  drawings: ProjectDrawing[];
+  materials: ProjectMaterial[];
+  verifications: ProjectVerification[];
+  decisions: ProjectDecision[];
+  notes: ProjectNote[];
 };
 
 type ProjectFileMeta = {
@@ -263,6 +302,47 @@ const DEFAULT_USER: UserProfile = { name: "Utente", email: "utente@techai.local"
 function createId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function projectMemoryBucketFromType(type: ProjectSavedItem["type"]) {
+  if (type === "chat") return "chats" as const;
+  if (type === "file" || type === "document") return "documents" as const;
+  if (type === "drawing") return "drawings" as const;
+  if (type === "material") return "materials" as const;
+  if (type === "decision") return "decisions" as const;
+  if (type === "note") return "notes" as const;
+
+  return "verifications" as const;
+}
+
+function normalizeProjectRecord(rawProject: any): ProjectRecord {
+  const items: ProjectSavedItem[] = Array.isArray(rawProject?.items) ? rawProject.items : [];
+
+  const byType = (types: ProjectSavedItem["type"][]) =>
+    items.filter((item) => types.includes(item.type));
+
+  return {
+    id: String(rawProject?.id || createId()),
+    name: String(rawProject?.name || "Nuovo progetto"),
+    description: String(rawProject?.description || ""),
+    createdAt: String(rawProject?.createdAt || new Date().toISOString()),
+    updatedAt: String(rawProject?.updatedAt || rawProject?.createdAt || new Date().toISOString()),
+    items,
+    chats: Array.isArray(rawProject?.chats) ? rawProject.chats : byType(["chat"]),
+    documents: Array.isArray(rawProject?.documents) ? rawProject.documents : byType(["file", "document"]),
+    drawings: Array.isArray(rawProject?.drawings) ? rawProject.drawings : byType(["drawing"]),
+    materials: Array.isArray(rawProject?.materials) ? rawProject.materials : byType(["material"]),
+    verifications: Array.isArray(rawProject?.verifications)
+      ? rawProject.verifications
+      : byType(["checklist", "quickcalc", "bom", "solidworks", "advanced", "verification"]),
+    decisions: Array.isArray(rawProject?.decisions) ? rawProject.decisions : byType(["decision"]),
+    notes: Array.isArray(rawProject?.notes) ? rawProject.notes : byType(["note"]),
+  };
+}
+
+function normalizeProjectRecords(rawProjects: any): ProjectRecord[] {
+  if (!Array.isArray(rawProjects)) return [];
+  return rawProjects.map(normalizeProjectRecord);
 }
 
 function makeAttachment(file: File): FileAttachment {
@@ -971,6 +1051,11 @@ export default function App() {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [projectSmartFile, setProjectSmartFile] = useState<ProjectFileMeta | null>(null);
+  const [projectMemoryTab, setProjectMemoryTab] = useState<ProjectMemoryTab>("Panoramica");
+  const [projectDecisionTitle, setProjectDecisionTitle] = useState("");
+  const [projectDecisionText, setProjectDecisionText] = useState("");
+  const [projectDecisionReason, setProjectDecisionReason] = useState("");
+  const [projectNoteText, setProjectNoteText] = useState("");
 
   const [seriousForm, setSeriousForm] = useState<SeriousVerificationForm>({
     mode: "fatigue",
@@ -1090,7 +1175,7 @@ export default function App() {
     setActiveChatId(data.activeChatId || null);
     setSidebarOpen(data.sidebarOpen ?? true);
     setCustomMaterials(Array.isArray(data.customMaterials) ? data.customMaterials : []);
-    setProjects(Array.isArray(data.projects) ? data.projects : []);
+    setProjects(normalizeProjectRecords(data.projects));
     setActiveProjectId(data.activeProjectId || null);
     setPendingFile(null);
     setQuery("");
@@ -1341,6 +1426,13 @@ export default function App() {
       createdAt: now,
       updatedAt: now,
       items: [],
+      chats: [],
+      documents: [],
+      drawings: [],
+      materials: [],
+      verifications: [],
+      decisions: [],
+      notes: [],
     };
 
     setProjects(prev => [project, ...prev]);
@@ -1364,16 +1456,86 @@ export default function App() {
       ...item,
     };
 
+    const bucket = projectMemoryBucketFromType(completeItem.type);
+
     setProjects(prev =>
-      prev.map(project =>
-        project.id === targetId
-          ? { ...project, updatedAt: now, items: [completeItem, ...project.items] }
-          : project
-      )
+      prev.map(project => {
+        if (project.id !== targetId) return project;
+
+        const normalizedProject = normalizeProjectRecord(project);
+
+        return {
+          ...normalizedProject,
+          updatedAt: now,
+          items: [completeItem, ...normalizedProject.items],
+          [bucket]: [completeItem, ...(normalizedProject as any)[bucket]],
+        };
+      })
     );
 
     setActiveProjectId(targetId);
   };
+
+  const saveCurrentChatToProject = () => {
+    if (!activeChat || activeChat.messages.length === 0) {
+      alert("Apri una chat con almeno un messaggio prima di salvarla nel progetto.");
+      return;
+    }
+
+    addProjectItem({
+      type: "chat",
+      title: `Chat - ${activeChat.title || "senza titolo"}`,
+      summary: `${activeChat.messages.length} messaggi salvati come memoria del progetto.`,
+      payload: {
+        chatId: activeChat.id,
+        title: activeChat.title,
+        messages: activeChat.messages,
+      },
+    });
+  };
+
+  const saveDecisionToProject = () => {
+    if (!projectDecisionTitle.trim() && !projectDecisionText.trim()) {
+      alert("Scrivi almeno una decisione o un titolo.");
+      return;
+    }
+
+    addProjectItem({
+      type: "decision",
+      title: projectDecisionTitle.trim() || "Decisione progettuale",
+      summary: projectDecisionText.trim() || "Decisione salvata nel progetto.",
+      payload: {
+        title: projectDecisionTitle.trim(),
+        description: projectDecisionText.trim(),
+        reason: projectDecisionReason.trim(),
+      },
+    });
+
+    setProjectDecisionTitle("");
+    setProjectDecisionText("");
+    setProjectDecisionReason("");
+    setProjectMemoryTab("Decisioni");
+  };
+
+  const saveProjectNote = () => {
+    if (!projectNoteText.trim()) {
+      alert("Scrivi una nota tecnica prima di salvarla.");
+      return;
+    }
+
+    addProjectItem({
+      type: "note",
+      title: "Nota tecnica",
+      summary: projectNoteText.trim(),
+      payload: {
+        text: projectNoteText.trim(),
+      },
+    });
+
+    setProjectNoteText("");
+    setProjectMemoryTab("Note");
+  };
+
 
   const saveChecklistToProject = () => {
     if (checklistResults.length === 0) {
@@ -2962,6 +3124,289 @@ Struttura:
     );
   };
 
+
+  const projectTabs: ProjectMemoryTab[] = [
+    "Panoramica",
+    "Chat",
+    "Documenti",
+    "Tavole",
+    "Materiali",
+    "Verifiche",
+    "Decisioni",
+    "Note",
+  ];
+
+  const getProjectMemorySections = (project: ProjectRecord | null) => {
+    const p = project ? normalizeProjectRecord(project) : null;
+
+    return {
+      chat: p?.chats || [],
+      documenti: p?.documents || [],
+      tavole: p?.drawings || [],
+      materiali: p?.materials || [],
+      verifiche: p?.verifications || [],
+      decisioni: p?.decisions || [],
+      note: p?.notes || [],
+      tutti: p?.items || [],
+    };
+  };
+
+  const getProjectItemsForTab = (project: ProjectRecord | null, tab: ProjectMemoryTab) => {
+    const sections = getProjectMemorySections(project);
+
+    if (tab === "Chat") return sections.chat;
+    if (tab === "Documenti") return sections.documenti;
+    if (tab === "Tavole") return sections.tavole;
+    if (tab === "Materiali") return sections.materiali;
+    if (tab === "Verifiche") return sections.verifiche;
+    if (tab === "Decisioni") return sections.decisioni;
+    if (tab === "Note") return sections.note;
+
+    return sections.tutti;
+  };
+
+  const renderProjectItemCard = (item: ProjectSavedItem) => {
+    const typeLabels: Record<string, string> = {
+      chat: "Chat",
+      document: "Documento",
+      file: "Documento",
+      drawing: "Tavola",
+      material: "Materiale",
+      verification: "Verifica",
+      checklist: "Verifica",
+      quickcalc: "Verifica",
+      bom: "Distinta",
+      solidworks: "SolidWorks",
+      advanced: "Verifica avanzata",
+      decision: "Decisione",
+      note: "Nota",
+    };
+
+    return (
+      <div
+        key={item.id}
+        style={{
+          ...s.projectSavedItem,
+          border: `1px solid ${theme.border}`,
+          background: isDark ? "#0b0b0b" : "#ffffff",
+        }}
+      >
+        <div style={s.resultTop}>
+          <strong>{item.title}</strong>
+          <span>{typeLabels[item.type] || item.type}</span>
+        </div>
+
+        <p style={s.resultDetail}>{item.summary}</p>
+        <p style={s.muted}>{new Date(item.createdAt).toLocaleString("it-IT")}</p>
+
+        {item.type === "decision" && item.payload?.reason && (
+          <p style={{ ...s.resultSuggestion, borderLeft: `3px solid ${theme.primary}` }}>
+            Motivo: {item.payload.reason}
+          </p>
+        )}
+
+        {item.type === "material" && item.payload?.material && (
+          <div style={s.projectInlineDataGrid}>
+            <span>Rm: {item.payload.material.rm || "—"} MPa</span>
+            <span>Re: {item.payload.material.re || "—"} MPa</span>
+            <span>Norma: {item.payload.material.en || item.payload.material.uni || "—"}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderProjectMemory = () => {
+    if (!activeProject) {
+      return (
+        <div style={s.emptyChecklist}>
+          Seleziona o crea un progetto per rivedere chat, documenti, tavole, materiali, verifiche e decisioni.
+        </div>
+      );
+    }
+
+    const normalizedProject = normalizeProjectRecord(activeProject);
+    const sections = getProjectMemorySections(normalizedProject);
+    const visibleItems = getProjectItemsForTab(normalizedProject, projectMemoryTab);
+
+    const stats = [
+      { label: "Chat", value: sections.chat.length },
+      { label: "Documenti", value: sections.documenti.length },
+      { label: "Tavole", value: sections.tavole.length },
+      { label: "Materiali", value: sections.materiali.length },
+      { label: "Verifiche", value: sections.verifiche.length },
+      { label: "Decisioni", value: sections.decisioni.length },
+    ];
+
+    return (
+      <>
+        <div style={s.projectHeaderCard}>
+          <strong>{normalizedProject.name}</strong>
+          <span>{normalizedProject.description || "Nessuna descrizione"}</span>
+          <span style={s.muted}>
+            Aggiornato: {new Date(normalizedProject.updatedAt).toLocaleString("it-IT")}
+          </span>
+        </div>
+
+        <div style={s.projectStatsGrid}>
+          {stats.map((stat) => (
+            <div
+              key={stat.label}
+              style={{
+                ...s.projectStatCard,
+                background: isDark ? "#0b0b0b" : "#ffffff",
+                border: `1px solid ${theme.border}`,
+              }}
+            >
+              <strong style={{ color: theme.primary }}>{stat.value}</strong>
+              <span>{stat.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={s.projectActionGrid}>
+          <button
+            type="button"
+            style={{ ...s.secondaryBtn, color: theme.text, border: `1px solid ${theme.border}` }}
+            onClick={saveCurrentChatToProject}
+          >
+            Salva chat attuale
+          </button>
+
+          <button
+            type="button"
+            style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}` }}
+            onClick={() => setProjectMemoryTab("Decisioni")}
+          >
+            Nuova decisione
+          </button>
+        </div>
+
+        {projectMemoryTab === "Panoramica" && (
+          <div
+            style={{
+              ...s.projectMemoryIntro,
+              background: isDark ? "rgba(96,165,250,0.08)" : "#eff6ff",
+              border: `1px solid ${theme.border}`,
+            }}
+          >
+            <strong>Memoria progetto</strong>
+            <span>
+              Qui trovi tutto quello che serve per riaprire il lavoro anche dopo mesi: chat, documenti, tavole,
+              materiali, verifiche, decisioni prese e note tecniche.
+            </span>
+          </div>
+        )}
+
+        <div style={s.projectTabs}>
+          {projectTabs.map((tab) => {
+            const selected = projectMemoryTab === tab;
+            const count =
+              tab === "Panoramica"
+                ? normalizedProject.items.length
+                : getProjectItemsForTab(normalizedProject, tab).length;
+
+            return (
+              <button
+                key={tab}
+                type="button"
+                style={{
+                  ...s.projectTabBtn,
+                  background: selected ? theme.primary : isDark ? "#050505" : "#ffffff",
+                  color: selected ? "#ffffff" : theme.text,
+                  border: `1px solid ${selected ? theme.primary : theme.border}`,
+                }}
+                onClick={() => setProjectMemoryTab(tab)}
+              >
+                {tab} <span>{count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {projectMemoryTab === "Decisioni" && (
+          <div
+            style={{
+              ...s.projectDecisionBox,
+              background: isDark ? "#050505" : "#f8fafc",
+              border: `1px solid ${theme.border}`,
+            }}
+          >
+            <Field
+              label="Titolo decisione"
+              value={projectDecisionTitle}
+              onChange={setProjectDecisionTitle}
+              placeholder="Es. Scelto C45 invece di S235JR"
+              theme={theme}
+              isDark={isDark}
+            />
+
+            <label style={s.label}>Decisione presa</label>
+            <textarea
+              style={{
+                ...s.projectMiniTextarea,
+                background: isDark ? "#050505" : "#fff",
+                color: theme.text,
+                border: `1px solid ${theme.border}`,
+              }}
+              value={projectDecisionText}
+              onChange={(e) => setProjectDecisionText(e.target.value)}
+              placeholder="Scrivi cosa è stato deciso..."
+            />
+
+            <Field
+              label="Motivo / alternativa valutata"
+              value={projectDecisionReason}
+              onChange={setProjectDecisionReason}
+              placeholder="Es. compromesso tra resistenza, costo e lavorabilità"
+              theme={theme}
+              isDark={isDark}
+            />
+
+            <button type="button" style={{ ...s.primaryBtn, background: theme.primary }} onClick={saveDecisionToProject}>
+              Salva decisione
+            </button>
+          </div>
+        )}
+
+        {projectMemoryTab === "Note" && (
+          <div
+            style={{
+              ...s.projectDecisionBox,
+              background: isDark ? "#050505" : "#f8fafc",
+              border: `1px solid ${theme.border}`,
+            }}
+          >
+            <label style={s.label}>Nota tecnica</label>
+            <textarea
+              style={{
+                ...s.projectMiniTextarea,
+                background: isDark ? "#050505" : "#fff",
+                color: theme.text,
+                border: `1px solid ${theme.border}`,
+              }}
+              value={projectNoteText}
+              onChange={(e) => setProjectNoteText(e.target.value)}
+              placeholder="Scrivi una nota tecnica da ricordare..."
+            />
+
+            <button type="button" style={{ ...s.primaryBtn, background: theme.primary }} onClick={saveProjectNote}>
+              Salva nota
+            </button>
+          </div>
+        )}
+
+        {visibleItems.length === 0 ? (
+          <div style={s.emptyText}>
+            Nessun elemento in questa sezione. Salva chat, file, tavole, materiali, verifiche o decisioni nel progetto.
+          </div>
+        ) : (
+          visibleItems.map(renderProjectItemCard)
+        )}
+      </>
+    );
+  };
+
   return (
     <div style={{ ...s.app, background: theme.bg, color: theme.text }}>
       <style>{globalCss}</style>
@@ -3232,6 +3677,16 @@ Struttura:
                   material: material.name,
                 }));
 
+                addProjectItem({
+                  type: "material",
+                  title: `Materiale scelto - ${material.name}`,
+                  summary: `Materiale collegato al progetto. Rm ${material.rm || "—"} MPa · Re ${material.re || "—"} MPa.`,
+                  payload: {
+                    material,
+                    reason: "Selezionato dalla libreria materiali.",
+                  },
+                });
+
                 setShowMaterials(false);
               }}
             />
@@ -3360,27 +3815,8 @@ Struttura:
 
             <div style={s.projectRight}>
               <div style={{ ...s.projectPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
-                <h3 style={s.projectTitle}>Archivio progetto attivo</h3>
-                {!activeProject ? (
-                  <div style={s.emptyChecklist}>Seleziona o crea un progetto per rivedere verifiche, tavole, file e distinte salvate.</div>
-                ) : (
-                  <>
-                    <div style={s.projectHeaderCard}>
-                      <strong>{activeProject.name}</strong>
-                      <span>{activeProject.description || "Nessuna descrizione"}</span>
-                    </div>
-                    {activeProject.items.length === 0 ? <div style={s.emptyText}>Nessun elemento salvato in questo progetto.</div> : activeProject.items.map(item => (
-                      <div key={item.id} style={{ ...s.projectSavedItem, border: `1px solid ${theme.border}`, background: isDark ? "#0b0b0b" : "#ffffff" }}>
-                        <div style={s.resultTop}>
-                          <strong>{item.title}</strong>
-                          <span>{item.type}</span>
-                        </div>
-                        <p style={s.resultDetail}>{item.summary}</p>
-                        <p style={s.muted}>{new Date(item.createdAt).toLocaleString("it-IT")}</p>
-                      </div>
-                    ))}
-                  </>
-                )}
+                <h3 style={s.projectTitle}>Memoria progetto</h3>
+                {renderProjectMemory()}
               </div>
 
               <div style={{ ...s.projectPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
@@ -4821,5 +5257,81 @@ quickNoteText: {
   projectHeaderCard: { borderRadius: 16, padding: 14, background: "rgba(120,120,120,0.10)", display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 },
   projectSavedItem: { borderRadius: 16, padding: 14, marginBottom: 10 },
   projectMiniCard: { borderRadius: 16, padding: 12, marginTop: 10, display: "flex", flexDirection: "column", gap: 4, fontSize: 13 },
+  projectStatsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
+    gap: 8,
+    marginBottom: 12,
+  },
+  projectStatCard: {
+    borderRadius: 14,
+    padding: "10px 8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: 850,
+  },
+  projectActionGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 10,
+    marginBottom: 12,
+  },
+  projectTabs: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    margin: "12px 0",
+  },
+  projectTabBtn: {
+    borderRadius: 999,
+    padding: "8px 11px",
+    fontSize: 12,
+    fontWeight: 900,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+  },
+  projectMemoryIntro: {
+    borderRadius: 16,
+    padding: 12,
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+    fontSize: 13,
+    lineHeight: 1.45,
+    marginBottom: 12,
+  },
+  projectDecisionBox: {
+    borderRadius: 18,
+    padding: 14,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    marginBottom: 12,
+  },
+  projectMiniTextarea: {
+    width: "100%",
+    minHeight: 90,
+    borderRadius: 14,
+    padding: "11px 12px",
+    outline: "none",
+    resize: "vertical",
+    fontSize: 14,
+    lineHeight: 1.5,
+  },
+  projectInlineDataGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+    gap: 8,
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: 850,
+    opacity: 0.82,
+  },
+
 
 };
