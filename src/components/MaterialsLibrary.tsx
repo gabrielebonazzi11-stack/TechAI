@@ -78,7 +78,7 @@ function normalizeMaterialKey(value?: string) {
 }
 
 function getMaterialCategory(material: MaterialInfo): MaterialCategory {
-  const text = `${material.name} ${material.en} ${material.uni} ${material.din} ${material.aisi} ${material.iso} ${material.notes} ${material.uses}`.toLowerCase();
+  const text = [material.name, material.en, material.uni, material.din, material.aisi, material.iso, material.notes, material.uses].join(" " ).toLowerCase();
 
   if (
     text.includes("aisi 304") ||
@@ -258,23 +258,23 @@ export default function MaterialsLibrary({
     return allMaterials.filter((material) => {
       const materialCategory = getMaterialCategory(material);
 
-      const text = `
-        ${material.name}
-        ${material.en}
-        ${material.uni}
-        ${material.din}
-        ${material.aisi}
-        ${material.jis}
-        ${material.iso}
-        ${material.rm}
-        ${material.re}
-        ${material.hardness}
-        ${material.treatments}
-        ${material.weldability}
-        ${material.machinability}
-        ${material.uses}
-        ${material.notes}
-      `.toLowerCase();
+      const text = [
+        material.name,
+        material.en,
+        material.uni,
+        material.din,
+        material.aisi,
+        material.jis,
+        material.iso,
+        material.rm,
+        material.re,
+        material.hardness,
+        material.treatments,
+        material.weldability,
+        material.machinability,
+        material.uses,
+        material.notes,
+      ].join(" ").toLowerCase();
 
       const matchesSearch = !q || text.includes(q);
       const matchesCategory = category === "Tutti" || materialCategory === category;
@@ -378,7 +378,7 @@ export default function MaterialsLibrary({
       </div>
 
       {showAddMaterial && (
-        <div style={{ ...styles.addPanel, background: c.cardBg, border: `1px solid ${c.border}` }}>
+        <div style={{ ...styles.addPanel, background: c.cardBg, border: "1px solid " + c.border }}>
           <div style={styles.addPanelHeader}>
             <div>
               <p style={{ ...styles.kicker, color: c.primary }}>Materiale personalizzato</p>
@@ -389,7 +389,7 @@ export default function MaterialsLibrary({
               style={{
                 ...styles.smallCloseButton,
                 background: c.cardBg2,
-                border: `1px solid ${c.border}`,
+                border: "1px solid " + c.border,
                 color: c.text,
               }}
               onClick={() => setShowAddMaterial(false)}
@@ -406,7 +406,7 @@ export default function MaterialsLibrary({
                   style={{
                     ...styles.formInput,
                     background: c.inputBg,
-                    border: `1px solid ${c.border}`,
+                    border: "1px solid " + c.border,
                     color: c.text,
                   }}
                   value={(newMaterial as any)[field] || ""}
@@ -433,7 +433,7 @@ export default function MaterialsLibrary({
                   style={{
                     ...styles.formInput,
                     background: c.inputBg,
-                    border: `1px solid ${c.border}`,
+                    border: "1px solid " + c.border,
                     color: c.text,
                   }}
                   value={(newMaterial as any)[field] || ""}
@@ -448,7 +448,7 @@ export default function MaterialsLibrary({
             style={{
               ...styles.formTextarea,
               background: c.inputBg,
-              border: `1px solid ${c.border}`,
+              border: "1px solid " + c.border,
               color: c.text,
             }}
             value={newMaterial.notes}
@@ -461,8 +461,8 @@ export default function MaterialsLibrary({
         </div>
       )}
 
-      <div style={{ ...styles.toolbar, background: c.toolbarBg, border: `1px solid ${c.border}` }}>
-        <div style={{ ...styles.searchBox, background: c.inputBg, border: `1px solid ${c.border}` }}>
+      <div style={{ ...styles.toolbar, background: c.toolbarBg, border: "1px solid " + c.border }}>
+        <div style={{ ...styles.searchBox, background: c.inputBg, border: "1px solid " + c.border }}>
           <span style={{ ...styles.searchIcon, color: c.primary }}>⌕</span>
           <input
             value={search}
@@ -480,9 +480,9 @@ export default function MaterialsLibrary({
               style={{
                 ...styles.filterButton,
                 background: category === cat ? c.primary : c.cardBg,
-                border: `1px solid ${category === cat ? c.primary : c.border}`,
+                border: "1px solid " + (category === cat ? c.primary : c.border),
                 color: category === cat ? "#ffffff" : c.text,
-                boxShadow: category === cat ? `0 10px 24px ${c.primary}33` : "none",
+                boxShadow: category === cat ? "0 10px 24px " + c.primary + "33" : "none",
               }}
               type="button"
             >
@@ -513,8 +513,8 @@ export default function MaterialsLibrary({
                   style={{
                     ...styles.materialCard,
                     background: c.cardBg,
-                    border: `1px solid ${isSelected ? c.primary : c.border}`,
-                    boxShadow: isSelected ? `0 18px 46px ${c.primary}24` : "0 10px 28px rgba(0,0,0,0.14)",
+                    border: "1px solid " + (isSelected ? c.primary : c.border),
+                    boxShadow: isSelected ? "0 18px 46px " + c.primary + "24" : "0 10px 28px rgba(0,0,0,0.14)",
                     transform: isSelected ? "translateY(-2px)" : "none",
                   }}
                   type="button"
@@ -537,12 +537,12 @@ export default function MaterialsLibrary({
                   </div>
 
                   <div style={styles.miniDataGrid}>
-                    <div style={{ ...styles.miniData, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+                    <div style={{ ...styles.miniData, background: c.cardBg2, border: "1px solid " + c.border }}>
                       <span style={{ ...styles.miniLabel, color: c.muted }}>Rm</span>
                       <strong style={{ ...styles.miniValue, color: c.text }}>{safeValue(material.rm)} MPa</strong>
                     </div>
 
-                    <div style={{ ...styles.miniData, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+                    <div style={{ ...styles.miniData, background: c.cardBg2, border: "1px solid " + c.border }}>
                       <span style={{ ...styles.miniLabel, color: c.muted }}>Re</span>
                       <strong style={{ ...styles.miniValue, color: c.text }}>{safeValue(material.re)} MPa</strong>
                     </div>
@@ -552,8 +552,8 @@ export default function MaterialsLibrary({
                     <div
                       style={{
                         ...styles.strengthBarInner,
-                        background: `linear-gradient(90deg, ${c.primary}88, ${c.primary})`,
-                        width: `${getStrengthPercent(material)}%`,
+                        background: "linear-gradient(90deg, " + c.primary + "88, " + c.primary + ")",
+                        width: getStrengthPercent(material) + "%",
                       }}
                     />
                   </div>
@@ -566,9 +566,10 @@ export default function MaterialsLibrary({
             })}
           </div>
         </div>
+        </div>
 
         <div style={styles.rightScrollColumn}>
-          <aside style={{ ...styles.detailPanel, background: c.cardBg, border: `1px solid ${c.border}` }}>
+          <aside style={{ ...styles.detailPanel, background: c.cardBg, border: "1px solid " + c.border }}>
           {selectedMaterial ? (
             <>
               <div style={styles.detailHeader}>
@@ -606,7 +607,7 @@ export default function MaterialsLibrary({
                   style={{
                     ...styles.secondaryButton,
                     background: c.cardBg2,
-                    border: `1px solid ${c.border}`,
+                    border: "1px solid " + c.border,
                     color: c.text,
                   }}
                   onClick={() => setCompareA(selectedMaterial)}
@@ -619,7 +620,7 @@ export default function MaterialsLibrary({
                   style={{
                     ...styles.secondaryButton,
                     background: c.cardBg2,
-                    border: `1px solid ${c.border}`,
+                    border: "1px solid " + c.border,
                     color: c.text,
                   }}
                   onClick={() => setCompareB(selectedMaterial)}
@@ -646,8 +647,8 @@ export default function MaterialsLibrary({
                 <Info c={c} label="AISI / SAE" value={selectedMaterial.aisi} />
                 <Info c={c} label="JIS" value={selectedMaterial.jis} />
                 <Info c={c} label="ISO" value={selectedMaterial.iso} />
-                <Info c={c} label="Rm" value={`${safeValue(selectedMaterial.rm)} MPa`} />
-                <Info c={c} label="Re" value={`${safeValue(selectedMaterial.re)} MPa`} />
+                <Info c={c} label="Rm" value={String(safeValue(selectedMaterial.rm)) + " MPa"} />
+                <Info c={c} label="Re" value={String(safeValue(selectedMaterial.re)) + " MPa"} />
               </div>
 
               <Block c={c} title="Durezza" value={selectedMaterial.hardness} />
@@ -661,7 +662,7 @@ export default function MaterialsLibrary({
                 style={{
                   ...styles.warningBox,
                   background: c.warningBg,
-                  border: `1px solid ${c.warningBorder}`,
+                  border: "1px solid " + c.warningBorder,
                   color: c.warningText,
                 }}
               >
@@ -676,7 +677,7 @@ export default function MaterialsLibrary({
           )}
           </aside>
 
-          <div style={{ ...styles.comparePanel, background: c.cardBg, border: `1px solid ${c.border}` }}>
+          <div style={{ ...styles.comparePanel, background: c.cardBg, border: "1px solid " + c.border }}>
             <div style={styles.sectionHeader}>
               <h2 style={{ ...styles.sectionTitle, color: c.text }}>Confronto materiali</h2>
               <span style={{ ...styles.resultCount, color: c.muted }}>
@@ -697,7 +698,7 @@ export default function MaterialsLibrary({
 
 function Info({ label, value, c }: { label: string; value: any; c: any }) {
   return (
-    <div style={{ ...styles.infoBox, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+    <div style={{ ...styles.infoBox, background: c.cardBg2, border: "1px solid " + c.border }}>
       <span style={{ ...styles.infoLabel, color: c.muted }}>{label}</span>
       <strong style={{ ...styles.infoValue, color: c.text }}>{safeValue(value)}</strong>
     </div>
@@ -706,7 +707,7 @@ function Info({ label, value, c }: { label: string; value: any; c: any }) {
 
 function Block({ title, value, c }: { title: string; value: any; c: any }) {
   return (
-    <div style={{ ...styles.block, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+    <div style={{ ...styles.block, background: c.cardBg2, border: "1px solid " + c.border }}>
       <h4 style={{ ...styles.blockTitle, color: c.text }}>{title}</h4>
       <p style={{ ...styles.blockText, color: c.muted }}>{safeValue(value)}</p>
     </div>
@@ -724,7 +725,7 @@ function CompareColumn({
 }) {
   if (!material) {
     return (
-      <div style={{ ...styles.compareColumn, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+      <div style={{ ...styles.compareColumn, background: c.cardBg2, border: "1px solid " + c.border }}>
         <h3 style={{ ...styles.compareTitle, color: c.text }}>{title}</h3>
         <p style={{ ...styles.emptyCompare, color: c.muted }}>Nessun materiale selezionato.</p>
       </div>
@@ -732,18 +733,18 @@ function CompareColumn({
   }
 
   return (
-    <div style={{ ...styles.compareColumn, background: c.cardBg2, border: `1px solid ${c.border}` }}>
+    <div style={{ ...styles.compareColumn, background: c.cardBg2, border: "1px solid " + c.border }}>
       <h3 style={{ ...styles.compareTitle, color: c.text }}>{title}</h3>
 
-      <div style={{ ...styles.compareMaterialHeader, background: c.cardBg, border: `1px solid ${c.border}`, color: c.text }}>
+      <div style={{ ...styles.compareMaterialHeader, background: c.cardBg, border: "1px solid " + c.border, color: c.text }}>
         <strong>{material.name}</strong>
         <span>{getMaterialCategory(material)}</span>
       </div>
 
       <Info c={c} label="EN" value={material.en} />
       <Info c={c} label="UNI" value={material.uni} />
-      <Info c={c} label="Rm" value={`${safeValue(material.rm)} MPa`} />
-      <Info c={c} label="Re" value={`${safeValue(material.re)} MPa`} />
+      <Info c={c} label="Rm" value={String(safeValue(material.rm)) + " MPa"} />
+      <Info c={c} label="Re" value={String(safeValue(material.re)) + " MPa"} />
       <Info c={c} label="Durezza" value={material.hardness} />
       <Info c={c} label="Lavorabilità" value={material.machinability} />
       <Info c={c} label="Saldabilità" value={material.weldability} />
