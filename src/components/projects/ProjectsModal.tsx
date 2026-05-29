@@ -163,7 +163,7 @@ export default function ProjectsModal({
           <div>
             <h2 style={{ margin: 0 }}>Progetti e controlli avanzati</h2>
             <p style={s.muted}>
-              Raccogli verifiche, tavole, file, distinte e procedure SolidWorks in un unico progetto.
+              Raccogli verifiche, tavole, file, distinte e storico revisioni in un unico progetto.
             </p>
           </div>
 
@@ -188,7 +188,7 @@ export default function ProjectsModal({
                   type="button"
                 >
                   <strong>Memoria progetti</strong>
-                  <span>Chat, documenti, tavole, materiali, verifiche, decisioni e note.</span>
+                  <span>Chat, documenti, tavole, materiali, verifiche, decisioni, revisioni e note.</span>
                 </button>
 
                 <button
