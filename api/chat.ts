@@ -893,13 +893,42 @@ ${extractedPdfText.slice(0, 26000)}
                 "Rispondi in italiano tecnico preciso. " +
                 "\n\nREGOLE DI FORMATTAZIONE OBBLIGATORIE:\n" +
                 "Usa sempre emoji di stato all'inizio delle righe di controllo:\n" +
-                "✅ = elemento corretto, presente, conforme o verificato.\n" +
-                "❌ = errore, mancanza, incongruenza, non conformità o problema critico.\n" +
-                "⚠️ = dato dubbio, poco leggibile, incompleto o da verificare.\n" +
+                "✅ = elemento presente, leggibile, coerente o verificato.\n" +
+                "⚠️ = dato non rilevabile, dubbio, incompleto, da confermare o possibile incoerenza.\n" +
+                "❌ = errore certo o mancanza critica solo quando hai evidenza chiara che impedisce produzione, controllo o montaggio.\n" +
+                "Non usare giudizi secchi tipo giusto/sbagliato quando manca la funzione del pezzo: usa 'coerente', 'da verificare', 'possibile incoerenza', 'mancanza critica'.\n" +
                 "Non usare asterischi Markdown tipo **Materiale** quando scrivi gli esiti tecnici. Scrivi invece frasi pulite.\n" +
                 "Esempio corretto: ✅ Materiale: 11SMnPb37 - UNI EN 10087.\n" +
-                "Esempio corretto: ❌ Rugosità: non indicata sulle superfici funzionali.\n" +
-                "Esempio corretto: ⚠️ Tolleranze geometriche: non visibili, da verificare se necessarie.\n" +
+                "Esempio corretto: ⚠️ Rugosità specifica: non rilevata sulle superfici funzionali visibili; da verificare in base alla funzione.\n" +
+                "Esempio corretto: ⚠️ Tolleranze geometriche: non rilevate; non è automaticamente un errore se non ci sono superfici funzionali critiche.\n" +
+                "Esempio corretto: ❌ Mancanza critica: sede cuscinetto chiaramente identificabile senza tolleranza dimensionale o riferimento funzionale.\n" +
+                "\n\nMETODO TECNICO PER TOLLERANZE E RUGOSITÀ:\n" +
+                "Non limitarti a dire se tolleranze e rugosità sono presenti. Devi valutare la coerenza con la funzione osservabile della superficie.\n" +
+                "Per ogni tolleranza, accoppiamento, datum o rugosità importante indica sempre: elemento osservato, funzione presunta, valore rilevato, valutazione, motivo tecnico, verifica/correzione consigliata.\n" +
+                "Se la funzione non è chiara, non concludere che è sbagliato: scrivi 'da verificare'.\n" +
+                "Se il valore non è leggibile, scrivi 'non rilevabile dalla tavola/crop analizzato'.\n" +
+                "\n\nREGOLE DI VALUTAZIONE TOLLERANZE DIMENSIONALI:\n" +
+                "- Quote di ingombro o superfici non funzionali: può bastare tolleranza generale, ad esempio ISO 2768, se indicata nel cartiglio/note.\n" +
+                "- Fori generici di passaggio: non segnalare errore se non hanno tolleranza specifica, salvo interassi/funzione di montaggio critica.\n" +
+                "- Fori o diametri di centraggio, sedi, guide, spine, cuscinetti, alberi, boccole: richiedono normalmente tolleranza specifica o accoppiamento.\n" +
+                "- Accoppiamenti tipo H7, h6, g6, k6, m6 sono potenzialmente coerenti solo se collegati a funzione di sede, scorrimento, centraggio o montaggio.\n" +
+                "- Se vedi una sede cuscinetto su albero, valuta come possibili k6/m6/n6 in base a carico e rotazione; se vedi alloggiamento foro, valuta H7/J7/K7 come riferimento indicativo. Non imporli come obbligatori senza contesto.\n" +
+                "- Se una quota funzionale sembra priva di tolleranza specifica e non c'è tolleranza generale, segnala ⚠️ possibile mancanza. Usa ❌ solo se la produzione/montaggio è chiaramente non controllabile.\n" +
+                "\n\nREGOLE DI VALUTAZIONE TOLLERANZE GEOMETRICHE GD&T:\n" +
+                "- Non dire che i GD&T sono sbagliati solo perché non sono visibili. Scrivi: ⚠️ GD&T non rilevati, da verificare se necessari.\n" +
+                "- Datum A/B/C sono necessari quando ci sono quote di posizione, coassialità, parallelismo, perpendicolarità, superfici di riferimento o controlli funzionali.\n" +
+                "- Superfici di appoggio o montaggio possono richiedere planarità, parallelismo o perpendicolarità.\n" +
+                "- Fori in pattern funzionali possono richiedere tolleranza di posizione con datum.\n" +
+                "- Diametri coassiali o sedi rotanti possono richiedere coassialità, concentricità, oscillazione/runout o riferimenti equivalenti.\n" +
+                "- Se non identifichi chiaramente superfici funzionali, usa ⚠️ da verificare, non ❌.\n" +
+                "\n\nREGOLE DI VALUTAZIONE RUGOSITÀ:\n" +
+                "- Superfici non funzionali o estetiche: può bastare rugosità generale nel cartiglio, spesso indicativa Ra 3.2-6.3 µm in lavorazioni comuni.\n" +
+                "- Superfici di appoggio lavorate: valori indicativi spesso Ra 1.6-3.2 µm, da confermare in base a funzione e processo.\n" +
+                "- Sedi cuscinetto, sedi precise, superfici di centraggio o accoppiamento: valori indicativi spesso Ra 0.8-1.6 µm.\n" +
+                "- Superfici di scorrimento, tenuta, guida o usura: valori indicativi spesso Ra 0.4-1.6 µm, ma dipende da lubrificazione, materiale e funzione.\n" +
+                "- Filetti e smussi normalmente non richiedono sempre rugosità specifica, salvo funzione particolare.\n" +
+                "- Se manca rugosità generale e ci sono superfici funzionali visibili, segnala ⚠️ possibile mancanza. Usa ❌ solo se la rugosità è chiaramente indispensabile e assente.\n" +
+                "- Se leggi un valore molto grossolano su una superficie di scorrimento/sede, segnala ⚠️ possibile incoerenza e proponi verifica, non bocciare automaticamente.\n" +
                 "\n\nSTRUTTURA RISPOSTA OBBLIGATORIA PER TAVOLE TECNICHE:\n" +
                 "## 1. Cartiglio\n" +
                 "Per ogni voce usa ✅ / ❌ / ⚠️. Controlla nome pezzo, numero disegno, materiale, scala, autore, data, revisione, unità.\n\n" +
@@ -907,18 +936,18 @@ ${extractedPdfText.slice(0, 26000)}
                 "Controlla se le viste sono sufficienti, se servono sezioni A-A/B-B, dettagli, viste ausiliarie o ingrandimenti.\n\n" +
                 "## 3. Quotatura\n" +
                 "Cita le quote leggibili. Segnala quote mancanti, ridondanti, catene chiuse, riferimenti poco chiari o quote funzionali assenti.\n\n" +
-                "## 4. Tolleranze dimensionali\n" +
-                "Controlla tolleranze ISO, accoppiamenti H7/h6, H7/g6, k6, m6, tolleranze generali e quote funzionali.\n\n" +
-                "## 5. Tolleranze geometriche\n" +
-                "Controlla planarità, parallelismo, perpendicolarità, concentricità/coassialità, posizione, riferimenti datum A/B/C.\n\n" +
+                "## 4. Tolleranze dimensionali e accoppiamenti\n" +
+                "Dividi la risposta in: valori rilevati, superfici/quote funzionali presunte, valutazione tecnica, possibili incoerenze, correzioni consigliate.\n\n" +
+                "## 5. Tolleranze geometriche e datum\n" +
+                "Indica GD&T rilevati, datum rilevati, superfici che potrebbero richiederli, valutazione tecnica e verifiche consigliate. Non trasformare 'non rilevato' in errore automatico.\n\n" +
                 "## 6. Rugosità\n" +
-                "Controlla simboli Ra/Rz, rugosità generale, rugosità specifiche su sedi, scorrimenti, appoggi, tenute e superfici funzionali.\n\n" +
+                "Indica rugosità generale, rugosità specifiche, superfici funzionali interessate, coerenza del valore e verifica consigliata.\n\n" +
                 "## 7. Filetti, fori e lamature\n" +
                 "Controlla designazioni filetti, profondità, lamature, svasature, fori passanti/ciechi, interassi e quantità fori.\n\n" +
                 "## 8. Materiale e trattamenti\n" +
                 "Controlla materiale, norma, trattamenti termici, trattamenti superficiali, durezza e note produttive.\n\n" +
                 "## 9. Errori critici e correzioni prioritarie\n" +
-                "Qui usa soprattutto ❌ e ⚠️. Elenca solo problemi concreti. Se non trovi errori critici scrivi: ✅ Errori critici: nessuno riscontrato.\n\n" +
+                "Elenca solo problemi concreti supportati dalla tavola. Per ogni punto scrivi: evidenza osservata, rischio, verifica/correzione consigliata. Se non hai evidenze, scrivi: ✅ Errori critici: nessuno riscontrato.\n\n" +
                 "## 10. Giudizio finale\n" +
                 "Usa obbligatoriamente uno solo di questi tre esiti:\n" +
                 "✅ APPROVATA\n" +
@@ -926,9 +955,10 @@ ${extractedPdfText.slice(0, 26000)}
                 "❌ NON APPROVATA\n" +
                 "Poi aggiungi una frase breve con il motivo principale.\n\n" +
                 "CRITERIO GIUDIZIO:\n" +
-                "Se mancano dati fondamentali come materiale, quote principali o tolleranze funzionali, non dare ✅ APPROVATA piena. Usa ⚠️ o ❌. " +
+                "Se i dati critici non sono leggibili, non dare giudizio definitivo: usa ⚠️ APPROVATA CON NOTE / DA RIVEDERE. " +
+                "Se mancano dati fondamentali come materiale, quote principali o tolleranze funzionali chiaramente necessarie, non dare ✅ APPROVATA piena. Usa ⚠️ o ❌. " +
                 "Se la tavola è leggibile e completa per produzione, usa ✅ APPROVATA. " +
-                "Se ci sono errori gravi che impediscono la produzione, usa ❌ NON APPROVATA. " +
+                "Se ci sono errori gravi che impediscono la produzione o il controllo, usa ❌ NON APPROVATA. " +
                 "\n\nSE NON È UNA TAVOLA TECNICA:\n" +
                 "Mantieni comunque gli emoji ✅ / ❌ / ⚠️, ma adatta le sezioni al contenuto dell'immagine. " +
                 "Se è uno screenshot CAD/SolidWorks, aggiungi: Metodo consigliato, Comandi SolidWorks in italiano, Errori comuni e Quando NON usare questo metodo.",
