@@ -956,6 +956,30 @@ export default function App() {
     if (activeProjectId === projectId) setActiveProjectId(null);
   };
 
+  const updateProject = (projectId: string, name: string, description: string) => {
+    const cleanName = String(name || "").trim();
+
+    if (!cleanName) {
+      alert("Inserisci un nome progetto valido.");
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    setProjects(prev =>
+      prev.map(project =>
+        project.id === projectId
+          ? {
+              ...normalizeProjectRecord(project),
+              name: cleanName,
+              description: String(description || "").trim(),
+              updatedAt: now,
+            }
+          : project
+      )
+    );
+  };
+
   const addProjectItem = (item: Omit<ProjectSavedItem, "id" | "createdAt">, preferredProjectId?: string) => {
     const targetId = preferredProjectId || activeProject?.id || createProject("Progetto automatico", "Creato automaticamente da TechAI.");
     const now = new Date().toISOString();
@@ -3538,6 +3562,7 @@ Struttura:
           activeProject={activeProject}
           setActiveProjectId={setActiveProjectId}
           deleteProject={deleteProject}
+          updateProject={updateProject}
           projectFileInputRef={projectFileInputRef}
           handleProjectSmartFileUpload={handleProjectSmartFileUpload}
           projectSmartFile={projectSmartFile}
