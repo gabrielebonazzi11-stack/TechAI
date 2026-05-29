@@ -3205,8 +3205,10 @@ Struttura:
             style={{
               flex: 1,
               minHeight: 0,
+              height: "100%",
               overflow: "hidden",
               borderRadius: 20,
+              display: "flex",
             }}
           >
             <MaterialsLibrary
@@ -3707,7 +3709,7 @@ Struttura:
 function Modal({ title, subtitle, children, theme, isDark, onClose, wide = false }: { title: string; subtitle?: string; children: React.ReactNode; theme: Theme; isDark: boolean; onClose: () => void; wide?: boolean }) {
   return (
     <div style={s.overlay}>
-      <div style={{ ...s.checklistModal, width: wide ? "min(1120px, calc(100vw - 32px))" : "min(760px, calc(100vw - 32px))", background: isDark ? "#111" : "#fff", color: theme.text, border: `1px solid ${theme.border}` }}>
+      <div style={{ ...s.checklistModal, width: wide ? "min(1360px, calc(100vw - 32px))" : "min(760px, calc(100vw - 32px))", background: isDark ? "#111" : "#fff", color: theme.text, border: `1px solid ${theme.border}` }}>
         <div style={s.modalHeader}>
           <div>
             <h2 style={{ margin: 0 }}>{title}</h2>
@@ -4273,8 +4275,8 @@ const s: Record<string, React.CSSProperties> = {
   codeBlock: { borderRadius: 16, padding: "16px 18px", margin: "14px 0", overflowX: "auto", fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap", background: "#0f172a", color: "#e5e7eb" },
   attachmentBox: { marginTop: 10, padding: "10px 12px", borderRadius: 12, background: "rgba(120,120,120,0.10)", fontSize: 13 },
   overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, padding: 16 },
-  checklistModal: { borderRadius: 24, height: "min(760px, calc(100dvh - 32px))", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 30px 70px rgba(0,0,0,0.28)", padding: 28 },
-  modalHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 20 },
+  checklistModal: { borderRadius: 24, height: "min(860px, calc(100dvh - 32px))", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 30px 70px rgba(0,0,0,0.28)", padding: 28 },
+  modalHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 16, flexShrink: 0 },
   backBtn: { width: 38, height: 38, minWidth: 38, padding: 0, background: "transparent", borderRadius: "50%", cursor: "pointer", fontWeight: 900, fontSize: 24, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" },
   modal: { borderRadius: 24, width: "min(620px, 100%)", height: "min(450px, calc(100dvh - 32px))", display: "flex", overflow: "hidden", boxShadow: "0 30px 60px rgba(0,0,0,0.25)" },
   modalSide: { width: 170, padding: 24, display: "flex", flexDirection: "column", gap: 15, flexShrink: 0 },
