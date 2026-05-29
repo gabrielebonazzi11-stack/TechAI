@@ -965,6 +965,7 @@ export default function App() {
   const [showDrawingGenerator, setShowDrawingGenerator] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
   const [projectToolView, setProjectToolView] = useState<"memory" | "serious" | "solidworks" | "bom">("memory");
+  const [projectSearch, setProjectSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState("Aspetto");
 
@@ -1156,6 +1157,31 @@ export default function App() {
     () => projects.find(project => project.id === activeProjectId) || projects[0] || null,
     [projects, activeProjectId]
   );
+
+  const filteredProjects = useMemo(() => {
+    const q = projectSearch.trim().toLowerCase();
+    if (!q) return projects;
+
+    return projects.filter(project => {
+      const itemsText = (project.items || [])
+        .map(item => `${item.title} ${item.summary} ${item.type}`)
+        .join(" ");
+
+      const memoryText = [
+        ...(project.chats || []).map(item => `${item.title} ${item.messages?.map(message => message.text).join(" ") || ""}`),
+        ...(project.documents || []).map(item => `${item.name} ${item.category} ${item.note}`),
+        ...(project.drawings || []).map(item => `${item.title} ${item.fileName || ""} ${item.partName || ""} ${item.material || ""}`),
+        ...(project.materials || []).map(item => `${item.name} ${item.reason || ""}`),
+        ...(project.verifications || []).map(item => `${item.title} ${item.summary} ${item.type}`),
+        ...(project.decisions || []).map(item => `${item.title} ${item.description} ${item.reason} ${item.alternatives || ""}`),
+        ...(project.notes || []).map(item => `${item.title} ${item.text}`),
+      ].join(" ");
+
+      return `${project.name} ${project.description} ${itemsText} ${memoryText}`
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [projects, projectSearch]);
 
   const makeUserStorageKey = (email: string) => {
     const cleanEmail = String(email || "utente")
@@ -4045,9 +4071,22 @@ Struttura:
 
               <div style={{ ...s.projectPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
                 <h3 style={s.projectTitle}>Progetti salvati</h3>
+
+                <div style={{ marginBottom: 12 }}>
+                  <label style={s.label}>Cerca progetto</label>
+                  <input
+                    style={{ ...s.input, background: isDark ? "#050505" : "#fff", color: theme.text, border: `1px solid ${theme.border}` }}
+                    value={projectSearch}
+                    onChange={e => setProjectSearch(e.target.value)}
+                    placeholder="Cerca per nome, descrizione, materiale, verifica, decisione..."
+                  />
+                </div>
+
                 {projects.length === 0 ? (
                   <div style={s.emptyText}>Nessun progetto creato. Carica un file o premi “Crea progetto”.</div>
-                ) : projects.map(project => (
+                ) : filteredProjects.length === 0 ? (
+                  <div style={s.emptyText}>Nessun progetto trovato con questa ricerca.</div>
+                ) : filteredProjects.map(project => (
                   <div key={project.id} style={{ ...s.projectListItem, border: `1px solid ${project.id === activeProject?.id ? theme.primary : theme.border}`, background: project.id === activeProject?.id ? `${theme.primary}1A` : "transparent" }}>
                     <button style={s.projectListMain} onClick={() => setActiveProjectId(project.id)} type="button">
                       <strong>{project.name}</strong>
