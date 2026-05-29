@@ -404,7 +404,7 @@ export default function App() {
   const [showMaterials, setShowMaterials] = useState(false);
   const [showDrawingGenerator, setShowDrawingGenerator] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
-  const [projectToolView, setProjectToolView] = useState<"memory" | "serious" | "solidworks" | "bom">("memory");
+  const [projectToolView, setProjectToolView] = useState<"memory" | "revisions" | "serious" | "solidworks" | "bom">("memory");
   const [projectSearch, setProjectSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState("Aspetto");
@@ -3701,6 +3701,8 @@ Struttura:
           onClose={() => setShowProjects(false)}
           projectToolView={projectToolView}
           setProjectToolView={setProjectToolView}
+          projectMemoryTab={projectMemoryTab}
+          setProjectMemoryTab={setProjectMemoryTab}
           projectSearch={projectSearch}
           setProjectSearch={setProjectSearch}
           projects={projects}
