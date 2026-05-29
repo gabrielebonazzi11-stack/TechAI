@@ -492,8 +492,9 @@ export default function MaterialsLibrary({
         </div>
       </div>
 
-      <div style={styles.layout}>
-        <div style={styles.materialList}>
+      <div style={styles.splitLayout}>
+        <div style={styles.leftScrollColumn}>
+          <div style={styles.materialList}>
           <div style={styles.sectionHeader}>
             <h2 style={{ ...styles.sectionTitle, color: c.text }}>Materiali trovati</h2>
             <span style={{ ...styles.resultCount, color: c.muted }}>{filteredMaterials.length} risultati</span>
@@ -566,7 +567,8 @@ export default function MaterialsLibrary({
           </div>
         </div>
 
-        <aside style={{ ...styles.detailPanel, background: c.cardBg, border: `1px solid ${c.border}` }}>
+        <div style={styles.rightScrollColumn}>
+          <aside style={{ ...styles.detailPanel, background: c.cardBg, border: `1px solid ${c.border}` }}>
           {selectedMaterial ? (
             <>
               <div style={styles.detailHeader}>
@@ -672,20 +674,21 @@ export default function MaterialsLibrary({
               Seleziona un materiale per vedere la scheda tecnica.
             </div>
           )}
-        </aside>
-      </div>
+          </aside>
 
-      <div style={{ ...styles.comparePanel, background: c.cardBg, border: `1px solid ${c.border}` }}>
-        <div style={styles.sectionHeader}>
-          <h2 style={{ ...styles.sectionTitle, color: c.text }}>Confronto materiali</h2>
-          <span style={{ ...styles.resultCount, color: c.muted }}>
-            Seleziona “Confronta A” e “Confronta B”
-          </span>
-        </div>
+          <div style={{ ...styles.comparePanel, background: c.cardBg, border: `1px solid ${c.border}` }}>
+            <div style={styles.sectionHeader}>
+              <h2 style={{ ...styles.sectionTitle, color: c.text }}>Confronto materiali</h2>
+              <span style={{ ...styles.resultCount, color: c.muted }}>
+                Seleziona “Confronta A” e “Confronta B”
+              </span>
+            </div>
 
-        <div style={styles.compareGrid}>
-          <CompareColumn c={c} title="Materiale A" material={compareA} />
-          <CompareColumn c={c} title="Materiale B" material={compareB} />
+            <div style={styles.compareGrid}>
+              <CompareColumn c={c} title="Materiale A" material={compareA} />
+              <CompareColumn c={c} title="Materiale B" material={compareB} />
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -751,9 +754,13 @@ function CompareColumn({
 const styles: Record<string, React.CSSProperties> = {
   page: {
     width: "100%",
-    minHeight: "100%",
+    height: "100%",
+    minHeight: 0,
     padding: 24,
     boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
   },
 
   header: {
@@ -923,6 +930,35 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "start",
   },
 
+  splitLayout: {
+    flex: 1,
+    minHeight: 0,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) 520px",
+    gap: 22,
+    overflow: "hidden",
+    alignItems: "stretch",
+  },
+
+  leftScrollColumn: {
+    minWidth: 0,
+    minHeight: 0,
+    overflowY: "auto",
+    overflowX: "hidden",
+    paddingRight: 10,
+  },
+
+  rightScrollColumn: {
+    minWidth: 0,
+    minHeight: 0,
+    overflowY: "auto",
+    overflowX: "hidden",
+    paddingRight: 10,
+    display: "flex",
+    flexDirection: "column",
+    gap: 18,
+  },
+
   materialList: {
     minWidth: 0,
   },
@@ -1036,8 +1072,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   detailPanel: {
-    position: "sticky",
-    top: 20,
     padding: 18,
     borderRadius: 26,
     boxShadow: "0 18px 50px rgba(0,0,0,0.14)",
@@ -1168,7 +1202,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   comparePanel: {
-    marginTop: 22,
     padding: 18,
     borderRadius: 26,
     boxShadow: "0 14px 40px rgba(0,0,0,0.10)",
