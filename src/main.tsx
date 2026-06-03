@@ -2,6 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.tsx";
 import "./enhancers/pdfDrawingUploadEnhancer";
+import { initDrawingIssueMarkersEnhancer } from "./enhancers/drawingIssueMarkersEnhancer";
+
+initDrawingIssueMarkersEnhancer();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
