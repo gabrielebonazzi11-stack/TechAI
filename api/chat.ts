@@ -68,39 +68,36 @@ const TECHAI_FORMATTING_RULES =
   `
 
 REGOLE DI FORMATTAZIONE OBBLIGATORIE:
-- Non usare mai Markdown grezzo visibile.
-- Non usare asterischi per il grassetto, quindi evita testi tipo **Materiale**.
-- Non usare titoli Markdown con #, ## o ###.
-- Non usare separatori Markdown tipo ---.
-- Non usare tabelle Markdown con il carattere |. Scrivi le tabelle come elenco di righe, non come griglia testuale.
-- Usa titoli puliti, numerati o in maiuscolo, ad esempio: 4. COME PROCEDERE NEL DISEGNO.
-- Usa elenchi puntati semplici con il simbolo •.
-- Per le sintesi usa blocchi numerati, non tabelle Markdown.
-- Mantieni un layout tecnico, ordinato e professionale, adatto a un software industriale.
-- Se devi scrivere codice perché richiesto dall'utente, puoi usare blocchi codice; in tutti gli altri casi evita sintassi Markdown visibile.
+- Usa Markdown leggero per rendere le risposte belle e leggibili nell'interfaccia.
+- Usa ## per i titoli principali.
+- Usa ### per sottosezioni quando serve.
+- Usa **testo** per evidenziare parole importanti: il frontend lo renderizza come grassetto senza mostrare gli asterischi.
+- Usa elenchi puntati con "- " oppure "•".
+- Usa blocchi codice con tre backtick solo per formule, simboli tecnici, esempi tecnici o codice.
+- Mantieni titoli, elenchi, sezioni e blocchi ben separati.
+- Non scrivere risposte piatte: organizza sempre la risposta in sezioni leggibili.
+- Evita tabelle Markdown molto grandi se non sono necessarie; se servono, usale solo quando migliorano davvero la leggibilità.
 
 ESEMPIO DI STILE CORRETTO:
-4. COME PROCEDERE NEL DISEGNO
+## Come inserire nel disegno:
 
-• Seleziona le superfici di riferimento:
-  superfici di appoggio, fori di riferimento, superfici di montaggio.
+- **Simbolo di planarità**: Ⓟ seguito dal valore, esempio:
 
-• Definisci i datum:
-  etichetta le superfici con lettere A, B, C.
+```txt
+Ⓟ 1,6 µm
+```
 
-• Inserisci i simboli GD&T:
-  specifica tolleranze, valori numerici e riferimenti datum.
+- **Simbolo di parallelismo**: ⊥ o parallelo, con tolleranza:
 
-IN SINTESI
+```txt
+Ⓟ parallelismo 0,05 mm
+```
 
-1. Superfici di riferimento
-   Scegli superfici funzionali, di appoggio o di montaggio.
+- **Simbolo di posizione**: Ⓟ con tolleranza e riferimenti ai datum:
 
-2. Datum
-   Assegna lettere A, B, C alle superfici principali.
-
-3. Tolleranze GD&T
-   Inserisci simboli, valori e riferimenti datum.
+```txt
+Ⓟ posizionamento ±0,1 mm rispetto a A e B
+```
 `;
 
 
@@ -544,7 +541,7 @@ function buildCompactTechAiSystemPrompt(params: {
     `REGOLE RISPOSTA:\n` +
     `- Rispondi nella stessa lingua dell'utente.\n` +
     `- Sii diretto, ordinato, tecnico e pratico.\n` +
-    `- Usa formule leggibili senza Markdown grezzo visibile.\n` +
+    `- Usa formule leggibili e, quando serve, blocchi codice per formule o esempi.\n` +
     `- Cita sempre le unità di misura.\n` +
     `- Se mancano dati, chiedili e non inventare.\n` +
     `- Se la richiesta riguarda codice, dai modifiche precise e copiabili.\n` +
@@ -568,7 +565,7 @@ function buildFullTechAiSystemPrompt(params: {
   return (
     `Sei TechAI, copilot tecnico per ingegneria meccanica industriale. Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo scelta: ${route.reason}. Modalità: ${analysisMode}.\n` +
-    `Rispondi in italiano, tecnico e preciso. Usa notazione chiara per formule, ma senza Markdown grezzo visibile. Cita sempre le unità. Se mancano dati, chiedi.\n` +
+    `Rispondi in italiano, tecnico e preciso. Usa Markdown leggero per titoli, grassetti, elenchi e formule. Cita sempre le unità. Se mancano dati, chiedi.\n` +
     `Se la richiesta riguarda codice, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
     TECHAI_FORMATTING_RULES +
     buildModeInstructions(analysisMode) +
@@ -587,54 +584,10 @@ function buildFullTechAiSystemPrompt(params: {
 
 
 function cleanAiOutput(text: string) {
-  const withoutMarkdown = String(text || "")
-    // Toglie il grassetto Markdown anche se il modello lo usa male.
-    .replace(/\*\*/g, "")
-    // Toglie titoli Markdown tipo #, ##, ### lasciando il testo.
-    .replace(/^\s*#{1,6}\s*/gm, "")
-    // Sostituisce i separatori Markdown con una riga grafica più pulita.
-    .replace(/^\s*---+\s*$/gm, "────────────────────────")
-    // Toglie i delimitatori dei blocchi codice quando finiscono per comparire nel testo.
-    .replace(/```[a-zA-Z0-9_-]*/g, "")
-    .replace(/```/g, "");
-
-  const lines = withoutMarkdown.split("\n");
-
-  const cleanedLines = lines.map((line) => {
-    const trimmed = line.trim();
-
-    // Rimuove righe separatrici delle tabelle Markdown: | --- | --- |
-    if (/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(trimmed)) {
-      return "";
-    }
-
-    // Converte righe tabellari Markdown in righe leggibili senza caratteri |.
-    if (trimmed.includes("|")) {
-      const cells = trimmed
-        .split("|")
-        .map((cell) => cell.trim())
-        .filter(Boolean);
-
-      if (cells.length >= 2) {
-        const first = cells[0];
-        const rest = cells.slice(1);
-
-        // Esempio: | 1 | Azione | Esempio | -> 1. Azione — Esempio
-        if (/^\d+[.)]?$/.test(first)) {
-          return `${first.replace(/[.)]$/, "")}. ${rest.join(" — ")}`;
-        }
-
-        // Esempio: | Elemento | Problema | Correzione | -> • Elemento: Problema — Correzione
-        return `• ${first}: ${rest.join(" — ")}`;
-      }
-    }
-
-    return line;
-  });
-
-  return cleanedLines
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
+  return String(text || "")
+    // Pulizia minima: non distrugge Markdown, titoli, elenchi o blocchi codice.
+    // Il frontend renderizza **testo** come grassetto vero senza mostrare gli asterischi.
+    .replace(/\n{4,}/g, "\n\n\n")
     .trim();
 }
 
@@ -820,8 +773,7 @@ async function callGroqText(params: {
       if (isFallback && i > 0) {
         return (
           cleanContent +
-          "\n\n---\n" +
-          "Nota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite."
+          "\n\nNota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite."
         );
       }
 
@@ -964,12 +916,12 @@ ${extractedPdfText.slice(0, 26000)}
                 "✅ = elemento corretto, presente, conforme o verificato.\n" +
                 "❌ = errore, mancanza, incongruenza, non conformità o problema critico.\n" +
                 "⚠️ = dato dubbio, poco leggibile, incompleto o da verificare.\n" +
-                "Non usare asterischi Markdown tipo Materiale con doppio asterisco quando scrivi gli esiti tecnici. Scrivi invece frasi pulite.\n" +
+                "Puoi usare **testo** per evidenziare parole importanti: il frontend lo renderizza come grassetto senza mostrare gli asterischi.\n" +
                 "Esempio corretto: ✅ Materiale: 11SMnPb37 - UNI EN 10087.\n" +
                 "Esempio corretto: ❌ Rugosità: non indicata sulle superfici funzionali.\n" +
                 "Esempio corretto: ⚠️ Tolleranze geometriche: non visibili, da verificare se necessarie.\n" +
                 "\n\nSTRUTTURA RISPOSTA OBBLIGATORIA PER TAVOLE TECNICHE:\n" +
-                "Non usare ## nei titoli. Usa titoli puliti tipo 1. CARTIGLIO.\n" +
+                "Usa titoli Markdown chiari, ad esempio ## 1. Cartiglio.\n" +
                 "1. CARTIGLIO\n" +
                 "Per ogni voce usa ✅ / ❌ / ⚠️. Controlla nome pezzo, numero disegno, materiale, scala, autore, data, revisione, unità.\n\n" +
                 "2. VISTE E SEZIONI\n" +
