@@ -12,6 +12,8 @@ type DrawingMarker = {
 const STORAGE_KEY = "techai_drawing_issue_markers_v1";
 const START_TAG = "[TECHAI_MARKERS_START]";
 const END_TAG = "[TECHAI_MARKERS_END]";
+const MAX_DRAWING_CROPS_FOR_MARKERS = 5;
+const MAX_PDF_TEXT_FOR_MARKERS = 10000;
 let installed = false;
 let renderTimer: number | undefined;
 
@@ -44,7 +46,7 @@ function sanitizeMarkers(markers: unknown): DrawingMarker[] {
       const label = `${item.label} ${item.detail}`.toLowerCase();
       return !label.includes("conforme") && !label.includes("corretto") && !label.includes("approvata piena");
     })
-    .slice(0, 18);
+    .slice(0, 12);
 }
 
 function extractMarkersFromAnswer(answer: string): DrawingMarker[] {
@@ -108,13 +110,7 @@ function injectStyles() {
   const style = document.createElement("style");
   style.id = "techai-drawing-marker-style";
   style.textContent = `
-    .techai-drawing-marker-layer {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 8;
-    }
-
+    .techai-drawing-marker-layer { position: absolute; inset: 0; pointer-events: none; z-index: 8; }
     .techai-drawing-marker {
       position: absolute;
       width: 34px;
@@ -132,12 +128,7 @@ function injectStyles() {
       cursor: help;
       pointer-events: auto;
     }
-
-    .techai-drawing-marker:hover {
-      transform: translate(-50%, -50%) scale(1.12);
-      z-index: 12;
-    }
-
+    .techai-drawing-marker:hover { transform: translate(-50%, -50%) scale(1.12); z-index: 12; }
     .techai-drawing-marker:hover::after {
       content: attr(data-title);
       position: absolute;
@@ -156,7 +147,6 @@ function injectStyles() {
       box-shadow: 0 16px 40px rgba(0,0,0,0.35);
       white-space: normal;
     }
-
     .techai-drawing-marker-legend {
       position: absolute;
       left: 12px;
@@ -174,20 +164,8 @@ function injectStyles() {
       backdrop-filter: blur(8px);
       pointer-events: none;
     }
-
-    .techai-drawing-marker-legend span {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      white-space: nowrap;
-    }
-
-    .techai-drawing-marker-legend i {
-      width: 9px;
-      height: 9px;
-      border-radius: 999px;
-      display: inline-block;
-    }
+    .techai-drawing-marker-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .techai-drawing-marker-legend i { width: 9px; height: 9px; border-radius: 999px; display: inline-block; }
   `;
 
   document.head.appendChild(style);
@@ -261,27 +239,45 @@ function scheduleRender() {
   renderTimer = window.setTimeout(renderMarkers, 180);
 }
 
+function reduceDrawingPayload(body: FormData) {
+  const rawImages = String(body.get("drawingImages") || "[]");
+  const parsedImages = (() => {
+    try {
+      return JSON.parse(rawImages);
+    } catch {
+      return [];
+    }
+  })();
+
+  if (Array.isArray(parsedImages) && parsedImages.length > MAX_DRAWING_CROPS_FOR_MARKERS) {
+    const preferred = parsedImages.filter((img: any) => /completa|cartiglio|note|quote|dense|sicurezza/i.test(String(img?.label || "")));
+    const reduced = [...preferred, ...parsedImages].filter((img, index, arr) => arr.findIndex((x) => x?.dataUrl === img?.dataUrl) === index).slice(0, MAX_DRAWING_CROPS_FOR_MARKERS);
+    body.set("drawingImages", JSON.stringify(reduced));
+  }
+
+  const fileText = String(body.get("fileText") || "");
+  if (fileText.length > MAX_PDF_TEXT_FOR_MARKERS) {
+    body.set("fileText", fileText.slice(0, MAX_PDF_TEXT_FOR_MARKERS));
+  }
+}
+
 function enhanceDrawingRequest(body: BodyInit | null | undefined) {
   if (!(body instanceof FormData)) return body;
   if (String(body.get("analysisMode") || "") !== "drawing") return body;
 
+  reduceDrawingPayload(body);
+
   const currentMessage = String(body.get("message") || "");
   const markerInstructions = `
 
-ISTRUZIONI MARCATORI VISIVI OBBLIGATORIE:
-Alla fine della risposta aggiungi un blocco JSON esatto tra ${START_TAG} e ${END_TAG}.
-Il blocco deve contenere SOLO problemi, dubbi o dati non leggibili. NON inserire elementi corretti o conformi.
-Usa coordinate percentuali x/y da 0 a 100 riferite alla tavola completa visibile.
-Se non sei sicuro del punto esatto, metti il marker nella zona più probabile e scrivi dettaglio = "posizione approssimativa".
-Se non ci sono problemi reali, restituisci markers vuoto.
-Formato obbligatorio:
+MARCATURA VISIVA:
+Alla fine aggiungi SOLO questo blocco JSON, senza testo dentro al blocco.
+Non marcare elementi corretti. Marca solo errori, dubbi o dati non leggibili.
+Coordinate x/y in percentuale 0-100 sulla tavola completa.
 ${START_TAG}
-{"markers":[{"label":"Materiale non leggibile","severity":"incerto","x":82,"y":88,"detail":"Nel cartiglio il materiale non è leggibile"}]}
+{"markers":[{"label":"Materiale non leggibile","severity":"incerto","x":82,"y":88,"detail":"Cartiglio"}]}
 ${END_TAG}
-Severità ammesse:
-- "errore" = errore critico o mancanza che blocca la produzione
-- "attenzione" = elemento da verificare
-- "incerto" = dato non leggibile o posizione non sicura
+severity: "errore", "attenzione", "incerto". Se nessun problema: {"markers":[]}.
 `;
 
   body.set("message", `${currentMessage}${markerInstructions}`);
