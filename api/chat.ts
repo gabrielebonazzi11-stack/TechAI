@@ -64,6 +64,46 @@ const GUEST_FILE_LIMIT_24H = 2;
 const GUEST_WINDOW_HOURS = 24;
 const GUEST_WINDOW_MS = GUEST_WINDOW_HOURS * 60 * 60 * 1000;
 
+const TECHAI_FORMATTING_RULES =
+  `
+
+REGOLE DI FORMATTAZIONE OBBLIGATORIE:
+- Non usare mai Markdown grezzo visibile.
+- Non usare asterischi per il grassetto, quindi evita testi tipo **Materiale**.
+- Non usare titoli Markdown con #, ## o ###.
+- Non usare separatori Markdown tipo ---.
+- Non usare tabelle Markdown con il carattere |.
+- Usa titoli puliti, numerati o in maiuscolo, ad esempio: 4. COME PROCEDERE NEL DISEGNO.
+- Usa elenchi puntati semplici con il simbolo •.
+- Per le sintesi usa blocchi numerati, non tabelle Markdown.
+- Mantieni un layout tecnico, ordinato e professionale, adatto a un software industriale.
+- Se devi scrivere codice perché richiesto dall'utente, puoi usare blocchi codice; in tutti gli altri casi evita sintassi Markdown visibile.
+
+ESEMPIO DI STILE CORRETTO:
+4. COME PROCEDERE NEL DISEGNO
+
+• Seleziona le superfici di riferimento:
+  superfici di appoggio, fori di riferimento, superfici di montaggio.
+
+• Definisci i datum:
+  etichetta le superfici con lettere A, B, C.
+
+• Inserisci i simboli GD&T:
+  specifica tolleranze, valori numerici e riferimenti datum.
+
+IN SINTESI
+
+1. Superfici di riferimento
+   Scegli superfici funzionali, di appoggio o di montaggio.
+
+2. Datum
+   Assegna lettere A, B, C alle superfici principali.
+
+3. Tolleranze GD&T
+   Inserisci simboli, valori e riferimenti datum.
+`;
+
+
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -394,7 +434,8 @@ function buildLightSystemPrompt(params: {
     `Utente: ${userName}. Focus: ${focus}. Modalità: ${analysisMode}. Livello: ${route.level}. Motivo: ${route.reason}.\n` +
     `Rispondi nella stessa lingua dell'utente. Sii diretto, pratico e ordinato. ` +
     `Non inventare dati. Se mancano dati, chiedili. ` +
-    `Per codice, dai modifiche complete e copiabili.`
+    `Per codice, dai modifiche complete e copiabili.` +
+    TECHAI_FORMATTING_RULES
   );
 }
 
@@ -503,13 +544,14 @@ function buildCompactTechAiSystemPrompt(params: {
     `REGOLE RISPOSTA:\n` +
     `- Rispondi nella stessa lingua dell'utente.\n` +
     `- Sii diretto, ordinato, tecnico e pratico.\n` +
-    `- Usa Markdown e formule leggibili.\n` +
+    `- Usa formule leggibili senza Markdown grezzo visibile.\n` +
     `- Cita sempre le unità di misura.\n` +
     `- Se mancano dati, chiedili e non inventare.\n` +
     `- Se la richiesta riguarda codice, dai modifiche precise e copiabili.\n` +
     `- Se l'utente chiede un file completo, riscrivi il file completo.\n` +
-    `- Se si parla di componenti o disegni tecnici, quando opportuno scrivi: "fare riferimento a normativa: ...".\n\n` +
-    `PROMEMORIA TECNICO COMPATTO:\n` +
+    `- Se si parla di componenti o disegni tecnici, quando opportuno scrivi: "fare riferimento a normativa: ...".\n` +
+    TECHAI_FORMATTING_RULES +
+    `\nPROMEMORIA TECNICO COMPATTO:\n` +
     `Meccanica: equilibrio ΣF=0, ΣM=0; F=ma; P=Fv=Mω; Mt[Nm]=9550P[kW]/n[rpm]. Trazione σ=F/A; flessione σ=Mf/Wf; torsione τ=Mt/Wt. Von Mises σid=√(σ²+3τ²). Fatica: Goodman/Soderberg. Bulloni: precarico, taglio, trazione, classe 8.8/10.9. Tolleranze: H7, k6, m6, H7/f7. Rugosità: Ra 3,2÷6,3 generica; Ra 0,8÷1,6 sedi/tenute.\n` +
     buildModeInstructions(analysisMode)
   );
@@ -526,8 +568,9 @@ function buildFullTechAiSystemPrompt(params: {
   return (
     `Sei TechAI, copilot tecnico per ingegneria meccanica industriale. Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo scelta: ${route.reason}. Modalità: ${analysisMode}.\n` +
-    `Rispondi in italiano, tecnico e preciso. Usa Markdown e notazione chiara per formule. Cita sempre le unità. Se mancano dati, chiedi.\n` +
+    `Rispondi in italiano, tecnico e preciso. Usa notazione chiara per formule, ma senza Markdown grezzo visibile. Cita sempre le unità. Se mancano dati, chiedi.\n` +
     `Se la richiesta riguarda codice, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
+    TECHAI_FORMATTING_RULES +
     buildModeInstructions(analysisMode) +
     `\n\n` +
     `## PROMEMORIA TECNICO\n` +
@@ -540,6 +583,16 @@ function buildFullTechAiSystemPrompt(params: {
     `Bulloni: classi 8.8, 10.9; precarico Fp≈0,8fyAres; taglio Fv,R≈0,6fuAres/1,25; trazione FT,R≈0,9fuAres/1,25. Linguette: τ=2T/(wLDn), p=4T/(hLDn).\n` +
     `Oleoidraulica: F=pA; v=Q/A; centro aperto P→T; centro chiuso vie bloccate.\n`
   );
+}
+
+
+function cleanAiOutput(text: string) {
+  return String(text || "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/^---+$/gm, "────────────────────────")
+    .replace(/^\s*\|\s*-{2,}[\s|-]*\|\s*$/gm, "")
+    .trim();
 }
 
 function isGroqRateLimit(status: number, raw: string) {
@@ -719,15 +772,17 @@ async function callGroqText(params: {
         data?.choices?.[0]?.message?.content ||
         "Ho ricevuto la richiesta, ma il modello non ha restituito una risposta valida.";
 
+      const cleanContent = cleanAiOutput(content);
+
       if (isFallback && i > 0) {
         return (
-          content +
+          cleanContent +
           "\n\n---\n" +
           "Nota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite."
         );
       }
 
-      return content;
+      return cleanContent;
     }
 
     if (isGroqRateLimit(response.status, raw)) {
@@ -866,30 +921,31 @@ ${extractedPdfText.slice(0, 26000)}
                 "✅ = elemento corretto, presente, conforme o verificato.\n" +
                 "❌ = errore, mancanza, incongruenza, non conformità o problema critico.\n" +
                 "⚠️ = dato dubbio, poco leggibile, incompleto o da verificare.\n" +
-                "Non usare asterischi Markdown tipo **Materiale** quando scrivi gli esiti tecnici. Scrivi invece frasi pulite.\n" +
+                "Non usare asterischi Markdown tipo Materiale con doppio asterisco quando scrivi gli esiti tecnici. Scrivi invece frasi pulite.\n" +
                 "Esempio corretto: ✅ Materiale: 11SMnPb37 - UNI EN 10087.\n" +
                 "Esempio corretto: ❌ Rugosità: non indicata sulle superfici funzionali.\n" +
                 "Esempio corretto: ⚠️ Tolleranze geometriche: non visibili, da verificare se necessarie.\n" +
                 "\n\nSTRUTTURA RISPOSTA OBBLIGATORIA PER TAVOLE TECNICHE:\n" +
-                "## 1. Cartiglio\n" +
+                "Non usare ## nei titoli. Usa titoli puliti tipo 1. CARTIGLIO.\n" +
+                "1. CARTIGLIO\n" +
                 "Per ogni voce usa ✅ / ❌ / ⚠️. Controlla nome pezzo, numero disegno, materiale, scala, autore, data, revisione, unità.\n\n" +
-                "## 2. Viste e sezioni\n" +
+                "2. VISTE E SEZIONI\n" +
                 "Controlla se le viste sono sufficienti, se servono sezioni A-A/B-B, dettagli, viste ausiliarie o ingrandimenti.\n\n" +
-                "## 3. Quotatura\n" +
+                "3. QUOTATURA\n" +
                 "Cita le quote leggibili. Segnala quote mancanti, ridondanti, catene chiuse, riferimenti poco chiari o quote funzionali assenti.\n\n" +
-                "## 4. Tolleranze dimensionali\n" +
+                "4. TOLLERANZE DIMENSIONALI\n" +
                 "Controlla tolleranze ISO, accoppiamenti H7/h6, H7/g6, k6, m6, tolleranze generali e quote funzionali.\n\n" +
-                "## 5. Tolleranze geometriche\n" +
+                "5. TOLLERANZE GEOMETRICHE\n" +
                 "Controlla planarità, parallelismo, perpendicolarità, concentricità/coassialità, posizione, riferimenti datum A/B/C.\n\n" +
-                "## 6. Rugosità\n" +
+                "6. RUGOSITÀ\n" +
                 "Controlla simboli Ra/Rz, rugosità generale, rugosità specifiche su sedi, scorrimenti, appoggi, tenute e superfici funzionali.\n\n" +
-                "## 7. Filetti, fori e lamature\n" +
+                "7. FILETTI, FORI E LAMATURE\n" +
                 "Controlla designazioni filetti, profondità, lamature, svasature, fori passanti/ciechi, interassi e quantità fori.\n\n" +
-                "## 8. Materiale e trattamenti\n" +
+                "8. MATERIALE E TRATTAMENTI\n" +
                 "Controlla materiale, norma, trattamenti termici, trattamenti superficiali, durezza e note produttive.\n\n" +
-                "## 9. Errori critici e correzioni prioritarie\n" +
+                "9. ERRORI CRITICI E CORREZIONI PRIORITARIE\n" +
                 "Qui usa soprattutto ❌ e ⚠️. Elenca solo problemi concreti. Se non trovi errori critici scrivi: ✅ Errori critici: nessuno riscontrato.\n\n" +
-                "## 10. Giudizio finale\n" +
+                "10. GIUDIZIO FINALE\n" +
                 "Usa obbligatoriamente uno solo di questi tre esiti:\n" +
                 "✅ APPROVATA\n" +
                 "⚠️ APPROVATA CON NOTE / DA RIVEDERE\n" +
@@ -944,10 +1000,11 @@ ${extractedPdfText.slice(0, 26000)}
     );
   }
 
-  return (
+  const visionAnswer =
     data?.choices?.[0]?.message?.content ||
-    "Ho ricevuto l'immagine, ma OpenAI non ha restituito una risposta valida."
-  );
+    "Ho ricevuto l'immagine, ma OpenAI non ha restituito una risposta valida.";
+
+  return cleanAiOutput(visionAnswer);
 }
 
 async function checkAuthAndRateLimit(
