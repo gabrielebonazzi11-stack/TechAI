@@ -2031,6 +2031,7 @@ export default function App() {
       formData.append("message", text);
       formData.append("messages", JSON.stringify(updatedMessages.map(m => ({ role: m.role, text: m.text }))));
       formData.append("profile", JSON.stringify({ userName: user.name, focus: interest }));
+      formData.append("analysisMode", "chat");
 
       if (fileToSend?.file) {
         formData.append("file", fileToSend.file);
