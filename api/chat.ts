@@ -72,7 +72,7 @@ REGOLE DI FORMATTAZIONE OBBLIGATORIE:
 - Non usare asterischi per il grassetto, quindi evita testi tipo **Materiale**.
 - Non usare titoli Markdown con #, ## o ###.
 - Non usare separatori Markdown tipo ---.
-- Non usare tabelle Markdown con il carattere |.
+- Non usare tabelle Markdown con il carattere |. Scrivi le tabelle come elenco di righe, non come griglia testuale.
 - Usa titoli puliti, numerati o in maiuscolo, ad esempio: 4. COME PROCEDERE NEL DISEGNO.
 - Usa elenchi puntati semplici con il simbolo •.
 - Per le sintesi usa blocchi numerati, non tabelle Markdown.
@@ -587,11 +587,59 @@ function buildFullTechAiSystemPrompt(params: {
 
 
 function cleanAiOutput(text: string) {
-  return String(text || "")
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/^#{1,6}\s*/gm, "")
-    .replace(/^---+$/gm, "────────────────────────")
-    .replace(/^\s*\|\s*-{2,}[\s|-]*\|\s*$/gm, "")
+  const withoutMarkdown = String(text || "")
+    // Toglie il grassetto Markdown anche se il modello lo usa male.
+    .replace(/\*\*/g, "")
+    // Toglie titoli Markdown tipo #, ##, ### lasciando il testo.
+    .replace(/^\s*#{1,6}\s*/gm, "")
+    // Sostituisce i separatori Markdown con una riga grafica più pulita.
+    .replace(/^\s*---+\s*$/gm, "────────────────────────")
+    // Toglie i delimitatori dei blocchi codice quando finiscono per comparire nel testo.
+    .replace(/```[a-zA-Z0-9_-]*/g, "")
+    .replace(/```/g, "");
+
+  const lines = withoutMarkdown.split("
+");
+
+  const cleanedLines = lines.map((line) => {
+    const trimmed = line.trim();
+
+    // Rimuove righe separatrici delle tabelle Markdown: | --- | --- |
+    if (/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(trimmed)) {
+      return "";
+    }
+
+    // Converte righe tabellari Markdown in righe leggibili senza caratteri |.
+    if (trimmed.includes("|")) {
+      const cells = trimmed
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter(Boolean);
+
+      if (cells.length >= 2) {
+        const first = cells[0];
+        const rest = cells.slice(1);
+
+        // Esempio: | 1 | Azione | Esempio | -> 1. Azione — Esempio
+        if (/^\d+[.)]?$/.test(first)) {
+          return `${first.replace(/[.)]$/, "")}. ${rest.join(" — ")}`;
+        }
+
+        // Esempio: | Elemento | Problema | Correzione | -> • Elemento: Problema — Correzione
+        return `• ${first}: ${rest.join(" — ")}`;
+      }
+    }
+
+    return line;
+  });
+
+  return cleanedLines
+    .join("
+")
+    .replace(/
+{3,}/g, "
+
+")
     .trim();
 }
 
@@ -1396,7 +1444,7 @@ export default async function handler(req: Request) {
       Boolean(body.imageDataUrl) ||
       Boolean(body.drawingImages && body.drawingImages.length > 0);
 
-    const answer = hasVisionInput
+    const rawAnswer = hasVisionInput
       ? await callOpenAIVision({
           message: body.message,
           messages: body.messages,
@@ -1415,6 +1463,10 @@ export default async function handler(req: Request) {
           fileMeta: body.fileMeta,
           analysisMode: body.analysisMode,
         });
+
+    // Ultima pulizia obbligatoria prima di mandare il testo al frontend.
+    // Serve anche se il modello ignora il prompt e produce ancora ** o tabelle Markdown.
+    const answer = cleanAiOutput(rawAnswer);
 
     let usage: any = null;
 
