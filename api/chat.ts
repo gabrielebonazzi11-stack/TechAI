@@ -598,8 +598,7 @@ function cleanAiOutput(text: string) {
     .replace(/```[a-zA-Z0-9_-]*/g, "")
     .replace(/```/g, "");
 
-  const lines = withoutMarkdown.split("
-");
+  const lines = withoutMarkdown.split("\n");
 
   const cleanedLines = lines.map((line) => {
     const trimmed = line.trim();
@@ -634,12 +633,8 @@ function cleanAiOutput(text: string) {
   });
 
   return cleanedLines
-    .join("
-")
-    .replace(/
-{3,}/g, "
-
-")
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
