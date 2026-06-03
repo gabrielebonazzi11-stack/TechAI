@@ -656,9 +656,7 @@ function isOpenAIRateLimit(status: number, raw: string) {
 
 function sanitizeOpenAIFailureMessage() {
   return (
-    "⚠️ In questo momento il modello AI principale è al limite.
-
-" +
+    "⚠️ In questo momento il modello AI principale è al limite.\n\n" +
     "Ho provato automaticamente una modalità più leggera, ma non è disponibile. " +
     "Riprova tra qualche minuto oppure riduci la lunghezza del messaggio."
   );
@@ -687,9 +685,7 @@ ${params.fileText}`,
     console.error("Missing OPENAI_TEXT_API_KEY / OPENAI_API_KEY environment variable");
 
     return (
-      "⚠️ Chat AI temporaneamente non disponibile.
-
-" +
+      "⚠️ Chat AI temporaneamente non disponibile.\n\n" +
       "Il sistema non riesce ad avviare il modello di risposta in questo momento. " +
       "Riprova tra poco o segnala il problema all’assistenza se persiste."
     );
@@ -830,10 +826,7 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
 
       if (isFallback && i > 0) {
         return (
-          cleanContent +
-          "
-
-Nota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite."
+          `${cleanContent}\n\nNota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite.`
         );
       }
 
@@ -851,9 +844,7 @@ Nota: ho usato automaticamente una modalità AI più leggera perché il modello 
     }
 
     return (
-      "⚠️ Non sono riuscito a completare la risposta con il modello AI.
-
-" +
+      "⚠️ Non sono riuscito a completare la risposta con il modello AI.\n\n" +
       "Riprova tra poco oppure semplifica la richiesta."
     );
   }
@@ -863,9 +854,7 @@ Nota: ho usato automaticamente una modalità AI più leggera perché il modello 
   }
 
   return (
-    "⚠️ Il modello AI non ha risposto correttamente.
-
-" +
+    "⚠️ Il modello AI non ha risposto correttamente.\n\n" +
     "Riprova tra poco oppure riduci la lunghezza del messaggio."
   );
 }
