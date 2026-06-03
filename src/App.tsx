@@ -389,6 +389,10 @@ function safeParseJson<T>(value: string, fallback: T): T {
   }
 }
 
+function cleanDisplayedAiText(text: string): string {
+  return String(text || "").replace(/\*\*/g, "");
+}
+
 export default function App() {
   const [query, setQuery] = useState("");
   const [chats, setChats] = useState<ChatSession[]>([]);
@@ -2702,7 +2706,9 @@ Struttura:
         );
       }
 
-      return block.split("\n").map((line, lineIndex) => {
+      const cleanBlock = cleanDisplayedAiText(block);
+
+      return cleanBlock.split("\n").map((line, lineIndex) => {
         const trimmed = line.trim();
         const key = `${index}-${lineIndex}`;
 
