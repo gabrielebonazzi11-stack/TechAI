@@ -678,7 +678,11 @@ async function callGroqText(params: {
   if (!groqApiKey) {
     console.error("Missing GROQ_API_KEY environment variable");
 
-    return "⚠️ Il servizio AI non è momentaneamente disponibile. Riprova tra poco.";
+    return (
+      "⚠️ Chat AI temporaneamente non disponibile.\n\n" +
+      "Il sistema non riesce ad avviare il modello di risposta in questo momento. " +
+      "Riprova tra poco o segnala il problema all’assistenza se persiste."
+    );
   }
 
   const userName = params.profile?.userName || "Utente";
@@ -856,22 +860,21 @@ async function callOpenAIVision(params: {
   fileMeta: string;
   analysisMode: AnalysisMode;
 }): Promise<string> {
-  const openAiDrawingKey = process.env.OPENAI_DRAWING_READER_API_KEY;
+  const openAiDrawingKey =
+    process.env.OPENAI_DRAWING_READER_API_KEY ||
+    process.env.OPENAI_API_KEY;
 
   const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
   const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "45000");
 
   if (!openAiDrawingKey) {
+    console.error("Missing OpenAI API key for drawing reader");
+
     return (
-      "⚠️ Backend collegato, ma manca la chiave OpenAI per il lettore tavole.\n\n" +
-      "Su Vercel aggiungi almeno una di queste variabili:\n\n" +
-      "```env\n" +
-      "OPENAI_DRAWING_READER_API_KEY=sk-...\n" +
-      "# oppure\n" +
-      "OPENAI_API_KEY=sk-...\n\n" +
-      "OPENAI_DRAWING_READER_MODEL=gpt-4o-mini\n" +
-      "```\n\n" +
-      "Poi fai Redeploy del progetto."
+      "⚠️ Modulo di analisi visiva non disponibile.\n\n" +
+      "Non è stato possibile avviare la lettura della tavola tecnica. " +
+      "Il problema non dipende dal file caricato, ma dalla configurazione del servizio AI.\n\n" +
+      "Riprova più tardi oppure segnala il problema all’assistenza."
     );
   }
 
