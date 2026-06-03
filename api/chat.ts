@@ -676,17 +676,13 @@ async function callGroqText(params: {
   });
 
   if (!groqApiKey) {
-    return (
-      "⚠️ Backend collegato, ma manca la chiave Groq per la chat testuale.\n\n" +
-      "Su Vercel aggiungi:\n\n" +
-      "```env\n" +
-      "GROQ_API_KEY=la_tua_chiave_groq\n" +
-      "GROQ_MODEL_FAST=llama-3.1-8b-instant\n" +
-      "GROQ_MODEL_MEDIUM=llama-3.1-8b-instant\n" +
-      "GROQ_MODEL_HARD=llama-3.3-70b-versatile\n" +
-      "```\n\n" +
-      "Poi fai Redeploy del progetto."
-    );
+  console.error("Missing GROQ_API_KEY environment variable");
+
+  return (
+    "⚠️ Il servizio AI non è momentaneamente disponibile. Riprova tra poco."
+  );
+}
+ 
   }
 
   const userName = params.profile?.userName || "Utente";
