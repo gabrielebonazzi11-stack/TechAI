@@ -389,8 +389,16 @@ function safeParseJson<T>(value: string, fallback: T): T {
   }
 }
 
-function cleanDisplayedAiText(text: string): string {
-  return String(text || "").replace(/\*\*/g, "");
+function renderInlineMarkdown(text: string): React.ReactNode {
+  const parts = String(text || "").split(/(\*\*[^*]+\*\*)/g);
+
+  return parts.map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
+    }
+
+    return part.replace(/\*\*/g, "");
+  });
 }
 
 export default function App() {
@@ -2701,24 +2709,44 @@ Struttura:
       if (block.startsWith("```") && block.endsWith("```")) {
         return (
           <pre key={index} style={s.codeBlock}>
-            <code>{block.replace(/^```[a-zA-Z]*\n?/, "").replace(/```$/, "")}</code>
+            <code>{block.replace(/^```[a-zA-Z]*\n?/, "").replace(/```$/, "").replace(/\*\*/g, "")}</code>
           </pre>
         );
       }
 
-      const cleanBlock = cleanDisplayedAiText(block);
-
-      return cleanBlock.split("\n").map((line, lineIndex) => {
+      return block.split("\n").map((line, lineIndex) => {
         const trimmed = line.trim();
         const key = `${index}-${lineIndex}`;
 
         if (!trimmed) return <div key={key} style={{ height: 8 }} />;
-        if (trimmed.startsWith("### ")) return <h3 key={key} style={{ color: theme.primary }}>{trimmed.slice(4)}</h3>;
-        if (trimmed.startsWith("## ")) return <h2 key={key} style={{ color: theme.primary }}>{trimmed.slice(3)}</h2>;
-        if (/^\d+\.\s/.test(trimmed)) return <div key={key} style={s.numberedLine}>{trimmed}</div>;
-        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) return <div key={key} style={s.bulletLine}>• {trimmed.slice(2)}</div>;
 
-        return <div key={key} style={s.messageLine}>{line}</div>;
+        if (trimmed.startsWith("### ")) {
+          return <h3 key={key} style={{ color: theme.primary }}>{renderInlineMarkdown(trimmed.slice(4))}</h3>;
+        }
+
+        if (trimmed.startsWith("## ")) {
+          return <h2 key={key} style={{ color: theme.primary }}>{renderInlineMarkdown(trimmed.slice(3))}</h2>;
+        }
+
+        const numberedMatch = trimmed.match(/^(\d+\.\s+)(.*)$/);
+        if (numberedMatch) {
+          return (
+            <div key={key} style={s.numberedLine}>
+              <span>{numberedMatch[1]}</span>
+              {renderInlineMarkdown(numberedMatch[2])}
+            </div>
+          );
+        }
+
+        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+          return <div key={key} style={s.bulletLine}>• {renderInlineMarkdown(trimmed.slice(2))}</div>;
+        }
+
+        if (trimmed.startsWith("• ")) {
+          return <div key={key} style={s.bulletLine}>• {renderInlineMarkdown(trimmed.slice(2))}</div>;
+        }
+
+        return <div key={key} style={s.messageLine}>{renderInlineMarkdown(line)}</div>;
       });
     });
   };
