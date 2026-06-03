@@ -2028,7 +2028,28 @@ export default function App() {
 
     try {
       const formData = new FormData();
-      formData.append("message", text);
+
+      const materialNamesForContext = allMaterials
+        .slice(0, 160)
+        .map((m) => [m.name, m.en, m.uni, m.din, m.aisi, m.iso].filter(Boolean).join(" / "))
+        .join("; ");
+
+      const techAiSoftwareContext =
+        "\n\n[CONTESTO INTERNO SOFTWARE TECHAI - NON MOSTRARE COME BLOCCO SEPARATO]\n" +
+        "Stai rispondendo dentro TechAI, un software tecnico per aziende metalmeccaniche. " +
+        "Quando l'utente dice 'questo software', 'qui', 'nella tua app', 'le tue funzioni', 'strumenti tecnici' o frasi simili, devi riferirti a TechAI e alle sue funzioni interne, non a un software generico.\n\n" +
+        "Funzioni principali visibili in TechAI:\n" +
+        "- Checklist: controllo preliminare di componente, materiale, carichi, ambiente, tolleranze, rugosità e note tecniche.\n" +
+        "- Verifica: calcoli meccanici rapidi su trazione/compressione, taglio, flessione, torsione, sollecitazioni combinate, pressione interna, stato piano e fatica.\n" +
+        "- Materiali: libreria materiali interna con acciai, inox, allumini, ottoni, ghise, polimeri, elastomeri, compositi, ceramici e materiali speciali.\n" +
+        "- Tavole: analisi di tavole tecniche PDF/immagine con controllo di cartiglio, viste, quote, tolleranze dimensionali/geometriche, rugosità, filetti, fori, materiale e trattamenti.\n" +
+        "- Progetti: memoria progetto con chat, documenti, tavole, materiali, verifiche, decisioni, revisioni e note.\n\n" +
+        "Materiali presenti o previsti nella libreria interna, elenco sintetico: " +
+        materialNamesForContext +
+        "\n\nRegola importante: se l'utente chiede quali materiali o funzioni sono disponibili nel software, rispondi usando questo contesto interno. Se non hai l'elenco completo, dillo, ma non rispondere come se non sapessi nulla del software.\n" +
+        "[FINE CONTESTO INTERNO]\n";
+
+      formData.append("message", text + techAiSoftwareContext);
       formData.append("messages", JSON.stringify(updatedMessages.map(m => ({ role: m.role, text: m.text }))));
       formData.append("profile", JSON.stringify({ userName: user.name, focus: interest }));
       formData.append("analysisMode", "chat");
