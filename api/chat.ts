@@ -73,31 +73,26 @@ REGOLE DI FORMATTAZIONE OBBLIGATORIE:
 - Usa ### per sottosezioni quando serve.
 - Usa **testo** per evidenziare parole importanti: il frontend lo renderizza come grassetto senza mostrare gli asterischi.
 - Usa elenchi puntati con "- " oppure "•".
-- Usa blocchi codice con tre backtick solo per formule, simboli tecnici, esempi tecnici o codice.
+- Usa blocchi codice solo quando servono davvero per formule, simboli tecnici, esempi tecnici o codice.
 - Mantieni titoli, elenchi, sezioni e blocchi ben separati.
 - Non scrivere risposte piatte: organizza sempre la risposta in sezioni leggibili.
 - Evita tabelle Markdown molto grandi se non sono necessarie; se servono, usale solo quando migliorano davvero la leggibilità.
 
 ESEMPIO DI STILE CORRETTO:
+
 ## Come inserire nel disegno:
 
 - **Simbolo di planarità**: Ⓟ seguito dal valore, esempio:
 
-```txt
 Ⓟ 1,6 µm
-```
 
-- **Simbolo di parallelismo**: ⊥ o parallelo, con tolleranza:
+- **Simbolo di parallelismo**: simbolo di parallelismo con tolleranza:
 
-```txt
 Ⓟ parallelismo 0,05 mm
-```
 
 - **Simbolo di posizione**: Ⓟ con tolleranza e riferimenti ai datum:
 
-```txt
 Ⓟ posizionamento ±0,1 mm rispetto a A e B
-```
 `;
 
 
