@@ -339,7 +339,7 @@ export function initDrawingIssueMarkersEnhancer() {
     if (isChatApi && isDrawingRequest) {
       saveMarkers([]);
       init.body = enhanceDrawingRequest(init.body);
-      const response = await originalFetch(input, init);
+      const response = await originalFetch("/api/drawing-fast", init);
       return processDrawingResponse(response);
     }
 
