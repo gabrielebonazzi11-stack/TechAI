@@ -299,7 +299,7 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
   };
 }
 
-function chooseGroqModel(params: {
+function chooseOpenAITextModel(params: {
   message: string;
   fileText: string;
   analysisMode: AnalysisMode;
@@ -308,23 +308,27 @@ function chooseGroqModel(params: {
   const fileText = String(params.fileText || "");
   const analysisMode = params.analysisMode || "chat";
 
-  const routingText = `${message}\n${fileText}\n${analysisMode}`.toLowerCase();
+  const routingText = `${message}
+${fileText}
+${analysisMode}`.toLowerCase();
 
   const fastModel =
-    process.env.GROQ_MODEL_FAST ||
-    process.env.GROQ_MODEL ||
-    "llama-3.1-8b-instant";
+    process.env.OPENAI_TEXT_MODEL_FAST ||
+    process.env.OPENAI_TEXT_MODEL ||
+    process.env.OPENAI_API_MODEL ||
+    "gpt-4o-mini";
 
   const mediumModel =
-    process.env.GROQ_MODEL_MEDIUM ||
-    process.env.GROQ_MODEL ||
-    fastModel;
+    process.env.OPENAI_TEXT_MODEL_MEDIUM ||
+    process.env.OPENAI_TEXT_MODEL ||
+    process.env.OPENAI_API_MODEL ||
+    "gpt-4o-mini";
 
   const hardModel =
-    process.env.GROQ_MODEL_HARD ||
-    process.env.GROQ_MODEL_MEDIUM ||
-    process.env.GROQ_MODEL ||
-    "llama-3.3-70b-versatile";
+    process.env.OPENAI_TEXT_MODEL_HARD ||
+    process.env.OPENAI_TEXT_MODEL ||
+    process.env.OPENAI_API_MODEL ||
+    "gpt-4o";
 
   let score = 0;
   const reasons: string[] = [];
@@ -396,8 +400,8 @@ function chooseGroqModel(params: {
     return {
       level: "fast",
       model: fastModel,
-      maxTokens: 450,
-      timeoutMs: 12000,
+      maxTokens: 700,
+      timeoutMs: 18000,
       reason: "domanda breve/semplice",
     };
   }
@@ -406,8 +410,8 @@ function chooseGroqModel(params: {
     return {
       level: "hard",
       model: hardModel,
-      maxTokens: 1200,
-      timeoutMs: 22000,
+      maxTokens: 2200,
+      timeoutMs: 40000,
       reason: reasons.join(", ") || "richiesta complessa",
     };
   }
@@ -415,8 +419,8 @@ function chooseGroqModel(params: {
   return {
     level: "medium",
     model: mediumModel,
-    maxTokens: 750,
-    timeoutMs: 17000,
+    maxTokens: 1400,
+    timeoutMs: 28000,
     reason: reasons.join(", ") || "richiesta media",
   };
 }
@@ -638,28 +642,29 @@ function cleanAiOutput(text: string) {
     .trim();
 }
 
-function isGroqRateLimit(status: number, raw: string) {
+function isOpenAIRateLimit(status: number, raw: string) {
   const text = String(raw || "").toLowerCase();
 
   return (
     status === 429 ||
     text.includes("rate_limit") ||
     text.includes("rate limit") ||
-    text.includes("tokens per day") ||
-    text.includes("tpd") ||
-    text.includes("tpm")
+    text.includes("quota") ||
+    text.includes("insufficient_quota")
   );
 }
 
-function sanitizeGroqFailureMessage() {
+function sanitizeOpenAIFailureMessage() {
   return (
-    "⚠️ In questo momento il modello AI principale è al limite.\n\n" +
+    "⚠️ In questo momento il modello AI principale è al limite.
+
+" +
     "Ho provato automaticamente una modalità più leggera, ma non è disponibile. " +
     "Riprova tra qualche minuto oppure riduci la lunghezza del messaggio."
   );
 }
 
-async function callGroqText(params: {
+async function callOpenAIText(params: {
   message: string;
   messages: ChatMessage[];
   profile: any;
@@ -667,19 +672,24 @@ async function callGroqText(params: {
   fileMeta: string;
   analysisMode: AnalysisMode;
 }): Promise<string> {
-  const groqApiKey = process.env.GROQ_API_KEY;
+  const openAiApiKey =
+    process.env.OPENAI_TEXT_API_KEY ||
+    process.env.OPENAI_API_KEY;
 
-  const route = chooseGroqModel({
+  const route = chooseOpenAITextModel({
     message: params.message,
-    fileText: `${params.fileMeta}\n${params.fileText}`,
+    fileText: `${params.fileMeta}
+${params.fileText}`,
     analysisMode: params.analysisMode,
   });
 
-  if (!groqApiKey) {
-    console.error("Missing GROQ_API_KEY environment variable");
+  if (!openAiApiKey) {
+    console.error("Missing OPENAI_TEXT_API_KEY / OPENAI_API_KEY environment variable");
 
     return (
-      "⚠️ Chat AI temporaneamente non disponibile.\n\n" +
+      "⚠️ Chat AI temporaneamente non disponibile.
+
+" +
       "Il sistema non riesce ad avviare il modello di risposta in questo momento. " +
       "Riprova tra poco o segnala il problema all’assistenza se persiste."
     );
@@ -689,24 +699,25 @@ async function callGroqText(params: {
   const focus = params.profile?.focus || "Ingegneria Meccanica";
 
   const fastModel =
-    process.env.GROQ_MODEL_FAST ||
-    process.env.GROQ_MODEL ||
-    "llama-3.1-8b-instant";
+    process.env.OPENAI_TEXT_MODEL_FAST ||
+    process.env.OPENAI_TEXT_MODEL ||
+    process.env.OPENAI_API_MODEL ||
+    "gpt-4o-mini";
 
   const fallbackRoutes: ModelRoute[] = [
     route,
     {
       level: "fast",
       model: fastModel,
-      maxTokens: 350,
-      timeoutMs: 12000,
+      maxTokens: 600,
+      timeoutMs: 18000,
       reason: "fallback automatico economico dopo errore o limite",
     },
     {
       level: "fast",
-      model: "llama-3.1-8b-instant",
-      maxTokens: 300,
-      timeoutMs: 12000,
+      model: "gpt-4o-mini",
+      maxTokens: 550,
+      timeoutMs: 18000,
       reason: "fallback finale economico",
     },
   ];
@@ -735,8 +746,12 @@ async function callGroqText(params: {
 
     const finalUserContent =
       `${params.message || "Rispondi all'utente."}` +
-      `${params.fileMeta ? `\n\n${params.fileMeta}` : ""}` +
-      `${params.fileText ? `\n\n${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
+      `${params.fileMeta ? `
+
+${params.fileMeta}` : ""}` +
+      `${params.fileText ? `
+
+${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
 
     const systemPrompt = isFallback
       ? buildLightSystemPrompt({
@@ -763,12 +778,12 @@ async function callGroqText(params: {
 
     try {
       response = await fetchWithTimeout(
-        "https://api.groq.com/openai/v1/chat/completions",
+        "https://api.openai.com/v1/chat/completions",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${groqApiKey}`,
+            Authorization: `Bearer ${openAiApiKey}`,
           },
           body: JSON.stringify({
             model: currentRoute.model,
@@ -816,15 +831,16 @@ async function callGroqText(params: {
       if (isFallback && i > 0) {
         return (
           cleanContent +
-          "\n\n---\n" +
-          "Nota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite."
+          "
+
+Nota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite."
         );
       }
 
       return cleanContent;
     }
 
-    if (isGroqRateLimit(response.status, raw)) {
+    if (isOpenAIRateLimit(response.status, raw)) {
       lastWasRateLimit = true;
       continue;
     }
@@ -835,17 +851,21 @@ async function callGroqText(params: {
     }
 
     return (
-      "⚠️ Non sono riuscito a completare la risposta con il modello AI.\n\n" +
+      "⚠️ Non sono riuscito a completare la risposta con il modello AI.
+
+" +
       "Riprova tra poco oppure semplifica la richiesta."
     );
   }
 
   if (lastWasRateLimit) {
-    return sanitizeGroqFailureMessage();
+    return sanitizeOpenAIFailureMessage();
   }
 
   return (
-    "⚠️ Il modello AI non ha risposto correttamente.\n\n" +
+    "⚠️ Il modello AI non ha risposto correttamente.
+
+" +
     "Riprova tra poco oppure riduci la lunghezza del messaggio."
   );
 }
@@ -1409,21 +1429,33 @@ export default async function handler(req: Request) {
       ok: true,
       message: "API /api/chat funzionante",
       env: {
-        hasGroqKey: Boolean(process.env.GROQ_API_KEY),
-        groqModelFallback: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
-        groqModelFast: process.env.GROQ_MODEL_FAST || "llama-3.1-8b-instant",
-        groqModelMedium:
-          process.env.GROQ_MODEL_MEDIUM ||
-          process.env.GROQ_MODEL ||
-          "llama-3.1-8b-instant",
-        groqModelHard:
-          process.env.GROQ_MODEL_HARD ||
-          process.env.GROQ_MODEL_MEDIUM ||
-          process.env.GROQ_MODEL ||
-          "llama-3.3-70b-versatile",
-        hasOpenAIDrawingKey: Boolean(process.env.OPENAI_DRAWING_READER_API_KEY),
+        hasOpenAITextKey: Boolean(
+          process.env.OPENAI_TEXT_API_KEY || process.env.OPENAI_API_KEY
+        ),
+        openAITextKeyStatus:
+          process.env.OPENAI_TEXT_API_KEY || process.env.OPENAI_API_KEY ? "SET" : "MISSING",
+        openAITextModelFast:
+          process.env.OPENAI_TEXT_MODEL_FAST ||
+          process.env.OPENAI_TEXT_MODEL ||
+          process.env.OPENAI_API_MODEL ||
+          "gpt-4o-mini",
+        openAITextModelMedium:
+          process.env.OPENAI_TEXT_MODEL_MEDIUM ||
+          process.env.OPENAI_TEXT_MODEL ||
+          process.env.OPENAI_API_MODEL ||
+          "gpt-4o-mini",
+        openAITextModelHard:
+          process.env.OPENAI_TEXT_MODEL_HARD ||
+          process.env.OPENAI_TEXT_MODEL ||
+          process.env.OPENAI_API_MODEL ||
+          "gpt-4o",
+        hasOpenAIDrawingKey: Boolean(
+          process.env.OPENAI_DRAWING_READER_API_KEY || process.env.OPENAI_API_KEY
+        ),
         openAIDrawingKeyStatus:
-          process.env.OPENAI_DRAWING_READER_API_KEY ? "SET" : "MISSING",
+          process.env.OPENAI_DRAWING_READER_API_KEY || process.env.OPENAI_API_KEY
+            ? "SET"
+            : "MISSING",
         openAIDrawingModel:
           process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
         hasSupabase: Boolean(
@@ -1466,7 +1498,7 @@ export default async function handler(req: Request) {
           fileMeta: body.fileMeta,
           analysisMode: body.analysisMode,
         })
-      : await callGroqText({
+      : await callOpenAIText({
           message: body.message,
           messages: body.messages,
           profile: body.profile,
