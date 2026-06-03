@@ -64,6 +64,46 @@ const GUEST_FILE_LIMIT_24H = 2;
 const GUEST_WINDOW_HOURS = 24;
 const GUEST_WINDOW_MS = GUEST_WINDOW_HOURS * 60 * 60 * 1000;
 
+const TECHAI_FORMATTING_RULES =
+  `
+
+REGOLE DI FORMATTAZIONE OBBLIGATORIE:
+- Non usare mai Markdown grezzo visibile.
+- Non usare asterischi per il grassetto, quindi evita testi tipo **Materiale**.
+- Non usare titoli Markdown con #, ## o ###.
+- Non usare separatori Markdown tipo ---.
+- Non usare tabelle Markdown con il carattere |. Scrivi le tabelle come elenco di righe, non come griglia testuale.
+- Usa titoli puliti, numerati o in maiuscolo, ad esempio: 4. COME PROCEDERE NEL DISEGNO.
+- Usa elenchi puntati semplici con il simbolo •.
+- Per le sintesi usa blocchi numerati, non tabelle Markdown.
+- Mantieni un layout tecnico, ordinato e professionale, adatto a un software industriale.
+- Se devi scrivere codice perché richiesto dall'utente, puoi usare blocchi codice; in tutti gli altri casi evita sintassi Markdown visibile.
+
+ESEMPIO DI STILE CORRETTO:
+4. COME PROCEDERE NEL DISEGNO
+
+• Seleziona le superfici di riferimento:
+  superfici di appoggio, fori di riferimento, superfici di montaggio.
+
+• Definisci i datum:
+  etichetta le superfici con lettere A, B, C.
+
+• Inserisci i simboli GD&T:
+  specifica tolleranze, valori numerici e riferimenti datum.
+
+IN SINTESI
+
+1. Superfici di riferimento
+   Scegli superfici funzionali, di appoggio o di montaggio.
+
+2. Datum
+   Assegna lettere A, B, C alle superfici principali.
+
+3. Tolleranze GD&T
+   Inserisci simboli, valori e riferimenti datum.
+`;
+
+
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -259,7 +299,7 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
   };
 }
 
-function chooseOpenAITextModel(params: {
+function chooseGroqModel(params: {
   message: string;
   fileText: string;
   analysisMode: AnalysisMode;
@@ -271,22 +311,20 @@ function chooseOpenAITextModel(params: {
   const routingText = `${message}\n${fileText}\n${analysisMode}`.toLowerCase();
 
   const fastModel =
-    process.env.OPENAI_MODEL_FAST ||
-    process.env.OPENAI_TEXT_MODEL ||
-    process.env.OPENAI_MODEL ||
-    "gpt-4o-mini";
+    process.env.GROQ_MODEL_FAST ||
+    process.env.GROQ_MODEL ||
+    "llama-3.1-8b-instant";
 
   const mediumModel =
-    process.env.OPENAI_MODEL_MEDIUM ||
-    process.env.OPENAI_TEXT_MODEL ||
-    process.env.OPENAI_MODEL ||
+    process.env.GROQ_MODEL_MEDIUM ||
+    process.env.GROQ_MODEL ||
     fastModel;
 
   const hardModel =
-    process.env.OPENAI_MODEL_HARD ||
-    process.env.OPENAI_TEXT_MODEL ||
-    process.env.OPENAI_MODEL ||
-    "gpt-4o";
+    process.env.GROQ_MODEL_HARD ||
+    process.env.GROQ_MODEL_MEDIUM ||
+    process.env.GROQ_MODEL ||
+    "llama-3.3-70b-versatile";
 
   let score = 0;
   const reasons: string[] = [];
@@ -358,8 +396,8 @@ function chooseOpenAITextModel(params: {
     return {
       level: "fast",
       model: fastModel,
-      maxTokens: 650,
-      timeoutMs: 16000,
+      maxTokens: 450,
+      timeoutMs: 12000,
       reason: "domanda breve/semplice",
     };
   }
@@ -368,8 +406,8 @@ function chooseOpenAITextModel(params: {
     return {
       level: "hard",
       model: hardModel,
-      maxTokens: 2200,
-      timeoutMs: 30000,
+      maxTokens: 1200,
+      timeoutMs: 22000,
       reason: reasons.join(", ") || "richiesta complessa",
     };
   }
@@ -377,8 +415,8 @@ function chooseOpenAITextModel(params: {
   return {
     level: "medium",
     model: mediumModel,
-    maxTokens: 1400,
-    timeoutMs: 24000,
+    maxTokens: 750,
+    timeoutMs: 17000,
     reason: reasons.join(", ") || "richiesta media",
   };
 }
@@ -396,7 +434,8 @@ function buildLightSystemPrompt(params: {
     `Utente: ${userName}. Focus: ${focus}. Modalità: ${analysisMode}. Livello: ${route.level}. Motivo: ${route.reason}.\n` +
     `Rispondi nella stessa lingua dell'utente. Sii diretto, pratico e ordinato. ` +
     `Non inventare dati. Se mancano dati, chiedili. ` +
-    `Per codice, dai modifiche complete e copiabili.`
+    `Per codice, dai modifiche complete e copiabili.` +
+    TECHAI_FORMATTING_RULES
   );
 }
 
@@ -505,13 +544,14 @@ function buildCompactTechAiSystemPrompt(params: {
     `REGOLE RISPOSTA:\n` +
     `- Rispondi nella stessa lingua dell'utente.\n` +
     `- Sii diretto, ordinato, tecnico e pratico.\n` +
-    `- Usa Markdown e formule leggibili.\n` +
+    `- Usa formule leggibili senza Markdown grezzo visibile.\n` +
     `- Cita sempre le unità di misura.\n` +
     `- Se mancano dati, chiedili e non inventare.\n` +
     `- Se la richiesta riguarda codice, dai modifiche precise e copiabili.\n` +
     `- Se l'utente chiede un file completo, riscrivi il file completo.\n` +
-    `- Se si parla di componenti o disegni tecnici, quando opportuno scrivi: "fare riferimento a normativa: ...".\n\n` +
-    `PROMEMORIA TECNICO COMPATTO:\n` +
+    `- Se si parla di componenti o disegni tecnici, quando opportuno scrivi: "fare riferimento a normativa: ...".\n` +
+    TECHAI_FORMATTING_RULES +
+    `\nPROMEMORIA TECNICO COMPATTO:\n` +
     `Meccanica: equilibrio ΣF=0, ΣM=0; F=ma; P=Fv=Mω; Mt[Nm]=9550P[kW]/n[rpm]. Trazione σ=F/A; flessione σ=Mf/Wf; torsione τ=Mt/Wt. Von Mises σid=√(σ²+3τ²). Fatica: Goodman/Soderberg. Bulloni: precarico, taglio, trazione, classe 8.8/10.9. Tolleranze: H7, k6, m6, H7/f7. Rugosità: Ra 3,2÷6,3 generica; Ra 0,8÷1,6 sedi/tenute.\n` +
     buildModeInstructions(analysisMode)
   );
@@ -528,8 +568,9 @@ function buildFullTechAiSystemPrompt(params: {
   return (
     `Sei TechAI, copilot tecnico per ingegneria meccanica industriale. Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo scelta: ${route.reason}. Modalità: ${analysisMode}.\n` +
-    `Rispondi in italiano, tecnico e preciso. Usa Markdown e notazione chiara per formule. Cita sempre le unità. Se mancano dati, chiedi.\n` +
+    `Rispondi in italiano, tecnico e preciso. Usa notazione chiara per formule, ma senza Markdown grezzo visibile. Cita sempre le unità. Se mancano dati, chiedi.\n` +
     `Se la richiesta riguarda codice, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
+    TECHAI_FORMATTING_RULES +
     buildModeInstructions(analysisMode) +
     `\n\n` +
     `## PROMEMORIA TECNICO\n` +
@@ -544,49 +585,86 @@ function buildFullTechAiSystemPrompt(params: {
   );
 }
 
-function isOpenAIRateLimit(status: number, raw: string) {
+
+function cleanAiOutput(text: string) {
+  const withoutMarkdown = String(text || "")
+    // Toglie il grassetto Markdown anche se il modello lo usa male.
+    .replace(/\*\*/g, "")
+    // Toglie titoli Markdown tipo #, ##, ### lasciando il testo.
+    .replace(/^\s*#{1,6}\s*/gm, "")
+    // Sostituisce i separatori Markdown con una riga grafica più pulita.
+    .replace(/^\s*---+\s*$/gm, "────────────────────────")
+    // Toglie i delimitatori dei blocchi codice quando finiscono per comparire nel testo.
+    .replace(/```[a-zA-Z0-9_-]*/g, "")
+    .replace(/```/g, "");
+
+  const lines = withoutMarkdown.split("
+");
+
+  const cleanedLines = lines.map((line) => {
+    const trimmed = line.trim();
+
+    // Rimuove righe separatrici delle tabelle Markdown: | --- | --- |
+    if (/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(trimmed)) {
+      return "";
+    }
+
+    // Converte righe tabellari Markdown in righe leggibili senza caratteri |.
+    if (trimmed.includes("|")) {
+      const cells = trimmed
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter(Boolean);
+
+      if (cells.length >= 2) {
+        const first = cells[0];
+        const rest = cells.slice(1);
+
+        // Esempio: | 1 | Azione | Esempio | -> 1. Azione — Esempio
+        if (/^\d+[.)]?$/.test(first)) {
+          return `${first.replace(/[.)]$/, "")}. ${rest.join(" — ")}`;
+        }
+
+        // Esempio: | Elemento | Problema | Correzione | -> • Elemento: Problema — Correzione
+        return `• ${first}: ${rest.join(" — ")}`;
+      }
+    }
+
+    return line;
+  });
+
+  return cleanedLines
+    .join("
+")
+    .replace(/
+{3,}/g, "
+
+")
+    .trim();
+}
+
+function isGroqRateLimit(status: number, raw: string) {
   const text = String(raw || "").toLowerCase();
 
   return (
     status === 429 ||
     text.includes("rate_limit") ||
     text.includes("rate limit") ||
-    text.includes("too many requests") ||
-    text.includes("tokens per minute") ||
-    text.includes("requests per minute")
+    text.includes("tokens per day") ||
+    text.includes("tpd") ||
+    text.includes("tpm")
   );
 }
 
-function sanitizeOpenAIFailureMessage() {
+function sanitizeGroqFailureMessage() {
   return (
-    "⚠️ In questo momento il modello OpenAI principale è al limite o non disponibile.\n\n" +
+    "⚠️ In questo momento il modello AI principale è al limite.\n\n" +
     "Ho provato automaticamente una modalità più leggera, ma non è disponibile. " +
     "Riprova tra qualche minuto oppure riduci la lunghezza del messaggio."
   );
 }
 
-function extractOpenAIResponseText(data: any) {
-  if (typeof data?.output_text === "string" && data.output_text.trim()) {
-    return data.output_text;
-  }
-
-  const output = Array.isArray(data?.output) ? data.output : [];
-
-  const parts: string[] = [];
-
-  for (const item of output) {
-    const content = Array.isArray(item?.content) ? item.content : [];
-
-    for (const block of content) {
-      if (typeof block?.text === "string") parts.push(block.text);
-      if (typeof block?.content === "string") parts.push(block.content);
-    }
-  }
-
-  return parts.join("\n").trim();
-}
-
-async function callOpenAIText(params: {
+async function callGroqText(params: {
   message: string;
   messages: ChatMessage[];
   profile: any;
@@ -594,27 +672,23 @@ async function callOpenAIText(params: {
   fileMeta: string;
   analysisMode: AnalysisMode;
 }) {
-  const openAiApiKey =
-    process.env.OPENAI_API_KEY ||
-    process.env.OPENAI_TEXT_API_KEY ||
-    process.env.OPENAI_DRAWING_READER_API_KEY;
+  const groqApiKey = process.env.GROQ_API_KEY;
 
-  const route = chooseOpenAITextModel({
+  const route = chooseGroqModel({
     message: params.message,
     fileText: `${params.fileMeta}\n${params.fileText}`,
     analysisMode: params.analysisMode,
   });
 
-  if (!openAiApiKey) {
+  if (!groqApiKey) {
     return (
-      "⚠️ Backend collegato, ma manca la chiave OpenAI per la chat testuale.\n\n" +
+      "⚠️ Backend collegato, ma manca la chiave Groq per la chat testuale.\n\n" +
       "Su Vercel aggiungi:\n\n" +
       "```env\n" +
-      "OPENAI_API_KEY=sk-...\n" +
-      "OPENAI_TEXT_MODEL=gpt-4o-mini\n" +
-      "OPENAI_MODEL_FAST=gpt-4o-mini\n" +
-      "OPENAI_MODEL_MEDIUM=gpt-4o-mini\n" +
-      "OPENAI_MODEL_HARD=gpt-4o\n" +
+      "GROQ_API_KEY=la_tua_chiave_groq\n" +
+      "GROQ_MODEL_FAST=llama-3.1-8b-instant\n" +
+      "GROQ_MODEL_MEDIUM=llama-3.1-8b-instant\n" +
+      "GROQ_MODEL_HARD=llama-3.3-70b-versatile\n" +
       "```\n\n" +
       "Poi fai Redeploy del progetto."
     );
@@ -624,25 +698,24 @@ async function callOpenAIText(params: {
   const focus = params.profile?.focus || "Ingegneria Meccanica";
 
   const fastModel =
-    process.env.OPENAI_MODEL_FAST ||
-    process.env.OPENAI_TEXT_MODEL ||
-    process.env.OPENAI_MODEL ||
-    "gpt-4o-mini";
+    process.env.GROQ_MODEL_FAST ||
+    process.env.GROQ_MODEL ||
+    "llama-3.1-8b-instant";
 
   const fallbackRoutes: ModelRoute[] = [
     route,
     {
       level: "fast",
       model: fastModel,
-      maxTokens: 900,
-      timeoutMs: 18000,
+      maxTokens: 350,
+      timeoutMs: 12000,
       reason: "fallback automatico economico dopo errore o limite",
     },
     {
       level: "fast",
-      model: "gpt-4o-mini",
-      maxTokens: 700,
-      timeoutMs: 18000,
+      model: "llama-3.1-8b-instant",
+      maxTokens: 300,
+      timeoutMs: 12000,
       reason: "fallback finale economico",
     },
   ];
@@ -667,7 +740,7 @@ async function callOpenAIText(params: {
           }))
       : [];
 
-    const fileTextLimit = isFallback ? 3500 : currentRoute.level === "hard" ? 14000 : 9000;
+    const fileTextLimit = isFallback ? 3500 : currentRoute.level === "hard" ? 12000 : 8000;
 
     const finalUserContent =
       `${params.message || "Rispondi all'utente."}` +
@@ -695,37 +768,37 @@ async function callOpenAIText(params: {
             analysisMode: params.analysisMode,
           });
 
-    const input = [
-      ...cleanHistory,
-      {
-        role: "user",
-        content: finalUserContent,
-      },
-    ];
-
     let response: Response;
 
     try {
       response = await fetchWithTimeout(
-        "https://api.openai.com/v1/responses",
+        "https://api.groq.com/openai/v1/chat/completions",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${openAiApiKey}`,
+            Authorization: `Bearer ${groqApiKey}`,
           },
           body: JSON.stringify({
             model: currentRoute.model,
-            instructions: systemPrompt,
-            input,
+            messages: [
+              {
+                role: "system",
+                content: systemPrompt,
+              },
+              ...cleanHistory,
+              {
+                role: "user",
+                content: finalUserContent,
+              },
+            ],
             temperature:
               currentRoute.level === "fast"
                 ? 0.3
                 : currentRoute.level === "medium"
                   ? 0.35
                   : 0.25,
-            max_output_tokens: currentRoute.maxTokens,
-            store: false,
+            max_tokens: currentRoute.maxTokens,
           }),
         },
         currentRoute.timeoutMs
@@ -744,21 +817,23 @@ async function callOpenAIText(params: {
 
     if (response.ok) {
       const content =
-        extractOpenAIResponseText(data) ||
-        "Ho ricevuto la richiesta, ma OpenAI non ha restituito una risposta testuale valida.";
+        data?.choices?.[0]?.message?.content ||
+        "Ho ricevuto la richiesta, ma il modello non ha restituito una risposta valida.";
+
+      const cleanContent = cleanAiOutput(content);
 
       if (isFallback && i > 0) {
         return (
-          content +
+          cleanContent +
           "\n\n---\n" +
-          "Nota: ho usato automaticamente una modalità OpenAI più leggera perché il modello principale era al limite."
+          "Nota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite."
         );
       }
 
-      return content;
+      return cleanContent;
     }
 
-    if (isOpenAIRateLimit(response.status, raw)) {
+    if (isGroqRateLimit(response.status, raw)) {
       lastWasRateLimit = true;
       continue;
     }
@@ -769,19 +844,17 @@ async function callOpenAIText(params: {
     }
 
     return (
-      "⚠️ Non sono riuscito a completare la risposta con OpenAI.\n\n" +
-      `Modello usato: ${currentRoute.model}\n` +
-      `Codice: ${response.status}\n\n` +
-      `Dettaglio: ${raw || "nessun dettaglio ricevuto"}`
+      "⚠️ Non sono riuscito a completare la risposta con il modello AI.\n\n" +
+      "Riprova tra poco oppure semplifica la richiesta."
     );
   }
 
   if (lastWasRateLimit) {
-    return sanitizeOpenAIFailureMessage();
+    return sanitizeGroqFailureMessage();
   }
 
   return (
-    "⚠️ OpenAI non ha risposto correttamente.\n\n" +
+    "⚠️ Il modello AI non ha risposto correttamente.\n\n" +
     "Riprova tra poco oppure riduci la lunghezza del messaggio."
   );
 }
@@ -893,72 +966,43 @@ ${extractedPdfText.slice(0, 26000)}
                 "Rispondi in italiano tecnico preciso. " +
                 "\n\nREGOLE DI FORMATTAZIONE OBBLIGATORIE:\n" +
                 "Usa sempre emoji di stato all'inizio delle righe di controllo:\n" +
-                "✅ = elemento presente, leggibile, coerente o verificato.\n" +
-                "⚠️ = dato non rilevabile, dubbio, incompleto, da confermare o possibile incoerenza.\n" +
-                "❌ = errore certo o mancanza critica solo quando hai evidenza chiara che impedisce produzione, controllo o montaggio.\n" +
-                "Non usare giudizi secchi tipo giusto/sbagliato quando manca la funzione del pezzo: usa 'coerente', 'da verificare', 'possibile incoerenza', 'mancanza critica'.\n" +
-                "Non usare asterischi Markdown tipo **Materiale** quando scrivi gli esiti tecnici. Scrivi invece frasi pulite.\n" +
+                "✅ = elemento corretto, presente, conforme o verificato.\n" +
+                "❌ = errore, mancanza, incongruenza, non conformità o problema critico.\n" +
+                "⚠️ = dato dubbio, poco leggibile, incompleto o da verificare.\n" +
+                "Non usare asterischi Markdown tipo Materiale con doppio asterisco quando scrivi gli esiti tecnici. Scrivi invece frasi pulite.\n" +
                 "Esempio corretto: ✅ Materiale: 11SMnPb37 - UNI EN 10087.\n" +
-                "Esempio corretto: ⚠️ Rugosità specifica: non rilevata sulle superfici funzionali visibili; da verificare in base alla funzione.\n" +
-                "Esempio corretto: ⚠️ Tolleranze geometriche: non rilevate; non è automaticamente un errore se non ci sono superfici funzionali critiche.\n" +
-                "Esempio corretto: ❌ Mancanza critica: sede cuscinetto chiaramente identificabile senza tolleranza dimensionale o riferimento funzionale.\n" +
-                "\n\nMETODO TECNICO PER TOLLERANZE E RUGOSITÀ:\n" +
-                "Non limitarti a dire se tolleranze e rugosità sono presenti. Devi valutare la coerenza con la funzione osservabile della superficie.\n" +
-                "Per ogni tolleranza, accoppiamento, datum o rugosità importante indica sempre: elemento osservato, funzione presunta, valore rilevato, valutazione, motivo tecnico, verifica/correzione consigliata.\n" +
-                "Se la funzione non è chiara, non concludere che è sbagliato: scrivi 'da verificare'.\n" +
-                "Se il valore non è leggibile, scrivi 'non rilevabile dalla tavola/crop analizzato'.\n" +
-                "\n\nREGOLE DI VALUTAZIONE TOLLERANZE DIMENSIONALI:\n" +
-                "- Quote di ingombro o superfici non funzionali: può bastare tolleranza generale, ad esempio ISO 2768, se indicata nel cartiglio/note.\n" +
-                "- Fori generici di passaggio: non segnalare errore se non hanno tolleranza specifica, salvo interassi/funzione di montaggio critica.\n" +
-                "- Fori o diametri di centraggio, sedi, guide, spine, cuscinetti, alberi, boccole: richiedono normalmente tolleranza specifica o accoppiamento.\n" +
-                "- Accoppiamenti tipo H7, h6, g6, k6, m6 sono potenzialmente coerenti solo se collegati a funzione di sede, scorrimento, centraggio o montaggio.\n" +
-                "- Se vedi una sede cuscinetto su albero, valuta come possibili k6/m6/n6 in base a carico e rotazione; se vedi alloggiamento foro, valuta H7/J7/K7 come riferimento indicativo. Non imporli come obbligatori senza contesto.\n" +
-                "- Se una quota funzionale sembra priva di tolleranza specifica e non c'è tolleranza generale, segnala ⚠️ possibile mancanza. Usa ❌ solo se la produzione/montaggio è chiaramente non controllabile.\n" +
-                "\n\nREGOLE DI VALUTAZIONE TOLLERANZE GEOMETRICHE GD&T:\n" +
-                "- Non dire che i GD&T sono sbagliati solo perché non sono visibili. Scrivi: ⚠️ GD&T non rilevati, da verificare se necessari.\n" +
-                "- Datum A/B/C sono necessari quando ci sono quote di posizione, coassialità, parallelismo, perpendicolarità, superfici di riferimento o controlli funzionali.\n" +
-                "- Superfici di appoggio o montaggio possono richiedere planarità, parallelismo o perpendicolarità.\n" +
-                "- Fori in pattern funzionali possono richiedere tolleranza di posizione con datum.\n" +
-                "- Diametri coassiali o sedi rotanti possono richiedere coassialità, concentricità, oscillazione/runout o riferimenti equivalenti.\n" +
-                "- Se non identifichi chiaramente superfici funzionali, usa ⚠️ da verificare, non ❌.\n" +
-                "\n\nREGOLE DI VALUTAZIONE RUGOSITÀ:\n" +
-                "- Superfici non funzionali o estetiche: può bastare rugosità generale nel cartiglio, spesso indicativa Ra 3.2-6.3 µm in lavorazioni comuni.\n" +
-                "- Superfici di appoggio lavorate: valori indicativi spesso Ra 1.6-3.2 µm, da confermare in base a funzione e processo.\n" +
-                "- Sedi cuscinetto, sedi precise, superfici di centraggio o accoppiamento: valori indicativi spesso Ra 0.8-1.6 µm.\n" +
-                "- Superfici di scorrimento, tenuta, guida o usura: valori indicativi spesso Ra 0.4-1.6 µm, ma dipende da lubrificazione, materiale e funzione.\n" +
-                "- Filetti e smussi normalmente non richiedono sempre rugosità specifica, salvo funzione particolare.\n" +
-                "- Se manca rugosità generale e ci sono superfici funzionali visibili, segnala ⚠️ possibile mancanza. Usa ❌ solo se la rugosità è chiaramente indispensabile e assente.\n" +
-                "- Se leggi un valore molto grossolano su una superficie di scorrimento/sede, segnala ⚠️ possibile incoerenza e proponi verifica, non bocciare automaticamente.\n" +
+                "Esempio corretto: ❌ Rugosità: non indicata sulle superfici funzionali.\n" +
+                "Esempio corretto: ⚠️ Tolleranze geometriche: non visibili, da verificare se necessarie.\n" +
                 "\n\nSTRUTTURA RISPOSTA OBBLIGATORIA PER TAVOLE TECNICHE:\n" +
-                "## 1. Cartiglio\n" +
+                "Non usare ## nei titoli. Usa titoli puliti tipo 1. CARTIGLIO.\n" +
+                "1. CARTIGLIO\n" +
                 "Per ogni voce usa ✅ / ❌ / ⚠️. Controlla nome pezzo, numero disegno, materiale, scala, autore, data, revisione, unità.\n\n" +
-                "## 2. Viste e sezioni\n" +
+                "2. VISTE E SEZIONI\n" +
                 "Controlla se le viste sono sufficienti, se servono sezioni A-A/B-B, dettagli, viste ausiliarie o ingrandimenti.\n\n" +
-                "## 3. Quotatura\n" +
+                "3. QUOTATURA\n" +
                 "Cita le quote leggibili. Segnala quote mancanti, ridondanti, catene chiuse, riferimenti poco chiari o quote funzionali assenti.\n\n" +
-                "## 4. Tolleranze dimensionali e accoppiamenti\n" +
-                "Dividi la risposta in: valori rilevati, superfici/quote funzionali presunte, valutazione tecnica, possibili incoerenze, correzioni consigliate.\n\n" +
-                "## 5. Tolleranze geometriche e datum\n" +
-                "Indica GD&T rilevati, datum rilevati, superfici che potrebbero richiederli, valutazione tecnica e verifiche consigliate. Non trasformare 'non rilevato' in errore automatico.\n\n" +
-                "## 6. Rugosità\n" +
-                "Indica rugosità generale, rugosità specifiche, superfici funzionali interessate, coerenza del valore e verifica consigliata.\n\n" +
-                "## 7. Filetti, fori e lamature\n" +
+                "4. TOLLERANZE DIMENSIONALI\n" +
+                "Controlla tolleranze ISO, accoppiamenti H7/h6, H7/g6, k6, m6, tolleranze generali e quote funzionali.\n\n" +
+                "5. TOLLERANZE GEOMETRICHE\n" +
+                "Controlla planarità, parallelismo, perpendicolarità, concentricità/coassialità, posizione, riferimenti datum A/B/C.\n\n" +
+                "6. RUGOSITÀ\n" +
+                "Controlla simboli Ra/Rz, rugosità generale, rugosità specifiche su sedi, scorrimenti, appoggi, tenute e superfici funzionali.\n\n" +
+                "7. FILETTI, FORI E LAMATURE\n" +
                 "Controlla designazioni filetti, profondità, lamature, svasature, fori passanti/ciechi, interassi e quantità fori.\n\n" +
-                "## 8. Materiale e trattamenti\n" +
+                "8. MATERIALE E TRATTAMENTI\n" +
                 "Controlla materiale, norma, trattamenti termici, trattamenti superficiali, durezza e note produttive.\n\n" +
-                "## 9. Errori critici e correzioni prioritarie\n" +
-                "Elenca solo problemi concreti supportati dalla tavola. Per ogni punto scrivi: evidenza osservata, rischio, verifica/correzione consigliata. Se non hai evidenze, scrivi: ✅ Errori critici: nessuno riscontrato.\n\n" +
-                "## 10. Giudizio finale\n" +
+                "9. ERRORI CRITICI E CORREZIONI PRIORITARIE\n" +
+                "Qui usa soprattutto ❌ e ⚠️. Elenca solo problemi concreti. Se non trovi errori critici scrivi: ✅ Errori critici: nessuno riscontrato.\n\n" +
+                "10. GIUDIZIO FINALE\n" +
                 "Usa obbligatoriamente uno solo di questi tre esiti:\n" +
                 "✅ APPROVATA\n" +
                 "⚠️ APPROVATA CON NOTE / DA RIVEDERE\n" +
                 "❌ NON APPROVATA\n" +
                 "Poi aggiungi una frase breve con il motivo principale.\n\n" +
                 "CRITERIO GIUDIZIO:\n" +
-                "Se i dati critici non sono leggibili, non dare giudizio definitivo: usa ⚠️ APPROVATA CON NOTE / DA RIVEDERE. " +
-                "Se mancano dati fondamentali come materiale, quote principali o tolleranze funzionali chiaramente necessarie, non dare ✅ APPROVATA piena. Usa ⚠️ o ❌. " +
+                "Se mancano dati fondamentali come materiale, quote principali o tolleranze funzionali, non dare ✅ APPROVATA piena. Usa ⚠️ o ❌. " +
                 "Se la tavola è leggibile e completa per produzione, usa ✅ APPROVATA. " +
-                "Se ci sono errori gravi che impediscono la produzione o il controllo, usa ❌ NON APPROVATA. " +
+                "Se ci sono errori gravi che impediscono la produzione, usa ❌ NON APPROVATA. " +
                 "\n\nSE NON È UNA TAVOLA TECNICA:\n" +
                 "Mantieni comunque gli emoji ✅ / ❌ / ⚠️, ma adatta le sezioni al contenuto dell'immagine. " +
                 "Se è uno screenshot CAD/SolidWorks, aggiungi: Metodo consigliato, Comandi SolidWorks in italiano, Errori comuni e Quando NON usare questo metodo.",
@@ -1004,10 +1048,11 @@ ${extractedPdfText.slice(0, 26000)}
     );
   }
 
-  return (
+  const visionAnswer =
     data?.choices?.[0]?.message?.content ||
-    "Ho ricevuto l'immagine, ma OpenAI non ha restituito una risposta valida."
-  );
+    "Ho ricevuto l'immagine, ma OpenAI non ha restituito una risposta valida.";
+
+  return cleanAiOutput(visionAnswer);
 }
 
 async function checkAuthAndRateLimit(
@@ -1353,34 +1398,18 @@ export default async function handler(req: Request) {
       ok: true,
       message: "API /api/chat funzionante",
       env: {
-        hasOpenAITextKey: Boolean(
-          process.env.OPENAI_API_KEY ||
-          process.env.OPENAI_TEXT_API_KEY ||
-          process.env.OPENAI_DRAWING_READER_API_KEY
-        ),
-        openAITextKeyPreview:
-          (process.env.OPENAI_API_KEY ||
-            process.env.OPENAI_TEXT_API_KEY ||
-            process.env.OPENAI_DRAWING_READER_API_KEY)?.slice(0, 8) || "MISSING",
-        openAITextModelFallback:
-          process.env.OPENAI_TEXT_MODEL ||
-          process.env.OPENAI_MODEL ||
-          "gpt-4o-mini",
-        openAIModelFast:
-          process.env.OPENAI_MODEL_FAST ||
-          process.env.OPENAI_TEXT_MODEL ||
-          process.env.OPENAI_MODEL ||
-          "gpt-4o-mini",
-        openAIModelMedium:
-          process.env.OPENAI_MODEL_MEDIUM ||
-          process.env.OPENAI_TEXT_MODEL ||
-          process.env.OPENAI_MODEL ||
-          "gpt-4o-mini",
-        openAIModelHard:
-          process.env.OPENAI_MODEL_HARD ||
-          process.env.OPENAI_TEXT_MODEL ||
-          process.env.OPENAI_MODEL ||
-          "gpt-4o",
+        hasGroqKey: Boolean(process.env.GROQ_API_KEY),
+        groqModelFallback: process.env.GROQ_MODEL || "llama-3.1-8b-instant",
+        groqModelFast: process.env.GROQ_MODEL_FAST || "llama-3.1-8b-instant",
+        groqModelMedium:
+          process.env.GROQ_MODEL_MEDIUM ||
+          process.env.GROQ_MODEL ||
+          "llama-3.1-8b-instant",
+        groqModelHard:
+          process.env.GROQ_MODEL_HARD ||
+          process.env.GROQ_MODEL_MEDIUM ||
+          process.env.GROQ_MODEL ||
+          "llama-3.3-70b-versatile",
         hasOpenAIDrawingKey: Boolean(process.env.OPENAI_DRAWING_READER_API_KEY),
         openAIDrawingKeyPreview:
           process.env.OPENAI_DRAWING_READER_API_KEY?.slice(0, 8) || "MISSING",
@@ -1415,7 +1444,7 @@ export default async function handler(req: Request) {
       Boolean(body.imageDataUrl) ||
       Boolean(body.drawingImages && body.drawingImages.length > 0);
 
-    const answer = hasVisionInput
+    const rawAnswer = hasVisionInput
       ? await callOpenAIVision({
           message: body.message,
           messages: body.messages,
@@ -1426,7 +1455,7 @@ export default async function handler(req: Request) {
           fileMeta: body.fileMeta,
           analysisMode: body.analysisMode,
         })
-      : await callOpenAIText({
+      : await callGroqText({
           message: body.message,
           messages: body.messages,
           profile: body.profile,
@@ -1434,6 +1463,10 @@ export default async function handler(req: Request) {
           fileMeta: body.fileMeta,
           analysisMode: body.analysisMode,
         });
+
+    // Ultima pulizia obbligatoria prima di mandare il testo al frontend.
+    // Serve anche se il modello ignora il prompt e produce ancora ** o tabelle Markdown.
+    const answer = cleanAiOutput(rawAnswer);
 
     let usage: any = null;
 
