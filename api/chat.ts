@@ -68,31 +68,39 @@ const TECHAI_FORMATTING_RULES =
   `
 
 REGOLE DI FORMATTAZIONE OBBLIGATORIE:
-- Usa Markdown leggero per rendere le risposte belle e leggibili nell'interfaccia.
-- Usa ## per i titoli principali.
-- Usa ### per sottosezioni quando serve.
-- Usa **testo** per evidenziare parole importanti: il frontend lo renderizza come grassetto senza mostrare gli asterischi.
-- Usa elenchi puntati con "- " oppure "•".
-- Usa blocchi codice solo quando servono davvero per formule, simboli tecnici, esempi tecnici o codice.
-- Mantieni titoli, elenchi, sezioni e blocchi ben separati.
-- Non scrivere risposte piatte: organizza sempre la risposta in sezioni leggibili.
-- Evita tabelle Markdown molto grandi se non sono necessarie; se servono, usale solo quando migliorano davvero la leggibilità.
+- Non usare mai Markdown grezzo visibile.
+- Non usare asterischi per il grassetto, quindi evita testi tipo **Materiale**.
+- Non usare titoli Markdown con #, ## o ###.
+- Non usare separatori Markdown tipo ---.
+- Non usare tabelle Markdown con il carattere |. Scrivi le tabelle come elenco di righe, non come griglia testuale.
+- Usa titoli puliti, numerati o in maiuscolo, ad esempio: 4. COME PROCEDERE NEL DISEGNO.
+- Usa elenchi puntati semplici con il simbolo •.
+- Per le sintesi usa blocchi numerati, non tabelle Markdown.
+- Mantieni un layout tecnico, ordinato e professionale, adatto a un software industriale.
+- Se devi scrivere codice perché richiesto dall'utente, puoi usare blocchi codice; in tutti gli altri casi evita sintassi Markdown visibile.
 
 ESEMPIO DI STILE CORRETTO:
+4. COME PROCEDERE NEL DISEGNO
 
-## Come inserire nel disegno:
+• Seleziona le superfici di riferimento:
+  superfici di appoggio, fori di riferimento, superfici di montaggio.
 
-- **Simbolo di planarità**: Ⓟ seguito dal valore, esempio:
+• Definisci i datum:
+  etichetta le superfici con lettere A, B, C.
 
-Ⓟ 1,6 µm
+• Inserisci i simboli GD&T:
+  specifica tolleranze, valori numerici e riferimenti datum.
 
-- **Simbolo di parallelismo**: simbolo di parallelismo con tolleranza:
+IN SINTESI
 
-Ⓟ parallelismo 0,05 mm
+1. Superfici di riferimento
+   Scegli superfici funzionali, di appoggio o di montaggio.
 
-- **Simbolo di posizione**: Ⓟ con tolleranza e riferimenti ai datum:
+2. Datum
+   Assegna lettere A, B, C alle superfici principali.
 
-Ⓟ posizionamento ±0,1 mm rispetto a A e B
+3. Tolleranze GD&T
+   Inserisci simboli, valori e riferimenti datum.
 `;
 
 
@@ -536,7 +544,7 @@ function buildCompactTechAiSystemPrompt(params: {
     `REGOLE RISPOSTA:\n` +
     `- Rispondi nella stessa lingua dell'utente.\n` +
     `- Sii diretto, ordinato, tecnico e pratico.\n` +
-    `- Usa formule leggibili e, quando serve, blocchi codice per formule o esempi.\n` +
+    `- Usa formule leggibili senza Markdown grezzo visibile.\n` +
     `- Cita sempre le unità di misura.\n` +
     `- Se mancano dati, chiedili e non inventare.\n` +
     `- Se la richiesta riguarda codice, dai modifiche precise e copiabili.\n` +
@@ -560,7 +568,7 @@ function buildFullTechAiSystemPrompt(params: {
   return (
     `Sei TechAI, copilot tecnico per ingegneria meccanica industriale. Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo scelta: ${route.reason}. Modalità: ${analysisMode}.\n` +
-    `Rispondi in italiano, tecnico e preciso. Usa Markdown leggero per titoli, grassetti, elenchi e formule. Cita sempre le unità. Se mancano dati, chiedi.\n` +
+    `Rispondi in italiano, tecnico e preciso. Usa notazione chiara per formule, ma senza Markdown grezzo visibile. Cita sempre le unità. Se mancano dati, chiedi.\n` +
     `Se la richiesta riguarda codice, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
     TECHAI_FORMATTING_RULES +
     buildModeInstructions(analysisMode) +
@@ -579,10 +587,54 @@ function buildFullTechAiSystemPrompt(params: {
 
 
 function cleanAiOutput(text: string) {
-  return String(text || "")
-    // Pulizia minima: non distrugge Markdown, titoli, elenchi o blocchi codice.
-    // Il frontend renderizza **testo** come grassetto vero senza mostrare gli asterischi.
-    .replace(/\n{4,}/g, "\n\n\n")
+  const withoutMarkdown = String(text || "")
+    // Toglie il grassetto Markdown anche se il modello lo usa male.
+    .replace(/\*\*/g, "")
+    // Toglie titoli Markdown tipo #, ##, ### lasciando il testo.
+    .replace(/^\s*#{1,6}\s*/gm, "")
+    // Sostituisce i separatori Markdown con una riga grafica più pulita.
+    .replace(/^\s*---+\s*$/gm, "────────────────────────")
+    // Toglie i delimitatori dei blocchi codice quando finiscono per comparire nel testo.
+    .replace(/```[a-zA-Z0-9_-]*/g, "")
+    .replace(/```/g, "");
+
+  const lines = withoutMarkdown.split("\n");
+
+  const cleanedLines = lines.map((line) => {
+    const trimmed = line.trim();
+
+    // Rimuove righe separatrici delle tabelle Markdown: | --- | --- |
+    if (/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(trimmed)) {
+      return "";
+    }
+
+    // Converte righe tabellari Markdown in righe leggibili senza caratteri |.
+    if (trimmed.includes("|")) {
+      const cells = trimmed
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter(Boolean);
+
+      if (cells.length >= 2) {
+        const first = cells[0];
+        const rest = cells.slice(1);
+
+        // Esempio: | 1 | Azione | Esempio | -> 1. Azione — Esempio
+        if (/^\d+[.)]?$/.test(first)) {
+          return `${first.replace(/[.)]$/, "")}. ${rest.join(" — ")}`;
+        }
+
+        // Esempio: | Elemento | Problema | Correzione | -> • Elemento: Problema — Correzione
+        return `• ${first}: ${rest.join(" — ")}`;
+      }
+    }
+
+    return line;
+  });
+
+  return cleanedLines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
@@ -768,7 +820,8 @@ async function callGroqText(params: {
       if (isFallback && i > 0) {
         return (
           cleanContent +
-          "\n\nNota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite."
+          "\n\n---\n" +
+          "Nota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite."
         );
       }
 
@@ -858,17 +911,87 @@ ${extractedPdfText.slice(0, 26000)}
         ? [{ label: "Immagine tecnica caricata", dataUrl: params.imageDataUrl }]
         : [];
 
+  const isDrawingMode = params.analysisMode === "drawing";
+
+  const genericVisionSystemPrompt =
+    `Sei TechAI Vision, assistente visivo tecnico e generale. ` +
+    `Utente: ${userName}. Settore: ${focus}. Modalità: ${params.analysisMode}. ` +
+    `Analizza l'immagine in base alla domanda dell'utente, senza forzare sempre lo schema delle tavole tecniche. ` +
+    `Se l'immagine mostra l'interfaccia di TechAI, riconosci che si tratta delle funzioni dell'app e spiega cosa sono. ` +
+    `Se mostra un menu, una schermata software, un componente, una foto o uno screenshot, descrivilo normalmente. ` +
+    `Usa l'analisi da tavola tecnica solo quando l'utente sta usando la modalità Tavole/drawing oppure chiede esplicitamente una revisione di tavola tecnica. ` +
+    `Non inventare dati non visibili. Se qualcosa non è leggibile, scrivi che non è leggibile. ` +
+    `Rispondi in italiano, in modo tecnico ma naturale. Usa titoli, elenchi e grassetto Markdown leggero quando utile.`;
+
+  const drawingVisionSystemPrompt =
+    `Sei TechAI Vision, un ingegnere meccanico senior specializzato in disegno tecnico secondo norme ISO 128, ISO 1101, ISO 286 e ISO 1302. ` +
+    `Utente: ${userName}. Settore: ${focus}. Modalità: ${params.analysisMode}. ` +
+    "Il tuo compito è analizzare tavole tecniche meccaniche, immagini CAD, screenshot SolidWorks, componenti meccanici e distinte visive con la massima precisione. " +
+    "Leggi quote, tolleranze, rugosità, filetti, fori, lamature, scale, materiale, trattamento e cartiglio quando visibili. " +
+    "Non inventare valori: se un dato non è leggibile o non è presente, scrivi chiaramente 'non leggibile' oppure 'non indicato'. " +
+    "Quando la qualità dell'immagine è bassa, segnala il limite prima di giudicare la tavola. " +
+    "Rispondi in italiano tecnico preciso. " +
+    "\n\nREGOLE DI FORMATTAZIONE OBBLIGATORIE:\n" +
+    "Usa sempre emoji di stato all'inizio delle righe di controllo:\n" +
+    "✅ = elemento corretto, presente, conforme o verificato.\n" +
+    "❌ = errore, mancanza, incongruenza, non conformità o problema critico.\n" +
+    "⚠️ = dato dubbio, poco leggibile, incompleto o da verificare.\n" +
+    "Puoi usare **testo** per evidenziare parole importanti: il frontend lo renderizza come grassetto senza mostrare gli asterischi.\n" +
+    "Esempio corretto: ✅ Materiale: 11SMnPb37 - UNI EN 10087.\n" +
+    "Esempio corretto: ❌ Rugosità: non indicata sulle superfici funzionali.\n" +
+    "Esempio corretto: ⚠️ Tolleranze geometriche: non visibili, da verificare se necessarie.\n" +
+    "\n\nSTRUTTURA RISPOSTA OBBLIGATORIA PER TAVOLE TECNICHE:\n" +
+    "Usa titoli Markdown chiari, ad esempio ## 1. Cartiglio.\n" +
+    "## 1. Cartiglio\n" +
+    "Per ogni voce usa ✅ / ❌ / ⚠️. Controlla nome pezzo, numero disegno, materiale, scala, autore, data, revisione, unità.\n\n" +
+    "## 2. Viste e sezioni\n" +
+    "Controlla se le viste sono sufficienti, se servono sezioni A-A/B-B, dettagli, viste ausiliarie o ingrandimenti.\n\n" +
+    "## 3. Quotatura\n" +
+    "Cita le quote leggibili. Segnala quote mancanti, ridondanti, catene chiuse, riferimenti poco chiari o quote funzionali assenti.\n\n" +
+    "## 4. Tolleranze dimensionali\n" +
+    "Controlla tolleranze ISO, accoppiamenti H7/h6, H7/g6, k6, m6, tolleranze generali e quote funzionali.\n\n" +
+    "## 5. Tolleranze geometriche\n" +
+    "Controlla planarità, parallelismo, perpendicolarità, concentricità/coassialità, posizione, riferimenti datum A/B/C.\n\n" +
+    "## 6. Rugosità\n" +
+    "Controlla simboli Ra/Rz, rugosità generale, rugosità specifiche su sedi, scorrimenti, appoggi, tenute e superfici funzionali.\n\n" +
+    "## 7. Filetti, fori e lamature\n" +
+    "Controlla designazioni filetti, profondità, lamature, svasature, fori passanti/ciechi, interassi e quantità fori.\n\n" +
+    "## 8. Materiale e trattamenti\n" +
+    "Controlla materiale, norma, trattamenti termici, trattamenti superficiali, durezza e note produttive.\n\n" +
+    "## 9. Errori critici e correzioni prioritarie\n" +
+    "Qui usa soprattutto ❌ e ⚠️. Elenca solo problemi concreti. Se non trovi errori critici scrivi: ✅ Errori critici: nessuno riscontrato.\n\n" +
+    "## 10. Giudizio finale\n" +
+    "Usa obbligatoriamente uno solo di questi tre esiti:\n" +
+    "✅ APPROVATA\n" +
+    "⚠️ APPROVATA CON NOTE / DA RIVEDERE\n" +
+    "❌ NON APPROVATA\n" +
+    "Poi aggiungi una frase breve con il motivo principale.\n\n" +
+    "CRITERIO GIUDIZIO:\n" +
+    "Se mancano dati fondamentali come materiale, quote principali o tolleranze funzionali, non dare ✅ APPROVATA piena. Usa ⚠️ o ❌. " +
+    "Se la tavola è leggibile e completa per produzione, usa ✅ APPROVATA. " +
+    "Se ci sono errori gravi che impediscono la produzione, usa ❌ NON APPROVATA. " +
+    "\n\nSE NON È UNA TAVOLA TECNICA:\n" +
+    "Mantieni comunque gli emoji ✅ / ❌ / ⚠️, ma adatta le sezioni al contenuto dell'immagine. " +
+    "Se è uno screenshot CAD/SolidWorks, aggiungi: Metodo consigliato, Comandi SolidWorks in italiano, Errori comuni e Quando NON usare questo metodo.";
+
+  const visionSystemPrompt = isDrawingMode ? drawingVisionSystemPrompt : genericVisionSystemPrompt;
+
   const visionContent: any[] = [
     {
       type: "text",
       text:
         prompt +
-        "\n\nIMPORTANTE LETTURA TAVOLA PDF/A1/A0:\n" +
-        "Le immagini allegate sono crop della stessa tavola tecnica: alcuni automatici da testo PDF, alcuni da aree grafiche dense, più crop di sicurezza. Non trattarle come tavole separate.\n" +
-        "Usa la vista completa solo per orientarti.\n" +
-        "Usa i crop dinamici per leggere cartiglio, note, viste, sezioni, quote, fori, filetti, lamature e lavorazioni.\n" +
-        "Il testo estratto dal PDF serve come aiuto per riconoscere dati e parole, ma le conclusioni devono restare collegate alla tavola/crop visibili.\n" +
-        "Distingui chiaramente: rilevato / incerto / non leggibile. Non inventare dati mancanti e non trasformare la scarsa leggibilità in errore tecnico.\n",    },
+        (isDrawingMode
+          ? "\n\nIMPORTANTE LETTURA TAVOLA PDF/A1/A0:\n" +
+            "Le immagini allegate sono crop della stessa tavola tecnica: alcuni automatici da testo PDF, alcuni da aree grafiche dense, più crop di sicurezza. Non trattarle come tavole separate.\n" +
+            "Usa la vista completa solo per orientarti.\n" +
+            "Usa i crop dinamici per leggere cartiglio, note, viste, sezioni, quote, fori, filetti, lamature e lavorazioni.\n" +
+            "Il testo estratto dal PDF serve come aiuto per riconoscere dati e parole, ma le conclusioni devono restare collegate alla tavola/crop visibili.\n" +
+            "Distingui chiaramente: rilevato / incerto / non leggibile. Non inventare dati mancanti e non trasformare la scarsa leggibilità in errore tecnico.\n"
+          : "\n\nIMPORTANTE ANALISI IMMAGINE GENERICA:\n" +
+            "Rispondi alla domanda dell'utente guardando l'immagine.\n" +
+            "Non usare automaticamente lo schema Cartiglio / Viste / Quotatura / Tolleranze, a meno che l'utente chieda una revisione di tavola tecnica.\n" +
+            "Se l'immagine mostra funzioni dell'app TechAI, descrivi le funzioni visibili e spiega a cosa servono.\n"),    },
   ];
 
   for (const img of imageInputs.slice(0, 12)) {
@@ -898,56 +1021,7 @@ ${extractedPdfText.slice(0, 26000)}
           messages: [
             {
               role: "system",
-              content:
-                `Sei TechAI Vision, un ingegnere meccanico senior specializzato in disegno tecnico secondo norme ISO 128, ISO 1101, ISO 286 e ISO 1302. ` +
-                `Utente: ${userName}. Settore: ${focus}. Modalità: ${params.analysisMode}. ` +
-                "Il tuo compito è analizzare tavole tecniche meccaniche, immagini CAD, screenshot SolidWorks, componenti meccanici e distinte visive con la massima precisione. " +
-                "Leggi quote, tolleranze, rugosità, filetti, fori, lamature, scale, materiale, trattamento e cartiglio quando visibili. " +
-                "Non inventare valori: se un dato non è leggibile o non è presente, scrivi chiaramente 'non leggibile' oppure 'non indicato'. " +
-                "Quando la qualità dell'immagine è bassa, segnala il limite prima di giudicare la tavola. " +
-                "Rispondi in italiano tecnico preciso. " +
-                "\n\nREGOLE DI FORMATTAZIONE OBBLIGATORIE:\n" +
-                "Usa sempre emoji di stato all'inizio delle righe di controllo:\n" +
-                "✅ = elemento corretto, presente, conforme o verificato.\n" +
-                "❌ = errore, mancanza, incongruenza, non conformità o problema critico.\n" +
-                "⚠️ = dato dubbio, poco leggibile, incompleto o da verificare.\n" +
-                "Puoi usare **testo** per evidenziare parole importanti: il frontend lo renderizza come grassetto senza mostrare gli asterischi.\n" +
-                "Esempio corretto: ✅ Materiale: 11SMnPb37 - UNI EN 10087.\n" +
-                "Esempio corretto: ❌ Rugosità: non indicata sulle superfici funzionali.\n" +
-                "Esempio corretto: ⚠️ Tolleranze geometriche: non visibili, da verificare se necessarie.\n" +
-                "\n\nSTRUTTURA RISPOSTA OBBLIGATORIA PER TAVOLE TECNICHE:\n" +
-                "Usa titoli Markdown chiari, ad esempio ## 1. Cartiglio.\n" +
-                "1. CARTIGLIO\n" +
-                "Per ogni voce usa ✅ / ❌ / ⚠️. Controlla nome pezzo, numero disegno, materiale, scala, autore, data, revisione, unità.\n\n" +
-                "2. VISTE E SEZIONI\n" +
-                "Controlla se le viste sono sufficienti, se servono sezioni A-A/B-B, dettagli, viste ausiliarie o ingrandimenti.\n\n" +
-                "3. QUOTATURA\n" +
-                "Cita le quote leggibili. Segnala quote mancanti, ridondanti, catene chiuse, riferimenti poco chiari o quote funzionali assenti.\n\n" +
-                "4. TOLLERANZE DIMENSIONALI\n" +
-                "Controlla tolleranze ISO, accoppiamenti H7/h6, H7/g6, k6, m6, tolleranze generali e quote funzionali.\n\n" +
-                "5. TOLLERANZE GEOMETRICHE\n" +
-                "Controlla planarità, parallelismo, perpendicolarità, concentricità/coassialità, posizione, riferimenti datum A/B/C.\n\n" +
-                "6. RUGOSITÀ\n" +
-                "Controlla simboli Ra/Rz, rugosità generale, rugosità specifiche su sedi, scorrimenti, appoggi, tenute e superfici funzionali.\n\n" +
-                "7. FILETTI, FORI E LAMATURE\n" +
-                "Controlla designazioni filetti, profondità, lamature, svasature, fori passanti/ciechi, interassi e quantità fori.\n\n" +
-                "8. MATERIALE E TRATTAMENTI\n" +
-                "Controlla materiale, norma, trattamenti termici, trattamenti superficiali, durezza e note produttive.\n\n" +
-                "9. ERRORI CRITICI E CORREZIONI PRIORITARIE\n" +
-                "Qui usa soprattutto ❌ e ⚠️. Elenca solo problemi concreti. Se non trovi errori critici scrivi: ✅ Errori critici: nessuno riscontrato.\n\n" +
-                "10. GIUDIZIO FINALE\n" +
-                "Usa obbligatoriamente uno solo di questi tre esiti:\n" +
-                "✅ APPROVATA\n" +
-                "⚠️ APPROVATA CON NOTE / DA RIVEDERE\n" +
-                "❌ NON APPROVATA\n" +
-                "Poi aggiungi una frase breve con il motivo principale.\n\n" +
-                "CRITERIO GIUDIZIO:\n" +
-                "Se mancano dati fondamentali come materiale, quote principali o tolleranze funzionali, non dare ✅ APPROVATA piena. Usa ⚠️ o ❌. " +
-                "Se la tavola è leggibile e completa per produzione, usa ✅ APPROVATA. " +
-                "Se ci sono errori gravi che impediscono la produzione, usa ❌ NON APPROVATA. " +
-                "\n\nSE NON È UNA TAVOLA TECNICA:\n" +
-                "Mantieni comunque gli emoji ✅ / ❌ / ⚠️, ma adatta le sezioni al contenuto dell'immagine. " +
-                "Se è uno screenshot CAD/SolidWorks, aggiungi: Metodo consigliato, Comandi SolidWorks in italiano, Errori comuni e Quando NON usare questo metodo.",
+              content: visionSystemPrompt,
             },
             {
               role: "user",
