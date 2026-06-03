@@ -128,12 +128,12 @@ function injectStyles() {
       cursor: help;
       pointer-events: auto;
     }
-    .techai-drawing-marker:hover { transform: translate(-50%, -50%) scale(1.12); z-index: 12; }
+    .techai-drawing-marker:hover { z-index: 12; }
     .techai-drawing-marker:hover::after {
       content: attr(data-title);
       position: absolute;
       left: 50%;
-      bottom: calc(100% + 10px);
+      bottom: calc(100% + 12px);
       transform: translateX(-50%);
       min-width: 210px;
       max-width: 310px;
@@ -146,6 +146,7 @@ function injectStyles() {
       font-weight: 750;
       box-shadow: 0 16px 40px rgba(0,0,0,0.35);
       white-space: normal;
+      pointer-events: none;
     }
     .techai-drawing-marker-legend {
       position: absolute;
@@ -176,7 +177,13 @@ function findMainDrawingImage(): HTMLImageElement | null {
   const candidates = images.filter((img) => {
     const alt = String(img.getAttribute("alt") || "").toLowerCase();
     const rect = img.getBoundingClientRect();
-    return alt.includes("tavola") && rect.width > 260 && rect.height > 160;
+    const parentRect = img.parentElement?.getBoundingClientRect();
+
+    if (!alt.includes("tavola")) return false;
+    if (rect.width < 300 || rect.height < 220) return false;
+    if (!parentRect || parentRect.height < 300 || parentRect.width < 420) return false;
+
+    return true;
   });
 
   if (candidates.length === 0) return null;
@@ -294,6 +301,8 @@ async function processDrawingResponse(response: Response) {
 
     saveMarkers(markers);
     window.dispatchEvent(new CustomEvent("techai:drawing-markers-updated"));
+    window.setTimeout(scheduleRender, 350);
+    window.setTimeout(scheduleRender, 900);
 
     if (answer.includes(START_TAG)) {
       const cleaned = {
@@ -339,9 +348,6 @@ export function initDrawingIssueMarkersEnhancer() {
 
   window.addEventListener("techai:drawing-markers-updated", scheduleRender);
   window.addEventListener("resize", scheduleRender);
-
-  const observer = new MutationObserver(scheduleRender);
-  observer.observe(document.body, { childList: true, subtree: true });
 
   scheduleRender();
 }
