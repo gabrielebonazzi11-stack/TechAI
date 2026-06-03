@@ -666,7 +666,7 @@ async function callGroqText(params: {
   fileText: string;
   fileMeta: string;
   analysisMode: AnalysisMode;
-}) {
+}): Promise<string> {
   const groqApiKey = process.env.GROQ_API_KEY;
 
   const route = chooseGroqModel({
@@ -676,13 +676,9 @@ async function callGroqText(params: {
   });
 
   if (!groqApiKey) {
-  console.error("Missing GROQ_API_KEY environment variable");
+    console.error("Missing GROQ_API_KEY environment variable");
 
-  return (
-    "⚠️ Il servizio AI non è momentaneamente disponibile. Riprova tra poco."
-  );
-}
- 
+    return "⚠️ Il servizio AI non è momentaneamente disponibile. Riprova tra poco.";
   }
 
   const userName = params.profile?.userName || "Utente";
@@ -859,7 +855,7 @@ async function callOpenAIVision(params: {
   fileText: string;
   fileMeta: string;
   analysisMode: AnalysisMode;
-}) {
+}): Promise<string> {
   const openAiDrawingKey = process.env.OPENAI_DRAWING_READER_API_KEY;
 
   const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
@@ -1423,8 +1419,8 @@ export default async function handler(req: Request) {
           process.env.GROQ_MODEL ||
           "llama-3.3-70b-versatile",
         hasOpenAIDrawingKey: Boolean(process.env.OPENAI_DRAWING_READER_API_KEY),
-        openAIDrawingKeyPreview:
-          process.env.OPENAI_DRAWING_READER_API_KEY?.slice(0, 8) || "MISSING",
+        openAIDrawingKeyStatus:
+          process.env.OPENAI_DRAWING_READER_API_KEY ? "SET" : "MISSING",
         openAIDrawingModel:
           process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
         hasSupabase: Boolean(
@@ -1448,7 +1444,7 @@ export default async function handler(req: Request) {
       hasFile: body.hasFile,
     });
 
-    if (!auth.ok) {
+    if (auth.ok === false) {
       return auth.response;
     }
 
@@ -1456,7 +1452,7 @@ export default async function handler(req: Request) {
       Boolean(body.imageDataUrl) ||
       Boolean(body.drawingImages && body.drawingImages.length > 0);
 
-    const rawAnswer = hasVisionInput
+    const rawAnswer: string = hasVisionInput
       ? await callOpenAIVision({
           message: body.message,
           messages: body.messages,
