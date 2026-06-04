@@ -3,311 +3,35 @@ import { MATERIALS_DB, MaterialInfo } from "./data/materials";
 import MaterialsLibrary from "./components/MaterialsLibrary";
 import ProjectsModal from "./components/projects/ProjectsModal";
 import { Modal, Field, ResultCard, QuickCalcCard, FileCard, DrawingResultCard, DrawingPreview } from "./components/common/AppUiComponents";
-import { type DrawingCropImage, isImageFile, isPdfFile, isDrawingUpload, makeDrawingImagesFromImageFile, pdfPageToImageFile, compressImageForVision, extractPdfText } from "./utils/technicalDrawingUtils";
+import { isImageFile, isPdfFile, isDrawingUpload, makeDrawingImagesFromImageFile, pdfPageToImageFile, compressImageForVision, extractPdfText } from "./utils/technicalDrawingUtils";
 import { supabase, isSupabaseConfigured } from "./lib/supabaseClient";
+import type {
+  Theme,
+  FileAttachment,
+  PendingFile,
+  Message,
+  ChatSession,
+  UserProfile,
+  ChecklistForm,
+  ChecklistResult,
+  QuickCalcForm,
+  QuickCalcResult,
+  DrawingUpload,
+  DrawingIssue,
+  DrawingResult,
+  DrawingForm,
+  ProjectSavedItem,
+  ProjectMemoryTab,
+  ProjectRecord,
+  ProjectFileMeta,
+  SeriousVerificationForm,
+  SeriousVerificationResult,
+  BomIssue,
+  SectionData
+} from "./types/appTypes";
 
 
-type Role = "utente" | "AI";
-type IssueSeverity = "errore" | "attenzione" | "info";
 
-type Theme = {
-  name: string;
-  primary: string;
-  bg: string;
-  surface: string;
-  text: string;
-  border: string;
-};
-
-type FileAttachment = {
-  name: string;
-  type: string;
-  size: number;
-};
-
-type PendingFile = {
-  file: File;
-  fileAttachment: FileAttachment;
-};
-
-type Message = {
-  role: Role;
-  text: string;
-  fileAttachment?: FileAttachment;
-};
-
-type ChatSession = {
-  id: string;
-  title: string;
-  messages: Message[];
-  createdAt: string;
-};
-
-type UserProfile = {
-  name: string;
-  email: string;
-};
-
-type ChecklistStatus = "✅ Conforme" | "⚠️ Da verificare" | "❌ Errore critico";
-
-type ChecklistForm = {
-  componentType: string;
-  material: string;
-  load: string;
-  environment: string;
-  machining: string;
-  safetyFactor: string;
-  tolerances: string;
-  roughness: string;
-  notes: string;
-};
-
-type ChecklistResult = {
-  area: string;
-  status: ChecklistStatus;
-  detail: string;
-  suggestion: string;
-};
-
-type QuickCalcForm = {
-  componentType: string;
-  verificationType: string;
-  sectionType: string;
-  material: string;
-
-  axialLoad: string;
-  shearLoad: string;
-  bendingMoment: string;
-  torque: string;
-  distance: string;
-
-  diameter: string;
-  outerDiameter: string;
-  innerDiameter: string;
-
-  base: string;
-  height: string;
-  outerBase: string;
-  outerHeight: string;
-  innerBase: string;
-  innerHeight: string;
-
-  pressure: string;
-  radius: string;
-  thickness: string;
-
-  sigmaX: string;
-  sigmaY: string;
-  tauXY: string;
-
-  sigmaMax: string;
-  sigmaMin: string;
-  fatigueLimit: string;
-
-  safetyFactorRequired: string;
-};
-
-type QuickCalcResult = {
-  title: string;
-  scheme: string;
-  section: string;
-  formulas: string[];
-  sectionValues: string[];
-  values: string[];
-  equivalentStress: number;
-  trescaStress?: number;
-  safetyFactor: number;
-  outcome: "OK" | "NON OK";
-  notes: string[];
-};
-
-type DrawingUpload = {
-  file: File;
-  fileAttachment: FileAttachment;
-  previewUrl?: string;
-  convertedFile?: File;
-  drawingImages?: DrawingCropImage[];
-  extractedText?: string;
-  isPdf?: boolean;
-  totalPages?: number;
-};
-
-type DrawingIssue = {
-  id: string;
-  label: string;
-  severity: IssueSeverity;
-  x: number;
-  y: number;
-  detail: string;
-};
-
-type DrawingResult = {
-  category: string;
-  status: string;
-  item: string;
-  reason: string;
-  suggestion: string;
-};
-
-type DrawingForm = {
-  partName: string;
-  partType: string;
-  material: string;
-  manufacturing: string;
-  mainFeatures: string;
-  functionalSurfaces: string;
-  holesThreads: string;
-  fits: string;
-  tolerances: string;
-  roughness: string;
-  assemblyFunction: string;
-  productionQuantity: string;
-};
-
-type ProjectSavedItem = {
-  id: string;
-  type:
-    | "chat"
-    | "document"
-    | "drawing"
-    | "material"
-    | "verification"
-    | "decision"
-    | "note"
-    | "revision"
-    | "checklist"
-    | "quickcalc"
-    | "file"
-    | "bom"
-    | "solidworks"
-    | "advanced";
-  title: string;
-  createdAt: string;
-  summary: string;
-  payload?: any;
-};
-
-type ProjectChat = ProjectSavedItem;
-type ProjectDocument = ProjectSavedItem;
-type ProjectDrawing = ProjectSavedItem;
-type ProjectMaterial = ProjectSavedItem;
-type ProjectVerification = ProjectSavedItem;
-type ProjectDecision = ProjectSavedItem;
-type ProjectNote = ProjectSavedItem;
-type ProjectRevision = ProjectSavedItem;
-
-type ProjectMemoryTab =
-  | "Panoramica"
-  | "Chat"
-  | "Documenti"
-  | "Tavole"
-  | "Materiali"
-  | "Verifiche"
-  | "Decisioni"
-  | "Revisioni"
-  | "Note";
-
-type ProjectRecord = {
-  id: string;
-  name: string;
-  description: string;
-  createdAt: string;
-  updatedAt: string;
-  items: ProjectSavedItem[];
-
-  chats: ProjectChat[];
-  documents: ProjectDocument[];
-  drawings: ProjectDrawing[];
-  materials: ProjectMaterial[];
-  verifications: ProjectVerification[];
-  decisions: ProjectDecision[];
-  revisions: ProjectRevision[];
-  notes: ProjectNote[];
-};
-
-type ProjectFileMeta = {
-  name: string;
-  type: string;
-  sizeKb: string;
-  extension: string;
-  category: string;
-  note: string;
-};
-
-type SeriousVerificationMode =
-  | "fatigue"
-  | "contact"
-  | "bolts"
-  | "shaft"
-  | "pin"
-  | "pressure"
-  | "weld"
-  | "key"
-  | "bearing"
-  | "interference";
-
-type SeriousVerificationForm = {
-  mode: SeriousVerificationMode;
-  material: string;
-  rm: string;
-  re: string;
-  sn: string;
-  sigmaMax: string;
-  sigmaMin: string;
-  normalLoad: string;
-  contactArea: string;
-  contactDiameter: string;
-  contactLength: string;
-  boltClass: string;
-  boltSize: string;
-  boltArea: string;
-  boltCount: string;
-  shearForce: string;
-  tensileForce: string;
-  bendingMoment: string;
-  torque: string;
-  diameter: string;
-  distance: string;
-  pressure: string;
-  radius: string;
-  thickness: string;
-  weldLength: string;
-  weldThroat: string;
-  keyWidth: string;
-  keyHeight: string;
-  keyLength: string;
-  rpm: string;
-  lifeHours: string;
-  dynamicLoadRating: string;
-  frictionCoeff: string;
-  interferencePressure: string;
-};
-
-type SeriousVerificationResult = {
-  title: string;
-  status: "OK" | "NON OK" | "DA VERIFICARE";
-  rows: string[];
-  suggestions: string[];
-};
-
-type BomIssue = {
-  row: number;
-  severity: IssueSeverity;
-  message: string;
-  suggestion: string;
-};
-
-type SectionData = {
-  name: string;
-  A: number;
-  Jf: number;
-  Wf: number;
-  Jp: number;
-  Wt: number;
-  shearFactor: number;
-  values: string[];
-  notes: string[];
-};
 const THEMES: Theme[] = [
   { name: "Industrial Blue", primary: "#3b82f6", bg: "#f8fafc", surface: "#eff6ff", text: "#1e293b", border: "#dbeafe" },
   { name: "Slate Grey", primary: "#475569", bg: "#f1f5f9", surface: "#e2e8f0", text: "#1e293b", border: "#cbd5e1" },
