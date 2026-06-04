@@ -416,7 +416,7 @@ export default function App() {
   const [showMaterials, setShowMaterials] = useState(false);
   const [showDrawingGenerator, setShowDrawingGenerator] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
-  const [projectToolView, setProjectToolView] = useState<"memory" | "revisions" | "serious" | "solidworks" | "bom">("memory");
+  const [projectToolView, setProjectToolView] = useState<"memory" | "revisions" | "serious" | "bom">("memory");
   const [projectSearch, setProjectSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState("Aspetto");
@@ -589,8 +589,6 @@ export default function App() {
   const [bomFileName, setBomFileName] = useState("");
   const [bomIssues, setBomIssues] = useState<BomIssue[]>([]);
 
-  const [solidWorksTask, setSolidWorksTask] = useState("modellare_pezzo");
-  const [solidWorksNotes, setSolidWorksNotes] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const drawingReviewInputRef = useRef<HTMLInputElement>(null);
@@ -1559,52 +1557,6 @@ export default function App() {
     const projectId = activeProject?.id || createProject(file.name.replace(/\.[^.]+$/, ""), "Creato automaticamente da upload file tecnico.");
     addProjectItem({ type: "file", title: `File caricato - ${file.name}`, summary: `${category} · ${meta.sizeKb} KB. ${note}`, payload: meta }, projectId);
     event.target.value = "";
-  };
-
-  const solidWorksGuide = useMemo(() => {
-    const guides: Record<string, { title: string; method: string[]; commands: string[]; errors: string[]; avoid: string[] }> = {
-      modellare_pezzo: {
-        title: "Modellare un pezzo da zero",
-        method: ["Parti dalla funzione principale del pezzo", "Crea lo schizzo base sulla vista più stabile", "Usa estrusioni/rivoluzioni semplici", "Aggiungi fori, raccordi e smussi alla fine"],
-        commands: ["Nuovo > Parte", "Schizzo", "Quota intelligente", "Estrusione base/base", "Taglio estruso", "Creazione guidata fori", "Raccordo", "Smusso"],
-        errors: ["Schizzo non completamente definito", "Raccordi messi troppo presto", "Quote riferite a spigoli che cambiano"],
-        avoid: ["Non partire da dettagli piccoli", "Non usare superfici se basta un solido", "Non lasciare schizzi blu non definiti"],
-      },
-      tubo_piegato: {
-        title: "Creare un tubo piegato",
-        method: ["Definisci asse/percorso del tubo", "Imposta diametro esterno e spessore", "Controlla raggi minimi di piega", "Genera distinta/taglio se serve"],
-        commands: ["Schizzo 3D", "Membro strutturale / Saldature", "Sweep/Base con sweep", "Libreria profili", "Appiattimento se lamiera"],
-        errors: ["Raggio piega troppo piccolo", "Percorso 3D non vincolato", "Profilo non normale al percorso"],
-        avoid: ["Non modellare ogni tratto come corpo separato se deve essere un unico tubo", "Non ignorare lo spessore reale"],
-      },
-      sottoassieme: {
-        title: "Creare un sottoassieme",
-        method: ["Raggruppa componenti funzionalmente collegati", "Definisci parte fissa", "Aggiungi accoppiamenti essenziali", "Controlla gradi di libertà"],
-        commands: ["Nuovo > Assieme", "Inserisci componenti", "Accoppiamento", "Fissa/Libera", "Rilevamento interferenze", "Salva come sottoassieme"],
-        errors: ["Troppi accoppiamenti ridondanti", "Componenti non fissati", "Origini non coerenti"],
-        avoid: ["Non mettere tutto nell'assieme principale", "Non usare accoppiamenti casuali su facce poco stabili"],
-      },
-      cartiglio: {
-        title: "Collegare materiale al cartiglio",
-        method: ["Assegna materiale alla parte", "Compila proprietà personalizzate", "Collega note del cartiglio alle proprietà", "Aggiorna tavola"],
-        commands: ["Materiale > Modifica materiale", "File > Proprietà", "Proprietà personalizzate", "Formato foglio", "Collega a proprietà"],
-        errors: ["Materiale scritto a mano nel cartiglio", "Proprietà non aggiornate", "Nome proprietà diverso tra parte e tavola"],
-        avoid: ["Non scrivere materiale solo come testo libero", "Non duplicare dati in cartiglio e note"],
-      },
-      step_modificabile: {
-        title: "Rendere un file STEP modificabile",
-        method: ["Importa STEP come solido", "Esegui diagnostica importazione", "Riconosci funzioni se possibile", "Ricostruisci quote critiche manualmente"],
-        commands: ["Apri STEP", "Diagnostica importazione", "FeatureWorks / Riconoscimento funzioni", "Modifica diretta", "Sposta faccia", "Elimina faccia"],
-        errors: ["Pensare che lo STEP abbia lo storico feature", "Modificare facce senza controllare quote", "Perdere riferimenti dell'assieme"],
-        avoid: ["Non usare FeatureWorks su geometrie troppo complesse se crea feature sporche", "Non fidarti senza verificare le misure"],
-      },
-    };
-
-    return guides[solidWorksTask] || guides.modellare_pezzo;
-  }, [solidWorksTask]);
-
-  const saveSolidWorksGuideToProject = () => {
-    addProjectItem({ type: "solidworks", title: solidWorksGuide.title, summary: `Procedura guidata SolidWorks salvata. Note: ${solidWorksNotes || "nessuna"}`, payload: { solidWorksTask, solidWorksNotes, solidWorksGuide } });
   };
 
   const normalizeMaterialKey = (value?: string) => {
@@ -3781,12 +3733,6 @@ Struttura:
           runSeriousVerification={runSeriousVerification}
           resetSeriousVerification={resetSeriousVerification}
           seriousResult={seriousResult}
-          solidWorksTask={solidWorksTask}
-          setSolidWorksTask={setSolidWorksTask}
-          solidWorksNotes={solidWorksNotes}
-          setSolidWorksNotes={setSolidWorksNotes}
-          solidWorksGuide={solidWorksGuide}
-          saveSolidWorksGuideToProject={saveSolidWorksGuideToProject}
           bomFileInputRef={bomFileInputRef}
           handleBomFileUpload={handleBomFileUpload}
           bomText={bomText}
