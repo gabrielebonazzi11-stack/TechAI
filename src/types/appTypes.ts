@@ -1,3 +1,5 @@
+import type { DrawingCropImage } from "../utils/technicalDrawingUtils";
+
 export type Role = "utente" | "AI";
 export type IssueSeverity = "errore" | "attenzione" | "info";
 
@@ -65,29 +67,36 @@ export type QuickCalcForm = {
   verificationType: string;
   sectionType: string;
   material: string;
+
   axialLoad: string;
   shearLoad: string;
   bendingMoment: string;
   torque: string;
   distance: string;
+
   diameter: string;
   outerDiameter: string;
   innerDiameter: string;
+
   base: string;
   height: string;
   outerBase: string;
   outerHeight: string;
   innerBase: string;
   innerHeight: string;
+
   pressure: string;
   radius: string;
   thickness: string;
+
   sigmaX: string;
   sigmaY: string;
   tauXY: string;
+
   sigmaMax: string;
   sigmaMin: string;
   fatigueLimit: string;
+
   safetyFactorRequired: string;
 };
 
@@ -110,6 +119,8 @@ export type DrawingUpload = {
   fileAttachment: FileAttachment;
   previewUrl?: string;
   convertedFile?: File;
+  drawingImages?: DrawingCropImage[];
+  extractedText?: string;
   isPdf?: boolean;
   totalPages?: number;
 };
@@ -146,16 +157,48 @@ export type DrawingForm = {
   productionQuantity: string;
 };
 
-export type ProjectItemType = "checklist" | "quickcalc" | "drawing" | "file" | "bom" | "solidworks" | "advanced";
-
 export type ProjectSavedItem = {
   id: string;
-  type: ProjectItemType;
+  type:
+    | "chat"
+    | "document"
+    | "drawing"
+    | "material"
+    | "verification"
+    | "decision"
+    | "note"
+    | "revision"
+    | "checklist"
+    | "quickcalc"
+    | "file"
+    | "bom"
+    | "solidworks"
+    | "advanced";
   title: string;
   createdAt: string;
   summary: string;
-  payload?: unknown;
+  payload?: any;
 };
+
+export type ProjectChat = ProjectSavedItem;
+export type ProjectDocument = ProjectSavedItem;
+export type ProjectDrawing = ProjectSavedItem;
+export type ProjectMaterial = ProjectSavedItem;
+export type ProjectVerification = ProjectSavedItem;
+export type ProjectDecision = ProjectSavedItem;
+export type ProjectNote = ProjectSavedItem;
+export type ProjectRevision = ProjectSavedItem;
+
+export type ProjectMemoryTab =
+  | "Panoramica"
+  | "Chat"
+  | "Documenti"
+  | "Tavole"
+  | "Materiali"
+  | "Verifiche"
+  | "Decisioni"
+  | "Revisioni"
+  | "Note";
 
 export type ProjectRecord = {
   id: string;
@@ -164,6 +207,15 @@ export type ProjectRecord = {
   createdAt: string;
   updatedAt: string;
   items: ProjectSavedItem[];
+
+  chats: ProjectChat[];
+  documents: ProjectDocument[];
+  drawings: ProjectDrawing[];
+  materials: ProjectMaterial[];
+  verifications: ProjectVerification[];
+  decisions: ProjectDecision[];
+  revisions: ProjectRevision[];
+  notes: ProjectNote[];
 };
 
 export type ProjectFileMeta = {
@@ -175,8 +227,20 @@ export type ProjectFileMeta = {
   note: string;
 };
 
+export type SeriousVerificationMode =
+  | "fatigue"
+  | "contact"
+  | "bolts"
+  | "shaft"
+  | "pin"
+  | "pressure"
+  | "weld"
+  | "key"
+  | "bearing"
+  | "interference";
+
 export type SeriousVerificationForm = {
-  mode: "fatigue" | "contact" | "bolts";
+  mode: SeriousVerificationMode;
   material: string;
   rm: string;
   re: string;
@@ -193,6 +257,23 @@ export type SeriousVerificationForm = {
   boltCount: string;
   shearForce: string;
   tensileForce: string;
+  bendingMoment: string;
+  torque: string;
+  diameter: string;
+  distance: string;
+  pressure: string;
+  radius: string;
+  thickness: string;
+  weldLength: string;
+  weldThroat: string;
+  keyWidth: string;
+  keyHeight: string;
+  keyLength: string;
+  rpm: string;
+  lifeHours: string;
+  dynamicLoadRating: string;
+  frictionCoeff: string;
+  interferencePressure: string;
 };
 
 export type SeriousVerificationResult = {
