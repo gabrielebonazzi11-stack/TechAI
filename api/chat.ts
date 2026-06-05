@@ -268,7 +268,7 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
           label: String(img.label || "Crop tavola"),
           dataUrl: String(img.dataUrl),
         }))
-        .slice(0, 12);
+        .slice(0, 8);
     }
 
     return {
@@ -911,7 +911,7 @@ async function callOpenAIVision(params: {
     process.env.OPENAI_API_KEY;
 
   const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
-  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "55000");
+  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "110000");
 
   if (!openAiDrawingKey) {
     console.error("Missing OpenAI API key for drawing reader");
@@ -1080,13 +1080,13 @@ ${extractedPdfText.slice(0, 26000)}
             "Se l'immagine mostra funzioni dell'app TechAI, descrivi le funzioni visibili e spiega a cosa servono.\n"),    },
   ];
 
-  for (const img of imageInputs.slice(0, 12)) {
+  for (const img of imageInputs.slice(0, 8)) {
     visionContent.push({ type: "text", text: `Immagine/crop: ${img.label}` });
     visionContent.push({
       type: "image_url",
       image_url: {
         url: img.dataUrl,
-        detail: "high",
+        detail: "auto",
       },
     });
   }
@@ -1115,7 +1115,7 @@ ${extractedPdfText.slice(0, 26000)}
             },
           ],
           temperature: 0.15,
-          max_tokens: 4000,
+          max_tokens: 2800,
         }),
       },
       openAiTimeoutMs
