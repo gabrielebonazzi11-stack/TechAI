@@ -3,7 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 export const config = {
-  runtime: "edge",
+  maxDuration: 60,
 };
 
 type ChatMessage = {
@@ -911,7 +911,7 @@ async function callOpenAIVision(params: {
     process.env.OPENAI_API_KEY;
 
   const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
-  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "45000");
+  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "55000");
 
   if (!openAiDrawingKey) {
     console.error("Missing OpenAI API key for drawing reader");
