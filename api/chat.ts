@@ -3,7 +3,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 export const config = {
-  maxDuration: 60,
+  maxDuration: 100,
 };
 
 type ChatMessage = {
