@@ -118,7 +118,7 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
     const preExtractedText = String(formData.get("fileText") || "");
     const file = formData.get("file");
 
-    let fileText = preExtractedText ? `Contenuto file:\n${preExtractedText.slice(0, 8000)}` : "";
+    let fileText = preExtractedText ? `Contenuto file:\n${preExtractedText.slice(0, 9000)}` : "";
     let imageDataUrl = "";
     let fileMeta = "";
     let hasFile = false;
@@ -143,7 +143,7 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
         try {
           const text = await file.text();
           fileText = text.trim()
-            ? `Contenuto file:\n${text.slice(0, 8000)}`
+            ? `Contenuto file:\n${text.slice(0, 9000)}`
             : "Il file non contiene testo leggibile direttamente.";
         } catch {
           fileText = "Non sono riuscito a leggere il file come testo.";
@@ -272,7 +272,7 @@ async function callOpenAIVision(body: RequestBodyData): Promise<string> {
 
   const safeImages = imageInputs
     .filter((img) => String(img?.dataUrl || "").startsWith("data:image/"))
-    .slice(0, 3);
+    .slice(0, 4);
 
   if (safeImages.length === 0) {
     return "⚠️ Nessuna immagine valida ricevuta per l'analisi visiva.";
@@ -281,8 +281,8 @@ async function callOpenAIVision(body: RequestBodyData): Promise<string> {
   const prompt =
     `${body.message || "Analizza questa tavola tecnica."}\n\n` +
     `${body.fileMeta ? `${body.fileMeta}\n` : ""}` +
-    `${body.fileText ? `Testo estratto dal PDF:\n${String(body.fileText).slice(0, 6000)}\n` : ""}` +
-    "Analizza solo ciò che è leggibile. Non inventare quote, materiali, tolleranze o rugosità. Distingui sempre tra rilevato, incerto e non leggibile. Usa un report tecnico sintetico con sezioni: cartiglio, viste, quote, tolleranze, rugosità, fori/filetti, materiale/trattamenti, criticità, giudizio finale.";
+    `${body.fileText ? `Testo estratto dal PDF:\n${String(body.fileText).slice(0, 9000)}\n` : ""}` +
+    "Analizza solo ciò che è leggibile. Non inventare quote, materiali, tolleranze o rugosità. Distingui sempre tra rilevato, incerto e non leggibile. Leggi con attenzione cartiglio, quote, filetti, fori, lamature, tolleranze ISO, rugosità, note e materiale. Se un numero non è certo, scrivi incerto e non tirare a indovinare. Usa un report tecnico con sezioni: cartiglio, viste, quote leggibili, quote funzionali probabili, tolleranze/GD&T, rugosità, fori/filetti/lamature, materiale/trattamenti, criticità, giudizio finale.";
 
   const visionContent: any[] = [
     {
@@ -297,7 +297,7 @@ async function callOpenAIVision(body: RequestBodyData): Promise<string> {
       type: "image_url",
       image_url: {
         url: img.dataUrl,
-        detail: "low",
+        detail: "auto",
       },
     });
   }
@@ -316,18 +316,18 @@ async function callOpenAIVision(body: RequestBodyData): Promise<string> {
           {
             role: "system",
             content:
-              "Sei TechAI Vision, assistente tecnico per tavole meccaniche. Rispondi in italiano. Non inventare dati non leggibili. Evidenzia errori reali, dubbi e dati mancanti.",
+              "Sei TechAI Vision, assistente tecnico per tavole meccaniche. Rispondi in italiano. Non inventare dati non leggibili. Devi essere conservativo ma utile: separa dati certi, dati incerti e dati mancanti.",
           },
           {
             role: "user",
             content: visionContent,
           },
         ],
-        temperature: 0.15,
-        max_tokens: 1000,
+        temperature: 0.1,
+        max_tokens: 1400,
       }),
     },
-    22000
+    28000
   );
 
   const raw = await response.text();
