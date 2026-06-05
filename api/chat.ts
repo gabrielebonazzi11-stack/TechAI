@@ -989,12 +989,50 @@ ${extractedPdfText.slice(0, 26000)}
     "## 2. Viste e sezioni\n" +
     "Controlla se le viste sono sufficienti, se servono sezioni A-A/B-B, dettagli, viste ausiliarie o ingrandimenti.\n\n" +
     "## 3. Quotatura generale\n" +
-    "Cita le quote leggibili. Segnala quote mancanti, ridondanti, catene chiuse, riferimenti poco chiari o quote funzionali assenti. Non inventare quote non leggibili.\n\n" +
+    "Cita solo le quote chiaramente leggibili. Segnala quote mancanti, ridondanti, catene chiuse, riferimenti poco chiari o quote funzionali assenti.\n" +
+    "Non ricavare quote dalla geometria se non sono esplicitamente leggibili. Se una quota sembra deducibile ma non è scritta chiaramente, indica: non valutabile dalla tavola.\n" +
+    "Non trasformare una quota non leggibile in un errore di progettazione.\n\n" +
+
     "## 3B. Quote funzionali e critiche\n" +
-    "Individua le quote probabilmente funzionali e critiche. Per ogni quota scrivi: quota rilevata, classificazione, confidenza alta/media/bassa, motivazione tecnica, controllo consigliato e dato eventualmente mancante.\n" +
-    "Categorie obbligatorie: funzionale probabile, critica, descrittiva/secondaria, non valutabile.\n" +
-    "Considera funzionali probabili: diametri di fori/perni/alberi/sedi, sedi cuscinetto o boccole, interassi tra fori, cave, asole, battute, spessori resistenti, quote con H7/h6/g6/f7/k6/m6/s6, quote associate a rugosità, datum o tolleranze geometriche.\n" +
-    "Non dichiarare mai con certezza assoluta che una quota è funzionale se dalla tavola non è chiaro l'assieme: usa formule come probabilmente funzionale, potenzialmente critica o da verificare.\n\n" +
+    "Questa sezione è obbligatoria quando l'utente chiede quote funzionali, quote critiche, controllo tavola o analisi tecnica del disegno.\n" +
+    "Non scrivere spiegazioni generiche tipo: Le quote funzionali sono quelle che... Vai direttamente all'elenco tecnico.\n" +
+    "Non usare una risposta discorsiva libera. Usa sempre blocchi ripetuti con lo schema sotto.\n\n" +
+
+    "SCHEMA OBBLIGATORIO PER OGNI QUOTA O SPECIFICA:\n" +
+    "Quota / specifica rilevata: ...\n" +
+    "Classificazione: funzionale probabile / critica / descrittiva-secondaria / non valutabile\n" +
+    "Motivazione tecnica: ...\n" +
+    "Confidenza: alta / media / bassa\n" +
+    "Controllo consigliato: ...\n" +
+    "Nota: ...\n\n" +
+
+    "REGOLE DI CLASSIFICAZIONE:\n" +
+    "- Funzionale probabile: fori di fissaggio, filettature, interassi, sedi, cave, asole, battute, spessori di appoggio, diametri di accoppiamento, superfici di centraggio, superfici di scorrimento, superfici di tenuta e quote collegate al montaggio.\n" +
+    "- Critica: quote marcate come caratteristiche critiche, quote con tolleranze strette, accoppiamenti tipo H7/h6/g6/f7/k6/m6/s6, filettature funzionali, datum, tolleranze geometriche, quote che se errate impediscono montaggio, intercambiabilità o funzionamento.\n" +
+    "- Descrittiva-secondaria: raggi, smussi, raccordi o quote di forma che non risultano chiaramente collegate a montaggio, accoppiamento o funzione.\n" +
+    "- Non valutabile: quota non leggibile, non presente, parzialmente coperta o funzione non deducibile dalla tavola.\n\n" +
+
+    "REGOLE ANTI-INVENZIONE PER QUOTE FUNZIONALI:\n" +
+    "- Non dire mai che una quota è sicuramente funzionale se non conosci l'assieme.\n" +
+    "- Usa formule come: probabilmente funzionale, potenzialmente critica, da verificare con assieme.\n" +
+    "- Non inventare lunghezze, diametri, profondità, tolleranze o rugosità non leggibili.\n" +
+    "- Non scrivere che una lunghezza è ricavabile dalla sezione se non è quotata chiaramente. Scrivi: non valutabile dalla tavola.\n" +
+    "- Non scrivere frasi finali tipo: se vuoi posso continuare, fammi sapere, posso evidenziare graficamente. Il report deve sembrare un output tecnico di software industriale.\n\n" +
+
+    "ESEMPIO DI OUTPUT CORRETTO:\n" +
+    "Quota / specifica rilevata: M16x1 - 6H\n" +
+    "Classificazione: critica\n" +
+    "Motivazione tecnica: filettatura interna destinata ad accoppiamento con componente maschio; la classe 6H influisce sulla compatibilità del filetto.\n" +
+    "Confidenza: alta\n" +
+    "Controllo consigliato: verificare classe 6H, profondità utile, smusso di imbocco e compatibilità con componente accoppiato.\n" +
+    "Nota: funzione da confermare con assieme.\n\n" +
+
+    "Quota / specifica rilevata: Ø16,6 +0,1/0\n" +
+    "Classificazione: critica\n" +
+    "Motivazione tecnica: quota dimensionale tollerata e potenzialmente collegata ad accoppiamento interno o passaggio componente.\n" +
+    "Confidenza: alta se chiaramente leggibile; media se parzialmente leggibile.\n" +
+    "Controllo consigliato: verificare metodo di controllo, tolleranza, rugosità associata e funzione nell'assieme.\n" +
+    "Nota: se marcata come caratteristica critica, indicarla come prioritaria.\n\n" +
     "## 4. Tolleranze dimensionali\n" +
     "Controlla tolleranze ISO, accoppiamenti H7/h6, H7/g6, k6, m6, tolleranze generali e quote funzionali.\n\n" +
     "## 5. Tolleranze geometriche\n" +
