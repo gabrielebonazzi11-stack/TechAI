@@ -1,7 +1,25 @@
+// FILE: api/chat.ts
+
+import { createClient } from "@supabase/supabase-js";
+
+export const config = {
+  runtime: "edge",
+};
+
 type ChatMessage = {
   role?: string;
   text?: string;
 };
+
+type AnalysisMode =
+  | "chat"
+  | "project"
+  | "bom"
+  | "solidworks"
+  | "advanced_check"
+  | "drawing"
+  | "step"
+  | "file";
 
 type DrawingImageInput = {
   label?: string;
@@ -17,12 +35,74 @@ type RequestBodyData = {
   drawingImages: DrawingImageInput[];
   fileMeta: string;
   hasFile: boolean;
-  analysisMode: string;
+  analysisMode: AnalysisMode;
 };
 
-export const config = {
-  runtime: "edge",
+type GuestUsageInfo = {
+  used: number;
+  limit: number;
+  fileUsed: number;
+  fileLimit: number;
+  windowStartedAt: string;
 };
+
+type AuthResult =
+  | { ok: true; mode: "user"; userId: string; supabase: any }
+  | { ok: true; mode: "guest"; guestId: string; supabase: any; usage: GuestUsageInfo }
+  | { ok: false; response: Response };
+
+type ModelRoute = {
+  level: "fast" | "medium" | "hard";
+  model: string;
+  maxTokens: number;
+  timeoutMs: number;
+  reason: string;
+};
+
+const GUEST_TEXT_LIMIT_24H = 10;
+const GUEST_FILE_LIMIT_24H = 2;
+const GUEST_WINDOW_HOURS = 24;
+const GUEST_WINDOW_MS = GUEST_WINDOW_HOURS * 60 * 60 * 1000;
+
+const TECHAI_FORMATTING_RULES =
+  `
+
+REGOLE DI FORMATTAZIONE OBBLIGATORIE:
+- Non usare mai Markdown grezzo visibile.
+- Non usare asterischi per il grassetto, quindi evita testi tipo **Materiale**.
+- Non usare titoli Markdown con #, ## o ###.
+- Non usare separatori Markdown tipo ---.
+- Non usare tabelle Markdown con il carattere |. Scrivi le tabelle come elenco di righe, non come griglia testuale.
+- Usa titoli puliti, numerati o in maiuscolo, ad esempio: 4. COME PROCEDERE NEL DISEGNO.
+- Usa elenchi puntati semplici con il simbolo •.
+- Per le sintesi usa blocchi numerati, non tabelle Markdown.
+- Mantieni un layout tecnico, ordinato e professionale, adatto a un software industriale.
+- Se devi scrivere codice perché richiesto dall'utente, puoi usare blocchi codice; in tutti gli altri casi evita sintassi Markdown visibile.
+
+ESEMPIO DI STILE CORRETTO:
+4. COME PROCEDERE NEL DISEGNO
+
+• Seleziona le superfici di riferimento:
+  superfici di appoggio, fori di riferimento, superfici di montaggio.
+
+• Definisci i datum:
+  etichetta le superfici con lettere A, B, C.
+
+• Inserisci i simboli GD&T:
+  specifica tolleranze, valori numerici e riferimenti datum.
+
+IN SINTESI
+
+1. Superfici di riferimento
+   Scegli superfici funzionali, di appoggio o di montaggio.
+
+2. Datum
+   Assegna lettere A, B, C alle superfici principali.
+
+3. Tolleranze GD&T
+   Inserisci simboli, valori e riferimenti datum.
+`;
+
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -41,6 +121,24 @@ function safeJsonParse<T>(value: string, fallback: T): T {
   }
 }
 
+function normalizeAnalysisMode(value: string | null | undefined): AnalysisMode {
+  const mode = String(value || "chat").trim().toLowerCase();
+
+  if (
+    mode === "project" ||
+    mode === "bom" ||
+    mode === "solidworks" ||
+    mode === "advanced_check" ||
+    mode === "drawing" ||
+    mode === "step" ||
+    mode === "file"
+  ) {
+    return mode;
+  }
+
+  return "chat";
+}
+
 function arrayBufferToBase64(buffer: ArrayBuffer) {
   let binary = "";
   const bytes = new Uint8Array(buffer);
@@ -54,9 +152,21 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return btoa(binary);
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number) {
+function isOlderThan24Hours(dateValue: string | null | undefined) {
+  if (!dateValue) return true;
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return true;
+
+  return Date.now() - date.getTime() >= GUEST_WINDOW_MS;
+}
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 18000) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
 
   try {
     return await fetch(url, {
@@ -68,41 +178,19 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
   }
 }
 
-function cleanAiOutput(text: string) {
-  return String(text || "")
-    .replace(/\n{4,}/g, "\n\n\n")
-    .trim();
-}
-
-function getOpenAIKey(mode: "text" | "vision") {
-  if (mode === "vision") {
-    return (
-      process.env.OPENAI_DRAWING_READER_API_KEY ||
-      process.env.OPENAI_TEXT_API_KEY ||
-      process.env.OPENAI_API_KEY ||
-      ""
-    );
-  }
+function buildStepMetadata(file: File) {
+  const name = file.name || "file STEP";
+  const lowerName = name.toLowerCase();
+  const ext = lowerName.endsWith(".stp") ? "STP" : lowerName.endsWith(".step") ? "STEP" : "STEP/STP";
+  const sizeKb = (file.size / 1024).toFixed(1);
 
   return (
-    process.env.OPENAI_TEXT_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.OPENAI_DRAWING_READER_API_KEY ||
-    ""
+    `\n\nMetadata file CAD:\n` +
+    `Nome: ${name}\n` +
+    `Formato stimato: ${ext}\n` +
+    `Dimensione: ${sizeKb} KB\n` +
+    `Nota: in ambiente Edge non viene ricostruita la geometria 3D, ma posso analizzare metadata, intestazione STEP, nomi entità e testo tecnico se leggibile.\n`
   );
-}
-
-function getTextModel() {
-  return (
-    process.env.OPENAI_TEXT_MODEL_FAST ||
-    process.env.OPENAI_TEXT_MODEL ||
-    process.env.OPENAI_API_MODEL ||
-    "gpt-4o-mini"
-  );
-}
-
-function getVisionModel() {
-  return process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
 }
 
 async function readRequestBody(req: Request): Promise<RequestBodyData> {
@@ -110,24 +198,34 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
 
   if (contentType.includes("multipart/form-data")) {
     const formData = await req.formData();
-    const message = String(formData.get("message") || "");
-    const messages = safeJsonParse<ChatMessage[]>(String(formData.get("messages") || "[]"), []);
-    const profile = safeJsonParse<any>(String(formData.get("profile") || "{}"), {});
-    const analysisMode = String(formData.get("analysisMode") || "chat");
-    const drawingImages = safeJsonParse<DrawingImageInput[]>(String(formData.get("drawingImages") || "[]"), []);
-    const preExtractedText = String(formData.get("fileText") || "");
-    const file = formData.get("file");
 
-    let fileText = preExtractedText ? `Contenuto file:\n${preExtractedText.slice(0, 9000)}` : "";
+    const message = String(formData.get("message") || "");
+    const messagesRaw = String(formData.get("messages") || "[]");
+    const profileRaw = String(formData.get("profile") || "{}");
+    const file = formData.get("file");
+    const preExtractedText = formData.get("fileText");
+    const drawingImagesRaw = String(formData.get("drawingImages") || "[]");
+    const analysisMode = normalizeAnalysisMode(String(formData.get("analysisMode") || "chat"));
+    const preExtractedTextClean =
+      typeof preExtractedText === "string" ? preExtractedText.trim() : "";
+
+    const messages = safeJsonParse<ChatMessage[]>(messagesRaw, []);
+    const profile = safeJsonParse<any>(profileRaw, {});
+    const drawingImagesParsed = safeJsonParse<DrawingImageInput[]>(drawingImagesRaw, []);
+
+    let fileText = "";
     let imageDataUrl = "";
+    let drawingImages: DrawingImageInput[] = [];
     let fileMeta = "";
     let hasFile = false;
 
     if (file instanceof File && file.size > 0) {
       hasFile = true;
+
       const fileName = file.name || "file caricato";
       const fileType = file.type || "sconosciuto";
       const fileSizeKb = (file.size / 1024).toFixed(1);
+      const lowerName = fileName.toLowerCase();
 
       fileMeta =
         `File caricato:\n` +
@@ -137,18 +235,53 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
         `Modalità analisi: ${analysisMode}\n`;
 
       if (file.type.startsWith("image/")) {
-        const buffer = await file.arrayBuffer();
-        imageDataUrl = `data:${file.type};base64,${arrayBufferToBase64(buffer)}`;
-      } else if (!fileText) {
+        // Quando il frontend usa src/utils/technicalDrawingUtils.ts, spesso invia:
+        // - un file immagine leggero solo come riferimento/preview;
+        // - drawingImages già pronti con crop della tavola;
+        // - fileText già estratto dal PDF.
+        // In quel caso non riconvertiamo il file immagine in base64: useremo i crop già pronti.
+        if (!(analysisMode === "drawing" && Array.isArray(drawingImagesParsed) && drawingImagesParsed.length > 0)) {
+          const buffer = await file.arrayBuffer();
+          const base64 = arrayBufferToBase64(buffer);
+          imageDataUrl = `data:${file.type};base64,${base64}`;
+        }
+
+        if (preExtractedTextClean) {
+          fileText = `\n\nTesto estratto/preparato dal frontend:\n${preExtractedTextClean.slice(0, 26000)}`;
+        }
+      } else if (lowerName.endsWith(".step") || lowerName.endsWith(".stp")) {
+        fileText = buildStepMetadata(file);
+
         try {
           const text = await file.text();
-          fileText = text.trim()
-            ? `Contenuto file:\n${text.slice(0, 9000)}`
-            : "Il file non contiene testo leggibile direttamente.";
+          if (text.trim()) {
+            fileText += `\n\nEstratto iniziale STEP/STP:\n${text.slice(0, 16000)}`;
+          }
         } catch {
-          fileText = "Non sono riuscito a leggere il file come testo.";
+          fileText += "\n\nNon sono riuscito a leggere il contenuto testuale del file STEP/STP.";
+        }
+      } else if (preExtractedTextClean) {
+        fileText = `\n\nTesto estratto/preparato dal frontend:\n${preExtractedTextClean.slice(0, 26000)}`;
+      } else {
+        try {
+          const text = await file.text();
+          fileText = text?.trim()
+            ? `\n\nContenuto del file:\n${text.slice(0, 16000)}`
+            : "\n\nIl file non contiene testo leggibile direttamente.";
+        } catch {
+          fileText = "\n\nNon sono riuscito a leggere il contenuto testuale del file.";
         }
       }
+    }
+
+    if (Array.isArray(drawingImagesParsed) && drawingImagesParsed.length > 0) {
+      drawingImages = drawingImagesParsed
+        .filter((img) => img?.dataUrl && String(img.dataUrl).startsWith("data:image/"))
+        .map((img) => ({
+          label: String(img.label || "Crop tavola"),
+          dataUrl: String(img.dataUrl),
+        }))
+        .slice(0, 12);
     }
 
     return {
@@ -157,7 +290,7 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
       profile,
       fileText,
       imageDataUrl,
-      drawingImages: Array.isArray(drawingImages) ? drawingImages : [],
+      drawingImages,
       fileMeta,
       hasFile,
       analysisMode,
@@ -167,168 +300,871 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
   const body = await req.json().catch(() => ({}));
 
   return {
-    message: String(body.message || ""),
-    messages: Array.isArray(body.messages) ? body.messages : [],
+    message: body.message || "",
+    messages: body.messages || [],
     profile: body.profile || {},
-    fileText: String(body.fileText || ""),
-    imageDataUrl: String(body.imageDataUrl || ""),
-    drawingImages: Array.isArray(body.drawingImages) ? body.drawingImages : [],
-    fileMeta: String(body.fileMeta || ""),
+    fileText: body.fileText || "",
+    imageDataUrl: "",
+    drawingImages: Array.isArray(body.drawingImages)
+      ? body.drawingImages
+          .filter((img: DrawingImageInput) => img?.dataUrl && String(img.dataUrl).startsWith("data:image/"))
+          .map((img: DrawingImageInput) => ({
+            label: String(img.label || "Crop tavola"),
+            dataUrl: String(img.dataUrl),
+          }))
+          .slice(0, 12)
+      : [],
+    fileMeta: body.fileMeta || "",
     hasFile: Boolean(body.hasFile),
-    analysisMode: String(body.analysisMode || "chat"),
+    analysisMode: normalizeAnalysisMode(body.analysisMode),
   };
 }
 
-async function callOpenAIText(body: RequestBodyData): Promise<string> {
-  const apiKey = getOpenAIKey("text");
-  const model = getTextModel();
+function chooseOpenAITextModel(params: {
+  message: string;
+  fileText: string;
+  analysisMode: AnalysisMode;
+}): ModelRoute {
+  const message = String(params.message || "");
+  const fileText = String(params.fileText || "");
+  const analysisMode = params.analysisMode || "chat";
 
-  if (!apiKey) {
-    return (
-      "⚠️ Backend collegato, ma chiave OpenAI mancante.\n\n" +
-      "Controlla su Vercel una di queste variabili: OPENAI_API_KEY oppure OPENAI_TEXT_API_KEY."
-    );
+  const routingText = `${message}
+${fileText}
+${analysisMode}`.toLowerCase();
+
+  const fastModel =
+    process.env.OPENAI_TEXT_MODEL_FAST ||
+    process.env.OPENAI_TEXT_MODEL ||
+    process.env.OPENAI_API_MODEL ||
+    "gpt-4o-mini";
+
+  const mediumModel =
+    process.env.OPENAI_TEXT_MODEL_MEDIUM ||
+    process.env.OPENAI_TEXT_MODEL ||
+    process.env.OPENAI_API_MODEL ||
+    "gpt-4o-mini";
+
+  const hardModel =
+    process.env.OPENAI_TEXT_MODEL_HARD ||
+    process.env.OPENAI_TEXT_MODEL ||
+    process.env.OPENAI_API_MODEL ||
+    "gpt-4o";
+
+  let score = 0;
+  const reasons: string[] = [];
+
+  if (analysisMode !== "chat") {
+    score += 3;
+    reasons.push(`modalità ${analysisMode}`);
   }
 
-  const history = Array.isArray(body.messages)
-    ? body.messages
-        .slice(-4)
-        .filter((m) => String(m.text || "").trim())
-        .map((m) => ({
-          role: m.role === "AI" || m.role === "assistant" ? "assistant" : "user",
-          content: String(m.text || "").slice(0, 1200),
-        }))
-    : [];
-
-  const userContent =
-    `${body.message || "Rispondi all'utente."}` +
-    `${body.fileMeta ? `\n\n${body.fileMeta}` : ""}` +
-    `${body.fileText ? `\n\n${String(body.fileText).slice(0, 8000)}` : ""}`;
-
-  const response = await fetchWithTimeout(
-    "https://api.openai.com/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Sei TechAI, assistente tecnico per progettazione meccanica, SolidWorks, materiali, tavole tecniche e sviluppo software. Rispondi in italiano, in modo diretto, pratico e ordinato. Non inventare dati non presenti.",
-          },
-          ...history,
-          {
-            role: "user",
-            content: userContent,
-          },
-        ],
-        temperature: 0.25,
-        max_tokens: 900,
-      }),
-    },
-    18000
-  );
-
-  const raw = await response.text();
-  const data = safeJsonParse<any>(raw, null);
-
-  if (!response.ok) {
-    return (
-      "⚠️ OpenAI ha restituito un errore sulla chat.\n\n" +
-      `Modello usato: ${model}\n` +
-      `Codice: ${response.status}\n\n` +
-      `Dettaglio: ${raw.slice(0, 1200)}`
-    );
+  if (analysisMode === "bom" || analysisMode === "advanced_check" || analysisMode === "project") {
+    score += 3;
+    reasons.push("analisi strutturata progetto/distinta/verifica");
   }
 
-  return cleanAiOutput(
-    data?.choices?.[0]?.message?.content ||
-      "Ho ricevuto la richiesta, ma il modello non ha restituito una risposta valida."
+  if (analysisMode === "solidworks") {
+    score += 2;
+    reasons.push("procedura guidata SolidWorks");
+  }
+
+  if (analysisMode === "step") {
+    score += 3;
+    reasons.push("metadata STEP/STP");
+  }
+
+  if (fileText.trim().length > 0) {
+    score += 4;
+    reasons.push("file allegato");
+  }
+
+  if (message.length > 1000) {
+    score += 2;
+    reasons.push("prompt lungo");
+  }
+
+  if (routingText.length > 6000) {
+    score += 3;
+    reasons.push("contesto lungo nel prompt");
+  }
+
+  if (
+    /errore|error|build|typescript|react|vite|vercel|supabase|api\/chat|codice|script|tsx|ts|javascript|funzione|debug|console|runtime|deploy|backend|frontend/i.test(routingText)
+  ) {
+    score += 3;
+    reasons.push("codice/debug");
+  }
+
+  if (
+    /calcola|verifica|dimensiona|flessione|torsione|taglio|von mises|tresca|fatica|goodman|soderberg|precarico|bullone|bulloni|contatto|pressione specifica|coefficiente|momento|tensione|formula|meccanica|albero|perno|cuscinetto|linguetta/i.test(routingText)
+  ) {
+    score += 3;
+    reasons.push("calcolo tecnico avanzato");
+  }
+
+  if (
+    /tavola|disegno tecnico|rugosità|rugosita|tolleranza|gd&t|quota|quote funzionali|funzionale|critica|accoppiamento|sede|interasse|asola|battuta|datum|sezione|cartiglio|materiale|acciaio|c45|42crmo4|aisi|inventor|solidworks|step|stp|distinta|bom|csv|json/i.test(routingText)
+  ) {
+    score += 3;
+    reasons.push("argomento tecnico CAD/progetto");
+  }
+
+  if (
+    /riassumi|spiega|confronta|analizza|migliora|riscrivi|ottimizza|progetta|scrivimi completo|copia e incolla/i.test(routingText)
+  ) {
+    score += 1;
+    reasons.push("richiesta articolata");
+  }
+
+  if (message.length < 220 && score <= 1) {
+    return {
+      level: "fast",
+      model: fastModel,
+      maxTokens: 700,
+      timeoutMs: 18000,
+      reason: "domanda breve/semplice",
+    };
+  }
+
+  if (score >= 6) {
+    return {
+      level: "hard",
+      model: hardModel,
+      maxTokens: 2200,
+      timeoutMs: 40000,
+      reason: reasons.join(", ") || "richiesta complessa",
+    };
+  }
+
+  return {
+    level: "medium",
+    model: mediumModel,
+    maxTokens: 1400,
+    timeoutMs: 28000,
+    reason: reasons.join(", ") || "richiesta media",
+  };
+}
+
+function buildLightSystemPrompt(params: {
+  userName: string;
+  focus: string;
+  route: ModelRoute;
+  analysisMode: AnalysisMode;
+}) {
+  const { userName, focus, route, analysisMode } = params;
+
+  return (
+    `Sei TechAI, assistente tecnico per meccanica industriale e sviluppo React/TypeScript.\n` +
+    `Utente: ${userName}. Focus: ${focus}. Modalità: ${analysisMode}. Livello: ${route.level}. Motivo: ${route.reason}.\n` +
+    `Rispondi nella stessa lingua dell'utente. Sii diretto, pratico e ordinato. ` +
+    `Non inventare dati. Se mancano dati, chiedili. ` +
+    `Per codice, dai modifiche complete e copiabili.` +
+    TECHAI_FORMATTING_RULES
   );
 }
 
-async function callOpenAIVision(body: RequestBodyData): Promise<string> {
-  const apiKey = getOpenAIKey("vision");
-  const model = getVisionModel();
-
-  if (!apiKey) {
+function buildModeInstructions(analysisMode: AnalysisMode) {
+  if (analysisMode === "project") {
     return (
-      "⚠️ Backend collegato, ma chiave OpenAI per analisi tavole mancante.\n\n" +
-      "Controlla su Vercel OPENAI_API_KEY oppure OPENAI_DRAWING_READER_API_KEY."
+      `\n\n## MODALITÀ PROGETTO\n` +
+      `Devi aiutare l'utente a gestire un progetto tecnico meccanico.\n` +
+      `Quando possibile struttura la risposta così:\n` +
+      `1. Stato progetto\n` +
+      `2. Verifiche salvabili\n` +
+      `3. File caricati e cosa rappresentano\n` +
+      `4. Criticità tecniche\n` +
+      `5. Prossime azioni consigliate\n` +
+      `Se l'utente carica un file, crea una prima analisi iniziale e suggerisci in quale sezione del progetto salvarlo.\n`
     );
   }
 
-  const imageInputs =
-    body.drawingImages && body.drawingImages.length > 0
-      ? body.drawingImages
-      : body.imageDataUrl
-        ? [{ label: "Immagine caricata", dataUrl: body.imageDataUrl }]
-        : [];
-
-  const safeImages = imageInputs
-    .filter((img) => String(img?.dataUrl || "").startsWith("data:image/"))
-    .slice(0, 4);
-
-  if (safeImages.length === 0) {
-    return "⚠️ Nessuna immagine valida ricevuta per l'analisi visiva.";
+  if (analysisMode === "bom") {
+    return (
+      `\n\n## MODALITÀ CONTROLLO DISTINTA BASE / BOM\n` +
+      `Analizza CSV/JSON o testo di distinta componenti.\n` +
+      `Controlla in modo concreto: codici duplicati, materiali mancanti, quantità incoerenti, descrizioni incomplete, componenti commerciali senza norma, viti senza classe, cuscinetti senza sigla completa, trattamenti mancanti e unità mancanti.\n` +
+      `Output richiesto: tabella con Riga / Problema / Gravità / Correzione consigliata e riepilogo finale. Non inventare righe non presenti.\n`
+    );
   }
 
+  if (analysisMode === "solidworks") {
+    return (
+      `\n\n## MODALITÀ ASSISTENTE SOLIDWORKS PRATICO\n` +
+      `Usa questa struttura: Metodo consigliato, Comandi SolidWorks in italiano, Passaggi operativi numerati, Errori comuni, Quando NON usare questo metodo, Controllo finale prima della messa in tavola.\n`
+    );
+  }
+
+  if (analysisMode === "advanced_check") {
+    return (
+      `\n\n## MODALITÀ VERIFICHE SERIE\n` +
+      `Considera statica, Von Mises, Tresca, fatica Goodman/Soderberg, contatti, bulloni, linguette, cuscinetti, tolleranze e rugosità. Struttura: dati usati, formule, calcoli con unità, esito, dati mancanti.\n`
+    );
+  }
+
+  if (analysisMode === "step") {
+    return (
+      `\n\n## MODALITÀ STEP/STP\n` +
+      `Analizza metadata e testo STEP/STP quando disponibili. Non dire che vedi perfettamente il 3D. Dai anche indicazioni per importarlo in SolidWorks e renderlo modificabile.\n`
+    );
+  }
+
+ if (analysisMode === "drawing") {
+  return (
+    `\n\n## MODALITÀ PRE-LETTURA TAVOLA TECNICA - STRICT MODE\n` +
+    `Devi analizzare la tavola tecnica in modo accurato.\n\n` +
+
+    `REGOLE ANTI-ERRORE OBBLIGATORIE:\n` +
+    `- Non inventare quote, tolleranze, materiali, rugosità, filetti, fori, trattamenti o note.\n` +
+    `- Se un dato non è chiaramente leggibile, scrivi esattamente: "non rilevabile dalla tavola".\n` +
+    `- Non dichiarare un errore tecnico se non hai evidenza chiara dalla tavola.\n` +
+    `- Non dedurre materiale, scala, unità o trattamento se non sono visibili nel cartiglio o nelle note.\n` +
+    `- Non trasformare una mancanza di leggibilità in un errore di progettazione.\n` +
+    `- Se l'immagine/PDF è poco leggibile, segnala prima il limite di qualità.\n` +
+    `- Distingui sempre tra "rilevato", "incerto" e "non rilevabile".\n` +
+    `- Per le quote funzionali non usare certezze assolute se non conosci l'assieme: usa "probabilmente funzionale", "potenzialmente critica" o "da verificare".\n\n` +
+
+    `ANALISI QUOTE FUNZIONALI E CRITICHE:\n` +
+    `Devi individuare, quando leggibili, le quote che possono influenzare montaggio, accoppiamento, centraggio, battuta, scorrimento, tenuta, resistenza, lavorazione o controllo qualità.\n` +
+    `Classifica ogni quota rilevante in una di queste categorie:\n` +
+    `- Funzionale probabile: quota che sembra influenzare montaggio, accoppiamento o funzione del pezzo.\n` +
+    `- Critica: quota che, se errata, può compromettere montaggio, funzionamento, sicurezza, intercambiabilità o produzione.\n` +
+    `- Descrittiva/secondaria: quota utile a definire la forma ma non chiaramente legata alla funzione principale.\n` +
+    `- Non valutabile: quota non leggibile o funzione non deducibile dalla tavola.\n\n` +
+
+    `Considera funzionali probabili soprattutto:\n` +
+    `- diametri di fori, perni, alberi, sedi cuscinetto, sedi boccole e sedi spine;\n` +
+    `- interassi tra fori, cave, asole e riferimenti di montaggio;\n` +
+    `- larghezze/profondità di cave, scanalature, asole, lamature e svasature;\n` +
+    `- spessori di battute, appoggi, flange, pareti sottili o zone resistenti;\n` +
+    `- quote con tolleranza stretta o accoppiamenti ISO tipo H7, h6, g6, f7, k6, m6, s6;\n` +
+    `- quote collegate a rugosità specifiche, simboli Ra/Rz o superfici lavorate;\n` +
+    `- quote collegate a tolleranze geometriche ISO 1101, datum A/B/C, posizione, planarità, parallelismo, perpendicolarità, coassialità;\n` +
+    `- superfici di appoggio, centraggio, rotazione, scorrimento, tenuta o fissaggio.\n\n` +
+
+    `Per ogni quota funzionale o critica devi scrivere:\n` +
+    `- Quota rilevata.\n` +
+    `- Classificazione.\n` +
+    `- Confidenza: alta / media / bassa.\n` +
+    `- Motivazione tecnica.\n` +
+    `- Controllo consigliato.\n` +
+    `- Riferimento tecnico: norma ISO/UNI applicabile oppure principio tecnico generale.\n` +
+    `- Eventuale dato mancante, ad esempio tolleranza, rugosità, datum, profondità foro, quantità fori o componente accoppiato.\n\n` +
+
+    `ESEMPI DI RAGIONAMENTO:\n` +
+    `- Ø20 H7: quota funzionale critica, perché H7 indica un probabile accoppiamento con perno, albero, boccola o sede.\n` +
+    `- Interasse tra due fori: quota funzionale probabile, perché influenza il montaggio del pezzo su un altro componente.\n` +
+    `- Ra 0.8 su superficie cilindrica: superficie probabilmente funzionale, possibile scorrimento, tenuta o accoppiamento.\n` +
+    `- Asola o cava quotata: quota funzionale probabile se serve per regolazione, guida, bloccaggio o passaggio componente.\n` +
+    `- Smusso 1x45°: descrittivo/secondario, salvo funzione evidente di invito, montaggio o sicurezza.\n` +
+    `- Raccordo R2 senza tolleranze particolari: descrittivo/secondario, salvo zona resistente o anticricca.\n\n` +
+
+    `FORMATO RISPOSTA OBBLIGATORIO:\n` +
+    `1. Qualità lettura tavola: buona / media / bassa, con motivo.\n` +
+    `2. Dati rilevati con alta confidenza: cartiglio, materiale, scala, formato, unità, viste, sezioni, quote principali, tolleranze, rugosità, filetti, fori, note.\n` +
+    `3. Quote funzionali e critiche rilevate: elenco con quota, classificazione, confidenza, motivazione e controllo consigliato.\n` +
+    `4. Quote descrittive/secondarie rilevate: elenco sintetico, solo se leggibili.\n` +
+    `5. Dati incerti o parzialmente leggibili: elenco con motivo dell'incertezza.\n` +
+    `6. Dati non rilevabili dalla tavola: elenco se assenti o non leggibili.\n` +
+    `7. Controlli consigliati al progettista: solo checklist, non conclusioni definitive.\n` +
+    `8. Possibili criticità: inserisci solo criticità supportate da evidenza chiara. Per ogni criticità scrivi: evidenza osservata, rischio, verifica consigliata.\n\n` +
+
+    `SOGLIA DI CONFIDENZA:\n` +
+    `- Alta confidenza: dato chiaramente leggibile.\n` +
+    `- Media confidenza: dato parzialmente leggibile; va confermato.\n` +
+    `- Bassa confidenza: non usare il dato per conclusioni.\n\n` +
+
+    `ESEMPI DI COMPORTAMENTO CORRETTO:\n` +
+    `- Se vedi "C45" chiaramente nel cartiglio, puoi scrivere materiale rilevato: C45.\n` +
+    `- Se il materiale sembra "C4..." ma non è chiaro, scrivi: materiale incerto, possibile C45 ma da confermare.\n` +
+    `- Se non leggi la rugosità, scrivi: rugosità non rilevabile dall'immagine.\n` +
+    `- Se non vedi tolleranze, non dire che sono sbagliate: scrivi tolleranze non rilevabili o non presenti nella porzione leggibile.\n`
+  );
+}
+
+  if (analysisMode === "file") {
+    return (
+      `\n\n## MODALITÀ FILE TECNICO\n` +
+      `Analizza il file caricato e produci riepilogo tecnico, problemi rilevati, dati utili e azioni consigliate.\n`
+    );
+  }
+
+  return "";
+}
+
+function buildCompactTechAiSystemPrompt(params: {
+  userName: string;
+  focus: string;
+  route: ModelRoute;
+  analysisMode: AnalysisMode;
+}) {
+  const { userName, focus, route, analysisMode } = params;
+
+  return (
+    `Sei TechAI, copilot tecnico per ingegneria meccanica industriale.\n` +
+    `Utente: ${userName}. Focus: ${focus}.\n` +
+    `Livello selezionato automaticamente: ${route.level}. Motivo: ${route.reason}. Modalità: ${analysisMode}.\n\n` +
+    `REGOLE RISPOSTA:\n` +
+    `- Rispondi nella stessa lingua dell'utente.\n` +
+    `- Sii diretto, ordinato, tecnico e pratico.\n` +
+    `- Usa formule leggibili senza Markdown grezzo visibile.\n` +
+    `- Cita sempre le unità di misura.\n` +
+    `- Se mancano dati, chiedili e non inventare.\n` +
+    `- Se la richiesta riguarda codice, dai modifiche precise e copiabili.\n` +
+    `- Se l'utente chiede un file completo, riscrivi il file completo.\n` +
+    `- Se si parla di componenti o disegni tecnici, quando opportuno scrivi: "fare riferimento a normativa: ...".\n` +
+    TECHAI_FORMATTING_RULES +
+    `\nPROMEMORIA TECNICO COMPATTO:\n` +
+    `Meccanica: equilibrio ΣF=0, ΣM=0; F=ma; P=Fv=Mω; Mt[Nm]=9550P[kW]/n[rpm]. Trazione σ=F/A; flessione σ=Mf/Wf; torsione τ=Mt/Wt. Von Mises σid=√(σ²+3τ²). Fatica: Goodman/Soderberg. Bulloni: precarico, taglio, trazione, classe 8.8/10.9. Tolleranze: H7, k6, m6, H7/f7. Rugosità: Ra 3,2÷6,3 generica; Ra 0,8÷1,6 sedi/tenute.\n` +
+    buildModeInstructions(analysisMode)
+  );
+}
+
+function buildFullTechAiSystemPrompt(params: {
+  userName: string;
+  focus: string;
+  route: ModelRoute;
+  analysisMode: AnalysisMode;
+}) {
+  const { userName, focus, route, analysisMode } = params;
+
+  return (
+    `Sei TechAI, copilot tecnico per ingegneria meccanica industriale. Utente: ${userName}. Focus: ${focus}.\n` +
+    `Livello selezionato automaticamente: ${route.level}. Motivo scelta: ${route.reason}. Modalità: ${analysisMode}.\n` +
+    `Rispondi in italiano, tecnico e preciso. Usa notazione chiara per formule, ma senza Markdown grezzo visibile. Cita sempre le unità. Se mancano dati, chiedi.\n` +
+    `Se la richiesta riguarda codice, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
+    TECHAI_FORMATTING_RULES +
+    buildModeInstructions(analysisMode) +
+    `\n\n` +
+    `## PROMEMORIA TECNICO\n` +
+    `Newton F=ma. Equilibrio ΣF=0, ΣM=0. Potenza P=Fv=Mω. Mt[Nm]=9550P[kW]/n[rpm].\n` +
+    `Trazione σ=F/A; ΔL=FL/(EA). Flessione σ=Mf/Wf. Torsione τ=Mt/Wt. Sezione circolare: Jf=πd⁴/64, Wf=πd³/32, Jp=πd⁴/32, Wt=πd³/16.\n` +
+    `Von Mises σid=√(σ²+3τ²). Tresca piano σid=√(σ²+4τ²). Alberi Mid=√(Mf²+0,75Mt²), d≥∛(32Mid/(πσamm)).\n` +
+    `Fatica: σm=(σmax+σmin)/2; σa=(σmax-σmin)/2; Se≈0,5Rm corretto; Goodman σa/Se+σm/Rm≤1/n; Soderberg σa/Se+σm/Re≤1/n.\n` +
+    `Materiali: S235/S275/S355 carpenteria; C45 alberi/perni medi; 42CrMo4 e 39NiCrMo3 carichi alti; 16MnCr5 cementazione; 100Cr6 rulli/cuscinetti.\n` +
+    `Tolleranze ISO 286: sede cuscinetto foro H7; albero rotante k6/m6; scorrevole H7/f7; fisso H7/s6. Rugosità: generiche Ra 3,2÷6,3 µm; sedi/tenute Ra 0,8÷1,6 µm; superfici molto funzionali Ra 0,4÷0,8 µm.\n` +
+    `Bulloni: classi 8.8, 10.9; precarico Fp≈0,8fyAres; taglio Fv,R≈0,6fuAres/1,25; trazione FT,R≈0,9fuAres/1,25. Linguette: τ=2T/(wLDn), p=4T/(hLDn).\n` +
+    `Oleoidraulica: F=pA; v=Q/A; centro aperto P→T; centro chiuso vie bloccate.\n`
+  );
+}
+
+
+function cleanAiOutput(text: string) {
+  const withoutMarkdown = String(text || "")
+    // Toglie il grassetto Markdown anche se il modello lo usa male.
+    .replace(/\*\*/g, "")
+    // Toglie titoli Markdown tipo #, ##, ### lasciando il testo.
+    .replace(/^\s*#{1,6}\s*/gm, "")
+    // Sostituisce i separatori Markdown con una riga grafica più pulita.
+    .replace(/^\s*---+\s*$/gm, "────────────────────────")
+    // Toglie i delimitatori dei blocchi codice quando finiscono per comparire nel testo.
+    .replace(/```[a-zA-Z0-9_-]*/g, "")
+    .replace(/```/g, "");
+
+  const lines = withoutMarkdown.split("\n");
+
+  const cleanedLines = lines.map((line) => {
+    const trimmed = line.trim();
+
+    // Rimuove righe separatrici delle tabelle Markdown: | --- | --- |
+    if (/^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?$/.test(trimmed)) {
+      return "";
+    }
+
+    // Converte righe tabellari Markdown in righe leggibili senza caratteri |.
+    if (trimmed.includes("|")) {
+      const cells = trimmed
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter(Boolean);
+
+      if (cells.length >= 2) {
+        const first = cells[0];
+        const rest = cells.slice(1);
+
+        // Esempio: | 1 | Azione | Esempio | -> 1. Azione — Esempio
+        if (/^\d+[.)]?$/.test(first)) {
+          return `${first.replace(/[.)]$/, "")}. ${rest.join(" — ")}`;
+        }
+
+        // Esempio: | Elemento | Problema | Correzione | -> • Elemento: Problema — Correzione
+        return `• ${first}: ${rest.join(" — ")}`;
+      }
+    }
+
+    return line;
+  });
+
+  return cleanedLines
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isOpenAIRateLimit(status: number, raw: string) {
+  const text = String(raw || "").toLowerCase();
+
+  return (
+    status === 429 ||
+    text.includes("rate_limit") ||
+    text.includes("rate limit") ||
+    text.includes("quota") ||
+    text.includes("insufficient_quota")
+  );
+}
+
+function sanitizeOpenAIFailureMessage() {
+  return (
+    "⚠️ In questo momento il modello AI principale è al limite.\n\n" +
+    "Ho provato automaticamente una modalità più leggera, ma non è disponibile. " +
+    "Riprova tra qualche minuto oppure riduci la lunghezza del messaggio."
+  );
+}
+
+async function callOpenAIText(params: {
+  message: string;
+  messages: ChatMessage[];
+  profile: any;
+  fileText: string;
+  fileMeta: string;
+  analysisMode: AnalysisMode;
+}): Promise<string> {
+  const openAiApiKey =
+    process.env.OPENAI_TEXT_API_KEY ||
+    process.env.OPENAI_API_KEY;
+
+  const route = chooseOpenAITextModel({
+    message: params.message,
+    fileText: `${params.fileMeta}
+${params.fileText}`,
+    analysisMode: params.analysisMode,
+  });
+
+  if (!openAiApiKey) {
+    console.error("Missing OPENAI_TEXT_API_KEY / OPENAI_API_KEY environment variable");
+
+    return (
+      "⚠️ Chat AI temporaneamente non disponibile.\n\n" +
+      "Il sistema non riesce ad avviare il modello di risposta in questo momento. " +
+      "Riprova tra poco o segnala il problema all’assistenza se persiste."
+    );
+  }
+
+  const userName = params.profile?.userName || "Utente";
+  const focus = params.profile?.focus || "Ingegneria Meccanica";
+
+  const fastModel =
+    process.env.OPENAI_TEXT_MODEL_FAST ||
+    process.env.OPENAI_TEXT_MODEL ||
+    process.env.OPENAI_API_MODEL ||
+    "gpt-4o-mini";
+
+  const fallbackRoutes: ModelRoute[] = [
+    route,
+    {
+      level: "fast",
+      model: fastModel,
+      maxTokens: 600,
+      timeoutMs: 18000,
+      reason: "fallback automatico economico dopo errore o limite",
+    },
+    {
+      level: "fast",
+      model: "gpt-4o-mini",
+      maxTokens: 550,
+      timeoutMs: 18000,
+      reason: "fallback finale economico",
+    },
+  ];
+
+  const uniqueRoutes = fallbackRoutes.filter((item, index, arr) => {
+    return arr.findIndex((x) => x.model === item.model && x.level === item.level) === index;
+  });
+
+  let lastWasRateLimit = false;
+
+  for (let i = 0; i < uniqueRoutes.length; i++) {
+    const currentRoute = uniqueRoutes[i];
+    const isFallback = i > 0 || currentRoute.level === "fast";
+
+    const cleanHistory = Array.isArray(params.messages)
+      ? params.messages
+          .slice(isFallback ? -3 : -6)
+          .filter((m: ChatMessage) => String(m.text || "").trim())
+          .map((m: ChatMessage) => ({
+            role: m.role === "AI" || m.role === "assistant" ? "assistant" : "user",
+            content: String(m.text || "").slice(0, isFallback ? 900 : 2200),
+          }))
+      : [];
+
+    const fileTextLimit = isFallback ? 3500 : currentRoute.level === "hard" ? 12000 : 8000;
+
+    const finalUserContent =
+      `${params.message || "Rispondi all'utente."}` +
+      `${params.fileMeta ? `
+
+${params.fileMeta}` : ""}` +
+      `${params.fileText ? `
+
+${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
+
+    const systemPrompt = isFallback
+      ? buildLightSystemPrompt({
+          userName,
+          focus,
+          route: currentRoute,
+          analysisMode: params.analysisMode,
+        })
+      : currentRoute.level === "fast"
+        ? buildCompactTechAiSystemPrompt({
+            userName,
+            focus,
+            route: currentRoute,
+            analysisMode: params.analysisMode,
+          })
+        : buildFullTechAiSystemPrompt({
+            userName,
+            focus,
+            route: currentRoute,
+            analysisMode: params.analysisMode,
+          });
+
+    let response: Response;
+
+    try {
+      response = await fetchWithTimeout(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${openAiApiKey}`,
+          },
+          body: JSON.stringify({
+            model: currentRoute.model,
+            messages: [
+              {
+                role: "system",
+                content: systemPrompt,
+              },
+              ...cleanHistory,
+              {
+                role: "user",
+                content: finalUserContent,
+              },
+            ],
+            temperature:
+              currentRoute.level === "fast"
+                ? 0.3
+                : currentRoute.level === "medium"
+                  ? 0.35
+                  : 0.25,
+            max_tokens: currentRoute.maxTokens,
+          }),
+        },
+        currentRoute.timeoutMs
+      );
+    } catch (error: any) {
+      if (error?.name === "AbortError") {
+        lastWasRateLimit = false;
+        continue;
+      }
+
+      throw error;
+    }
+
+    const raw = await response.text();
+    const data = safeJsonParse<any>(raw, null);
+
+    if (response.ok) {
+      const content =
+        data?.choices?.[0]?.message?.content ||
+        "Ho ricevuto la richiesta, ma il modello non ha restituito una risposta valida.";
+
+      const cleanContent = cleanAiOutput(content);
+
+      if (isFallback && i > 0) {
+        return (
+          `${cleanContent}\n\nNota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite.`
+        );
+      }
+
+      return cleanContent;
+    }
+
+    if (isOpenAIRateLimit(response.status, raw)) {
+      lastWasRateLimit = true;
+      continue;
+    }
+
+    if (response.status >= 500) {
+      lastWasRateLimit = false;
+      continue;
+    }
+
+    return (
+      "⚠️ Non sono riuscito a completare la risposta con il modello AI.\n\n" +
+      "Riprova tra poco oppure semplifica la richiesta."
+    );
+  }
+
+  if (lastWasRateLimit) {
+    return sanitizeOpenAIFailureMessage();
+  }
+
+  return (
+    "⚠️ Il modello AI non ha risposto correttamente.\n\n" +
+    "Riprova tra poco oppure riduci la lunghezza del messaggio."
+  );
+}
+
+async function callOpenAIVision(params: {
+  message: string;
+  messages: ChatMessage[];
+  profile: any;
+  imageDataUrl: string;
+  drawingImages: DrawingImageInput[];
+  fileText: string;
+  fileMeta: string;
+  analysisMode: AnalysisMode;
+}): Promise<string> {
+  const openAiDrawingKey =
+    process.env.OPENAI_DRAWING_READER_API_KEY ||
+    process.env.OPENAI_API_KEY;
+
+  const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
+  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "45000");
+  const imageDetail =
+    process.env.OPENAI_DRAWING_IMAGE_DETAIL === "high" ||
+    process.env.OPENAI_DRAWING_IMAGE_DETAIL === "low"
+      ? process.env.OPENAI_DRAWING_IMAGE_DETAIL
+      : "auto";
+
+  if (!openAiDrawingKey) {
+    console.error("Missing OpenAI API key for drawing reader");
+
+    return (
+      "⚠️ Modulo di analisi visiva non disponibile.\n\n" +
+      "Non è stato possibile avviare la lettura della tavola tecnica. " +
+      "Il problema non dipende dal file caricato, ma dalla configurazione del servizio AI.\n\n" +
+      "Riprova più tardi oppure segnala il problema all’assistenza."
+    );
+  }
+
+  const userName = params.profile?.userName || "Utente";
+  const focus = params.profile?.focus || "Ingegneria Meccanica";
+
+  const extractedPdfText = String(params.fileText || "").trim();
+
   const prompt =
-    `${body.message || "Analizza questa tavola tecnica."}\n\n` +
-    `${body.fileMeta ? `${body.fileMeta}\n` : ""}` +
-    `${body.fileText ? `Testo estratto dal PDF:\n${String(body.fileText).slice(0, 9000)}\n` : ""}` +
-    "Analizza solo ciò che è leggibile. Non inventare quote, materiali, tolleranze o rugosità. Distingui sempre tra rilevato, incerto e non leggibile. Leggi con attenzione cartiglio, quote, filetti, fori, lamature, tolleranze ISO, rugosità, note e materiale. Se un numero non è certo, scrivi incerto e non tirare a indovinare. Usa un report tecnico con sezioni: cartiglio, viste, quote leggibili, quote funzionali probabili, tolleranze/GD&T, rugosità, fori/filetti/lamature, materiale/trattamenti, criticità, giudizio finale.";
+    `${params.message || "Analizza questa immagine tecnica con la massima precisione."}
+
+` +
+    `${params.fileMeta ? `${params.fileMeta}
+` : ""}` +
+    `Modalità analisi: ${params.analysisMode}
+` +
+    (extractedPdfText
+      ? `
+
+TESTO ESTRATTO DAL PDF, DA USARE COME SUPPORTO E NON COME UNICA FONTE:
+${extractedPdfText.slice(0, 26000)}
+`
+      : "");
+
+  const imageInputs =
+    params.drawingImages && params.drawingImages.length > 0
+      ? params.drawingImages
+      : params.imageDataUrl
+        ? [{ label: "Immagine tecnica caricata", dataUrl: params.imageDataUrl }]
+        : [];
+
+  const isDrawingMode = params.analysisMode === "drawing";
+
+  const genericVisionSystemPrompt =
+    `Sei TechAI Vision, assistente visivo tecnico e generale. ` +
+    `Utente: ${userName}. Settore: ${focus}. Modalità: ${params.analysisMode}. ` +
+    `Analizza l'immagine in base alla domanda dell'utente, senza forzare sempre lo schema delle tavole tecniche. ` +
+    `Se l'immagine mostra l'interfaccia di TechAI, riconosci che si tratta delle funzioni dell'app e spiega cosa sono. ` +
+    `Se mostra un menu, una schermata software, un componente, una foto o uno screenshot, descrivilo normalmente. ` +
+    `Usa l'analisi da tavola tecnica solo quando l'utente sta usando la modalità Tavole/drawing oppure chiede esplicitamente una revisione di tavola tecnica. ` +
+    `Non inventare dati non visibili. Se qualcosa non è leggibile, scrivi che non è leggibile. ` +
+    `Rispondi in italiano, in modo tecnico ma naturale. Usa titoli, elenchi e grassetto Markdown leggero quando utile.`;
+
+  const drawingVisionSystemPrompt =
+    `Sei TechAI Vision, un ingegnere meccanico senior specializzato in disegno tecnico secondo norme ISO 128, ISO 1101, ISO 286 e ISO 1302. ` +
+    `Utente: ${userName}. Settore: ${focus}. Modalità: ${params.analysisMode}. ` +
+    "Il tuo compito è analizzare tavole tecniche meccaniche, immagini CAD, screenshot SolidWorks, componenti meccanici e distinte visive con la massima precisione. " +
+    "Leggi quote, tolleranze, rugosità, filetti, fori, lamature, scale, materiale, trattamento e cartiglio quando visibili. " +
+    "Individua anche le quote probabilmente funzionali e critiche, spiegando sempre il motivo tecnico, il livello di confidenza e il riferimento tecnico quando applicabile. " +
+    "Non inventare valori: se un dato non è leggibile o non è presente, scrivi chiaramente 'non leggibile' oppure 'non indicato'. " +
+    "Quando la qualità dell'immagine è bassa, segnala il limite prima di giudicare la tavola. " +
+    "Rispondi in italiano tecnico preciso. " +
+    "\n\nREGOLE DI FORMATTAZIONE OBBLIGATORIE:\n" +
+    "Usa sempre emoji di stato all'inizio delle righe di controllo:\n" +
+    "✅ = elemento corretto, presente, conforme o verificato.\n" +
+    "❌ = errore, mancanza, incongruenza, non conformità o problema critico.\n" +
+    "⚠️ = dato dubbio, poco leggibile, incompleto o da verificare.\n" +
+    "Puoi usare **testo** per evidenziare parole importanti: il frontend lo renderizza come grassetto senza mostrare gli asterischi.\n" +
+    "Esempio corretto: ✅ Materiale: 11SMnPb37 - UNI EN 10087.\n" +
+    "Esempio corretto: ❌ Rugosità: non indicata sulle superfici funzionali.\n" +
+    "Esempio corretto: ⚠️ Tolleranze geometriche: non visibili, da verificare se necessarie.\n" +
+    "\n\nSTRUTTURA RISPOSTA OBBLIGATORIA PER TAVOLE TECNICHE:\n" +
+    "Usa titoli Markdown chiari, ad esempio ## 1. Cartiglio.\n" +
+    "## 1. Cartiglio\n" +
+    "Per ogni voce usa ✅ / ❌ / ⚠️. Controlla nome pezzo, numero disegno, materiale, scala, autore, data, revisione, unità.\n\n" +
+    "## 2. Viste e sezioni\n" +
+    "Controlla se le viste sono sufficienti, se servono sezioni A-A/B-B, dettagli, viste ausiliarie o ingrandimenti.\n\n" +
+    "## 3. Quotatura generale\n" +
+    "Cita solo le quote chiaramente leggibili. Segnala quote mancanti, ridondanti, catene chiuse, riferimenti poco chiari o quote funzionali assenti.\n" +
+    "Non ricavare quote dalla geometria se non sono esplicitamente leggibili. Se una quota sembra deducibile ma non è scritta chiaramente, indica: non valutabile dalla tavola.\n" +
+    "Non trasformare una quota non leggibile in un errore di progettazione.\n\n" +
+
+    "## 3B. Quote funzionali e critiche\n" +
+    "Questa sezione è obbligatoria quando l'utente chiede quote funzionali, quote critiche, controllo tavola o analisi tecnica del disegno.\n" +
+    "Non scrivere spiegazioni generiche tipo: Le quote funzionali sono quelle che... Vai direttamente all'elenco tecnico.\n" +
+    "Non usare una risposta discorsiva libera. Usa sempre blocchi ripetuti con lo schema sotto.\n\n" +
+
+    "SCHEMA OBBLIGATORIO PER OGNI QUOTA O SPECIFICA:\n" +
+    "Quota / specifica rilevata: ...\n" +
+    "Classificazione: funzionale probabile / critica / descrittiva-secondaria / non valutabile\n" +
+    "Motivazione tecnica: ...\n" +
+    "Confidenza: alta / media / bassa\n" +
+    "Controllo consigliato: ...\n" +
+    "Riferimento tecnico: ISO/UNI applicabile oppure principio tecnico generale.\n" +
+    "Nota: ...\n\n" +
+
+    "REGOLE DI CLASSIFICAZIONE:\n" +
+    "- Funzionale probabile: fori di fissaggio, filettature, interassi, sedi, cave, asole, battute, spessori di appoggio, diametri di accoppiamento, superfici di centraggio, superfici di scorrimento, superfici di tenuta e quote collegate al montaggio.\n" +
+    "- Critica: quote marcate come caratteristiche critiche, quote con tolleranze strette, accoppiamenti tipo H7/h6/g6/f7/k6/m6/s6, filettature funzionali, datum, tolleranze geometriche, quote che se errate impediscono montaggio, intercambiabilità o funzionamento.\n" +
+    "- Descrittiva-secondaria: raggi, smussi, raccordi o quote di forma che non risultano chiaramente collegate a montaggio, accoppiamento o funzione.\n" +
+    "- Non valutabile: quota non leggibile, non presente, parzialmente coperta o funzione non deducibile dalla tavola.\n\n" +
+
+    "REGOLE ANTI-INVENZIONE PER QUOTE FUNZIONALI:\n" +
+    "- Non dire mai che una quota è sicuramente funzionale se non conosci l'assieme.\n" +
+    "- Usa formule come: probabilmente funzionale, potenzialmente critica, da verificare con assieme.\n" +
+    "- Non inventare lunghezze, diametri, profondità, tolleranze o rugosità non leggibili.\n" +
+    "- Non scrivere che una lunghezza è ricavabile dalla sezione se non è quotata chiaramente. Scrivi: non valutabile dalla tavola.\n" +
+    "- Non scrivere frasi finali tipo: se vuoi posso continuare, fammi sapere, posso evidenziare graficamente. Il report deve sembrare un output tecnico di software industriale.\n\n" +
+
+    "ESEMPIO DI OUTPUT CORRETTO:\n" +
+    "Quota / specifica rilevata: M16x1 - 6H\n" +
+    "Classificazione: critica\n" +
+    "Motivazione tecnica: filettatura interna destinata ad accoppiamento con componente maschio; la classe 6H influisce sulla compatibilità del filetto.\n" +
+    "Confidenza: alta\n" +
+    "Controllo consigliato: verificare classe 6H, profondità utile, smusso di imbocco e compatibilità con componente accoppiato.\n" +
+    "Riferimento tecnico: ISO 965 per filettature metriche; principio di quotatura funzionale.\n" +
+    "Nota: funzione da confermare con assieme.\n\n" +
+
+    "Quota / specifica rilevata: Ø16,6 +0,1/0\n" +
+    "Classificazione: critica\n" +
+    "Motivazione tecnica: quota dimensionale tollerata e potenzialmente collegata ad accoppiamento interno o passaggio componente.\n" +
+    "Confidenza: alta se chiaramente leggibile; media se parzialmente leggibile.\n" +
+    "Controllo consigliato: verificare metodo di controllo, tolleranza, rugosità associata e funzione nell'assieme.\n" +
+    "Riferimento tecnico: ISO 286 per accoppiamenti dimensionali; ISO 1302 se è collegata a rugosità; principio di quotatura funzionale.\n" +
+    "Nota: se marcata come caratteristica critica, indicarla come prioritaria.\n\n" +
+    "## 4. Tolleranze dimensionali\n" +
+    "Controlla tolleranze ISO, accoppiamenti H7/h6, H7/g6, k6, m6, tolleranze generali e quote funzionali.\n\n" +
+    "## 5. Tolleranze geometriche\n" +
+    "Controlla planarità, parallelismo, perpendicolarità, concentricità/coassialità, posizione, riferimenti datum A/B/C.\n\n" +
+    "## 6. Rugosità\n" +
+    "Controlla simboli Ra/Rz, rugosità generale, rugosità specifiche su sedi, scorrimenti, appoggi, tenute e superfici funzionali.\n\n" +
+    "## 7. Filetti, fori e lamature\n" +
+    "Controlla designazioni filetti, profondità, lamature, svasature, fori passanti/ciechi, interassi e quantità fori.\n\n" +
+    "## 8. Materiale e trattamenti\n" +
+    "Controlla materiale, norma, trattamenti termici, trattamenti superficiali, durezza e note produttive.\n\n" +
+    "## 9. Errori critici e correzioni prioritarie\n" +
+    "Qui usa soprattutto ❌ e ⚠️. Elenca solo problemi concreti. Se non trovi errori critici scrivi: ✅ Errori critici: nessuno riscontrato.\n\n" +
+    "## 10. Giudizio finale\n" +
+    "Usa obbligatoriamente uno solo di questi tre esiti:\n" +
+    "✅ APPROVATA\n" +
+    "⚠️ APPROVATA CON NOTE / DA RIVEDERE\n" +
+    "❌ NON APPROVATA\n" +
+    "Poi aggiungi una frase breve con il motivo principale.\n\n" +
+    "CRITERIO GIUDIZIO:\n" +
+    "Se mancano dati fondamentali come materiale, quote principali o tolleranze funzionali, non dare ✅ APPROVATA piena. Usa ⚠️ o ❌. " +
+    "Se la tavola è leggibile e completa per produzione, usa ✅ APPROVATA. " +
+    "Se ci sono errori gravi che impediscono la produzione, usa ❌ NON APPROVATA. " +
+    "\n\nSE NON È UNA TAVOLA TECNICA:\n" +
+    "Mantieni comunque gli emoji ✅ / ❌ / ⚠️, ma adatta le sezioni al contenuto dell'immagine. " +
+    "Se è uno screenshot CAD/SolidWorks, aggiungi: Metodo consigliato, Comandi SolidWorks in italiano, Errori comuni e Quando NON usare questo metodo.";
+
+  const visionSystemPrompt = isDrawingMode ? drawingVisionSystemPrompt : genericVisionSystemPrompt;
 
   const visionContent: any[] = [
     {
       type: "text",
-      text: prompt,
-    },
+      text:
+        prompt +
+        (isDrawingMode
+          ? "\n\nIMPORTANTE LETTURA TAVOLA PDF/A1/A0:\n" +
+            "Le immagini allegate sono crop della stessa tavola tecnica generati dal frontend con src/utils/technicalDrawingUtils.ts: alcuni automatici da testo PDF, alcuni da aree grafiche dense, più crop di sicurezza. Non trattarle come tavole separate.\n" +
+            "Usa la vista completa solo per orientarti.\n" +
+            "Usa i crop dinamici per leggere cartiglio, note, viste, sezioni, quote, fori, filetti, lamature e lavorazioni.\n" +
+            "Il testo estratto dal PDF serve come aiuto per riconoscere dati e parole, ma le conclusioni devono restare collegate alla tavola/crop visibili.\n" +
+            "Distingui chiaramente: rilevato / incerto / non leggibile. Non inventare dati mancanti e non trasformare la scarsa leggibilità in errore tecnico.\n" +
+            "Quando l'utente chiede il riconoscimento delle quote funzionali, concentrati su quote funzionali probabili, quote critiche, quote descrittive/secondarie e quote non valutabili, sempre con motivazione tecnica.\n"
+          : "\n\nIMPORTANTE ANALISI IMMAGINE GENERICA:\n" +
+            "Rispondi alla domanda dell'utente guardando l'immagine.\n" +
+            "Non usare automaticamente lo schema Cartiglio / Viste / Quotatura / Tolleranze, a meno che l'utente chieda una revisione di tavola tecnica.\n" +
+            "Se l'immagine mostra funzioni dell'app TechAI, descrivi le funzioni visibili e spiega a cosa servono.\n"),    },
   ];
 
-  for (const img of safeImages) {
-    visionContent.push({ type: "text", text: `Immagine/crop: ${img.label || "crop tavola"}` });
+  for (const img of imageInputs.slice(0, 12)) {
+    visionContent.push({ type: "text", text: `Immagine/crop: ${img.label}` });
     visionContent.push({
       type: "image_url",
       image_url: {
         url: img.dataUrl,
-        detail: "auto",
+        detail: imageDetail,
       },
     });
   }
 
-  const response = await fetchWithTimeout(
-    "https://api.openai.com/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+  let response: Response;
+
+  try {
+    response = await fetchWithTimeout(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openAiDrawingKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: "system",
+              content: visionSystemPrompt,
+            },
+            {
+              role: "user",
+              content: visionContent,
+            },
+          ],
+          temperature: 0.15,
+          max_tokens: 4000,
+        }),
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Sei TechAI Vision, assistente tecnico per tavole meccaniche. Rispondi in italiano. Non inventare dati non leggibili. Devi essere conservativo ma utile: separa dati certi, dati incerti e dati mancanti.",
-          },
-          {
-            role: "user",
-            content: visionContent,
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: 1400,
-      }),
-    },
-    28000
-  );
+      openAiTimeoutMs
+    );
+  } catch (error: any) {
+    if (error?.name === "AbortError") {
+      return (
+        "⚠️ Timeout OpenAI durante l'analisi immagine.\n\n" +
+        `Modello usato: ${model}\n\n` +
+        "La funzione ha interrotto la chiamata prima della risposta del modello.\n\n" +
+        "Prova con un'immagine più leggera oppure imposta in Vercel:\n\n" +
+        "```env\n" +
+        "OPENAI_DRAWING_READER_MODEL=gpt-4o-mini\n" +
+        "```"
+      );
+    }
+
+    throw error;
+  }
 
   const raw = await response.text();
   const data = safeJsonParse<any>(raw, null);
@@ -338,14 +1174,354 @@ async function callOpenAIVision(body: RequestBodyData): Promise<string> {
       "⚠️ OpenAI ha restituito un errore durante l'analisi immagine.\n\n" +
       `Modello usato: ${model}\n` +
       `Codice: ${response.status}\n\n` +
-      `Dettaglio: ${raw.slice(0, 1200)}`
+      `Dettaglio: ${raw || "nessun dettaglio ricevuto"}\n\n` +
+      "Controlla che la chiave OpenAI sia valida e che il modello scelto supporti immagini. " +
+      "Variabili richieste: OPENAI_DRAWING_READER_API_KEY e OPENAI_DRAWING_READER_MODEL."
     );
   }
 
-  return cleanAiOutput(
+  const visionAnswer =
     data?.choices?.[0]?.message?.content ||
-      "Ho ricevuto l'immagine, ma il modello non ha restituito una risposta valida."
-  );
+    "Ho ricevuto l'immagine, ma OpenAI non ha restituito una risposta valida.";
+
+  return cleanAiOutput(visionAnswer);
+}
+
+async function checkAuthAndRateLimit(
+  req: Request,
+  usageRequest: { hasFile: boolean }
+): Promise<AuthResult> {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "Supabase server non configurato." }, 500),
+    };
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  const authHeader = req.headers.get("authorization");
+  const guestId = req.headers.get("x-guest-id");
+
+  if (!authHeader && guestId) {
+    const cleanGuestId = guestId.trim();
+
+    if (!cleanGuestId || cleanGuestId.length < 8 || cleanGuestId.length > 120) {
+      return {
+        ok: false,
+        response: jsonResponse({ error: "Guest ID non valido." }, 400),
+      };
+    }
+
+    const { data: existingGuest, error: selectError } = await supabase
+      .from("guest_usage")
+      .select("guest_id, ai_requests_used, ai_requests_limit, file_uploads_used, file_uploads_limit, window_started_at")
+      .eq("guest_id", cleanGuestId)
+      .maybeSingle();
+
+    if (selectError) {
+      return {
+        ok: false,
+        response: jsonResponse(
+          {
+            error: "Errore controllo limite ospite.",
+            detail: selectError.message,
+          },
+          500
+        ),
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+
+    if (!existingGuest) {
+      const { error: insertError } = await supabase
+        .from("guest_usage")
+        .insert({
+          guest_id: cleanGuestId,
+          ai_requests_used: 0,
+          ai_requests_limit: GUEST_TEXT_LIMIT_24H,
+          file_uploads_used: 0,
+          file_uploads_limit: GUEST_FILE_LIMIT_24H,
+          window_started_at: nowIso,
+          updated_at: nowIso,
+        });
+
+      if (insertError) {
+        return {
+          ok: false,
+          response: jsonResponse(
+            {
+              error: "Errore creazione profilo ospite.",
+              detail: insertError.message,
+            },
+            500
+          ),
+        };
+      }
+
+      return {
+        ok: true,
+        mode: "guest",
+        guestId: cleanGuestId,
+        supabase,
+        usage: {
+          used: 0,
+          limit: GUEST_TEXT_LIMIT_24H,
+          fileUsed: 0,
+          fileLimit: GUEST_FILE_LIMIT_24H,
+          windowStartedAt: nowIso,
+        },
+      };
+    }
+
+    let used = Number(existingGuest.ai_requests_used || 0);
+    let limit = Number(existingGuest.ai_requests_limit || GUEST_TEXT_LIMIT_24H);
+    let fileUsed = Number(existingGuest.file_uploads_used || 0);
+    let fileLimit = Number(existingGuest.file_uploads_limit || GUEST_FILE_LIMIT_24H);
+    let windowStartedAt = String(existingGuest.window_started_at || nowIso);
+
+    if (isOlderThan24Hours(windowStartedAt)) {
+      used = 0;
+      limit = GUEST_TEXT_LIMIT_24H;
+      fileUsed = 0;
+      fileLimit = GUEST_FILE_LIMIT_24H;
+      windowStartedAt = nowIso;
+
+      const { error: resetError } = await supabase
+        .from("guest_usage")
+        .update({
+          ai_requests_used: 0,
+          ai_requests_limit: GUEST_TEXT_LIMIT_24H,
+          file_uploads_used: 0,
+          file_uploads_limit: GUEST_FILE_LIMIT_24H,
+          window_started_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq("guest_id", cleanGuestId);
+
+      if (resetError) {
+        return {
+          ok: false,
+          response: jsonResponse(
+            {
+              error: "Errore reset limite ospite.",
+              detail: resetError.message,
+            },
+            500
+          ),
+        };
+      }
+    } else if (limit !== GUEST_TEXT_LIMIT_24H || fileLimit !== GUEST_FILE_LIMIT_24H) {
+      limit = GUEST_TEXT_LIMIT_24H;
+      fileLimit = GUEST_FILE_LIMIT_24H;
+
+      await supabase
+        .from("guest_usage")
+        .update({
+          ai_requests_limit: GUEST_TEXT_LIMIT_24H,
+          file_uploads_limit: GUEST_FILE_LIMIT_24H,
+          updated_at: nowIso,
+        })
+        .eq("guest_id", cleanGuestId);
+    }
+
+    if (used >= limit) {
+      return {
+        ok: false,
+        response: jsonResponse(
+          {
+            error: "Limite ospite raggiunto",
+            used,
+            limit,
+            fileUsed,
+            fileLimit,
+            resetAfterHours: GUEST_WINDOW_HOURS,
+          },
+          403
+        ),
+      };
+    }
+
+    if (usageRequest.hasFile && fileUsed >= fileLimit) {
+      return {
+        ok: false,
+        response: jsonResponse(
+          {
+            error: "Limite file ospite raggiunto",
+            used,
+            limit,
+            fileUsed,
+            fileLimit,
+            resetAfterHours: GUEST_WINDOW_HOURS,
+          },
+          403
+        ),
+      };
+    }
+
+    return {
+      ok: true,
+      mode: "guest",
+      guestId: cleanGuestId,
+      supabase,
+      usage: {
+        used,
+        limit,
+        fileUsed,
+        fileLimit,
+        windowStartedAt,
+      },
+    };
+  }
+
+  if (!authHeader) {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "Token mancante. Effettua il login oppure entra come ospite." }, 401),
+    };
+  }
+
+  const token = authHeader.replace("Bearer ", "").trim();
+
+  if (!token) {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "Token non valido." }, 401),
+    };
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser(token);
+
+  if (userError || !user) {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "Sessione non valida. Effettua di nuovo il login." }, 401),
+    };
+  }
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, plan, ai_requests_used, ai_requests_limit")
+    .eq("id", user.id)
+    .single();
+
+  if (profileError || !profile) {
+    return {
+      ok: false,
+      response: jsonResponse({ error: "Profilo utente non trovato." }, 404),
+    };
+  }
+
+  if (profile.ai_requests_used >= profile.ai_requests_limit) {
+    return {
+      ok: false,
+      response: jsonResponse(
+        {
+          error: "Limite AI raggiunto",
+          plan: profile.plan,
+          used: profile.ai_requests_used,
+          limit: profile.ai_requests_limit,
+        },
+        403
+      ),
+    };
+  }
+
+  return {
+    ok: true,
+    mode: "user",
+    userId: user.id,
+    supabase,
+  };
+}
+
+async function incrementUserUsage(supabase: any, userId: string) {
+  if (!userId || !supabase) return;
+
+  const { data, error: readError } = await supabase
+    .from("profiles")
+    .select("ai_requests_used, ai_requests_limit")
+    .eq("id", userId)
+    .single();
+
+  if (readError || !data) {
+    console.error("Errore lettura usage utente:", readError);
+    return;
+  }
+
+  const profile = data as { ai_requests_used: number; ai_requests_limit: number };
+
+  const { error: updateError } = await supabase
+    .from("profiles")
+    .update({ ai_requests_used: profile.ai_requests_used + 1 })
+    .eq("id", userId);
+
+  if (updateError) {
+    console.error("Errore update usage utente:", updateError);
+  }
+}
+
+async function incrementGuestUsage(supabase: any, guestId: string, hasFile: boolean) {
+  if (!guestId || !supabase) {
+    return {
+      used: 0,
+      limit: GUEST_TEXT_LIMIT_24H,
+      fileUsed: 0,
+      fileLimit: GUEST_FILE_LIMIT_24H,
+      windowStartedAt: new Date().toISOString(),
+    };
+  }
+
+  const { data, error: readError } = await supabase
+    .from("guest_usage")
+    .select("ai_requests_used, ai_requests_limit, file_uploads_used, file_uploads_limit, window_started_at")
+    .eq("guest_id", guestId)
+    .single();
+
+  if (readError || !data) {
+    console.error("Errore lettura usage ospite:", readError);
+    return {
+      used: 0,
+      limit: GUEST_TEXT_LIMIT_24H,
+      fileUsed: 0,
+      fileLimit: GUEST_FILE_LIMIT_24H,
+      windowStartedAt: new Date().toISOString(),
+    };
+  }
+
+  const used = Number(data.ai_requests_used || 0) + 1;
+  const fileUsed = Number(data.file_uploads_used || 0) + (hasFile ? 1 : 0);
+  const limit = Number(data.ai_requests_limit || GUEST_TEXT_LIMIT_24H);
+  const fileLimit = Number(data.file_uploads_limit || GUEST_FILE_LIMIT_24H);
+  const windowStartedAt = String(data.window_started_at || new Date().toISOString());
+
+  const { error: updateError } = await supabase
+    .from("guest_usage")
+    .update({
+      ai_requests_used: used,
+      file_uploads_used: fileUsed,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("guest_id", guestId);
+
+  if (updateError) {
+    console.error("Errore update usage ospite:", updateError);
+  }
+
+  return {
+    used,
+    limit,
+    fileUsed,
+    fileLimit,
+    windowStartedAt,
+  };
 }
 
 export default async function handler(req: Request) {
@@ -354,10 +1530,43 @@ export default async function handler(req: Request) {
       ok: true,
       message: "API /api/chat funzionante",
       env: {
-        hasOpenAITextKey: Boolean(process.env.OPENAI_TEXT_API_KEY || process.env.OPENAI_API_KEY),
-        hasOpenAIDrawingKey: Boolean(process.env.OPENAI_DRAWING_READER_API_KEY || process.env.OPENAI_API_KEY),
-        textModel: getTextModel(),
-        drawingModel: getVisionModel(),
+        hasOpenAITextKey: Boolean(
+          process.env.OPENAI_TEXT_API_KEY || process.env.OPENAI_API_KEY
+        ),
+        openAITextKeyStatus:
+          process.env.OPENAI_TEXT_API_KEY || process.env.OPENAI_API_KEY ? "SET" : "MISSING",
+        openAITextModelFast:
+          process.env.OPENAI_TEXT_MODEL_FAST ||
+          process.env.OPENAI_TEXT_MODEL ||
+          process.env.OPENAI_API_MODEL ||
+          "gpt-4o-mini",
+        openAITextModelMedium:
+          process.env.OPENAI_TEXT_MODEL_MEDIUM ||
+          process.env.OPENAI_TEXT_MODEL ||
+          process.env.OPENAI_API_MODEL ||
+          "gpt-4o-mini",
+        openAITextModelHard:
+          process.env.OPENAI_TEXT_MODEL_HARD ||
+          process.env.OPENAI_TEXT_MODEL ||
+          process.env.OPENAI_API_MODEL ||
+          "gpt-4o",
+        hasOpenAIDrawingKey: Boolean(
+          process.env.OPENAI_DRAWING_READER_API_KEY || process.env.OPENAI_API_KEY
+        ),
+        openAIDrawingKeyStatus:
+          process.env.OPENAI_DRAWING_READER_API_KEY || process.env.OPENAI_API_KEY
+            ? "SET"
+            : "MISSING",
+        openAIDrawingModel:
+          process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
+        openAIDrawingImageDetail:
+          process.env.OPENAI_DRAWING_IMAGE_DETAIL || "auto",
+        hasSupabase: Boolean(
+          process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
+        ),
+        guestTextLimit24h: GUEST_TEXT_LIMIT_24H,
+        guestFileLimit24h: GUEST_FILE_LIMIT_24H,
+        guestWindowHours: GUEST_WINDOW_HOURS,
       },
     });
   }
@@ -368,33 +1577,61 @@ export default async function handler(req: Request) {
 
   try {
     const body = await readRequestBody(req);
-    const hasVisionInput = Boolean(body.imageDataUrl) || Boolean(body.drawingImages?.length);
 
-    const answer = hasVisionInput
-      ? await callOpenAIVision(body)
-      : await callOpenAIText(body);
+    const auth = await checkAuthAndRateLimit(req, {
+      hasFile: body.hasFile,
+    });
+
+    if (auth.ok === false) {
+      return auth.response;
+    }
+
+    const hasVisionInput =
+      Boolean(body.imageDataUrl) ||
+      Boolean(body.drawingImages && body.drawingImages.length > 0);
+
+    const rawAnswer: string = hasVisionInput
+      ? await callOpenAIVision({
+          message: body.message,
+          messages: body.messages,
+          profile: body.profile,
+          imageDataUrl: body.imageDataUrl,
+          drawingImages: body.drawingImages,
+          fileText: body.fileText,
+          fileMeta: body.fileMeta,
+          analysisMode: body.analysisMode,
+        })
+      : await callOpenAIText({
+          message: body.message,
+          messages: body.messages,
+          profile: body.profile,
+          fileText: body.fileText,
+          fileMeta: body.fileMeta,
+          analysisMode: body.analysisMode,
+        });
+
+    // Ultima pulizia obbligatoria prima di mandare il testo al frontend.
+    // Serve anche se il modello ignora il prompt e produce ancora ** o tabelle Markdown.
+    const answer = cleanAiOutput(rawAnswer);
+
+    let usage: any = null;
+
+    if (auth.mode === "user") {
+      await incrementUserUsage(auth.supabase, auth.userId);
+    } else {
+      usage = await incrementGuestUsage(auth.supabase, auth.guestId, body.hasFile);
+    }
 
     return jsonResponse({
       answer,
-      mode: "user",
-      usage: null,
+      mode: auth.mode,
+      usage,
     });
   } catch (error: any) {
-    if (error?.name === "AbortError") {
-      return jsonResponse(
-        {
-          answer:
-            "⚠️ Timeout durante la chiamata AI.\n\n" +
-            "La richiesta è stata interrotta prima del limite Vercel per evitare FUNCTION_INVOCATION_TIMEOUT. Prova con un messaggio più breve o con un file immagine/PDF più leggero.",
-        },
-        504
-      );
-    }
-
     return jsonResponse(
       {
         answer:
-          "⚠️ Errore interno nella rotta /api/chat.\n\n" +
+          "⚠️ Errore interno nella rotta `/api/chat`.\n\n" +
           `Dettaglio tecnico: ${error?.message || "errore sconosciuto"}`,
       },
       500
