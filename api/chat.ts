@@ -21,7 +21,7 @@ type RequestBodyData = {
 };
 
 export const config = {
-  maxDuration: 60,
+  runtime: "edge",
 };
 
 function jsonResponse(data: unknown, status = 200) {
