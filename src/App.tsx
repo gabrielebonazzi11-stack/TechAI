@@ -255,6 +255,7 @@ export default function App() {
     assemblyFunction: "",
     productionQuantity: "",
   });
+  const [drawingExtraNotes, setDrawingExtraNotes] = useState("");
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
@@ -663,6 +664,8 @@ export default function App() {
       productionQuantity: "",
     });
 
+    setDrawingExtraNotes("");
+
     if (drawingReviewInputRef.current) drawingReviewInputRef.current.value = "";
   };
 
@@ -907,7 +910,7 @@ export default function App() {
       type: "drawing",
       title: `Tavola - ${drawingForm.partName || drawingReviewFile?.fileAttachment.name || "senza nome"}`,
       summary: drawingResults.length > 0 ? `${drawingResults.length} risultati/controlli salvati.` : "File tavola salvato come riferimento.",
-      payload: { drawingForm, drawingResults, drawingIssues, file: drawingReviewFile?.fileAttachment },
+      payload: { drawingForm, drawingExtraNotes, drawingResults, drawingIssues, file: drawingReviewFile?.fileAttachment },
     });
   };
 
@@ -2288,6 +2291,12 @@ DATI DEL PEZZO FORNITI DALL'UTENTE:
 - Fori/filetti/lamature: ${f.holesThreads || "non indicati"}
 - Accoppiamenti/tolleranze: ${f.fits || f.tolerances || "non indicati"}
 - Rugosità: ${f.roughness || "non indicate"}
+- Indicazioni aggiuntive / ALTRO: ${drawingExtraNotes.trim() || "nessuna indicazione aggiuntiva"}
+
+SEZIONE ALTRO / INDICAZIONI AGGIUNTIVE:
+Se l'utente ha compilato il campo ALTRO, usa quelle indicazioni come priorità dell'analisi.
+Esempi: se chiede quote funzionali, crea una sezione dedicata alle quote funzionali e critiche; se chiede rugosità, concentrati sulle superfici funzionali; se chiede cartiglio, controlla soprattutto dati cartiglio.
+Non ignorare il campo ALTRO, ma non inventare dati non leggibili dalla tavola.
 
 COSA DEVI CONTROLLARE:
 1. CARTIGLIO: nome pezzo, numero disegno, materiale, scala, data, revisione, autore.
@@ -2378,7 +2387,7 @@ Struttura:
 
     const issues: DrawingIssue[] = [];
     const results: DrawingResult[] = [];
-    const text = `${f.partType} ${f.mainFeatures} ${f.holesThreads} ${f.fits}`.toLowerCase();
+    const text = `${f.partType} ${f.mainFeatures} ${f.holesThreads} ${f.fits} ${drawingExtraNotes}`.toLowerCase();
 
     if (!f.functionalSurfaces.trim()) issues.push({ id: "funzionali", label: "Superfici funzionali", severity: "errore", x: 24, y: 28, detail: "Mancano superfici funzionali: indica sedi, appoggi, scorrimenti, battute o riferimenti." });
     if (!f.tolerances.trim() && !f.fits.trim()) issues.push({ id: "tolleranze", label: "Tolleranze", severity: "errore", x: 66, y: 35, detail: "Mancano tolleranze o accoppiamenti sulle quote importanti." });
@@ -3382,6 +3391,47 @@ Struttura:
               <Field label="Accoppiamenti" value={drawingForm.fits} onChange={v => updateDrawingField("fits", v)} placeholder="H7/g6, sede cuscinetto..." theme={theme} isDark={isDark} />
               <Field label="Tolleranze già previste" value={drawingForm.tolerances} onChange={v => updateDrawingField("tolerances", v)} placeholder="ISO 2768, geometriche..." theme={theme} isDark={isDark} />
               <Field label="Rugosità già previste" value={drawingForm.roughness} onChange={v => updateDrawingField("roughness", v)} placeholder="Ra 3.2, Ra 1.6..." theme={theme} isDark={isDark} />
+
+              <label style={s.label}>Altro / indicazioni aggiuntive</label>
+              <textarea
+                style={{
+                  ...s.checklistTextarea,
+                  background: isDark ? "#050505" : "#fff",
+                  color: theme.text,
+                  border: `1px solid ${theme.border}`,
+                  minHeight: 120,
+                }}
+                value={drawingExtraNotes}
+                onChange={(e) => setDrawingExtraNotes(e.target.value)}
+                placeholder={"Scrivi qui richieste specifiche per l'analisi:\nEs. controlla quote funzionali e critiche, verifica rugosità, controlla tolleranze H7, guarda solo cartiglio, analizza fori/filetti/lamature..."}
+              />
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                <button
+                  type="button"
+                  style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}`, marginTop: 0 }}
+                  onClick={() =>
+                    setDrawingExtraNotes(
+                      "Analizza questa tavola e individua le quote funzionali, critiche, descrittive e non valutabili. Per ogni quota usa schema fisso con classificazione, motivazione tecnica, confidenza e controllo consigliato."
+                    )
+                  }
+                >
+                  Quote funzionali
+                </button>
+
+                <button
+                  type="button"
+                  style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}`, marginTop: 0 }}
+                  onClick={() =>
+                    setDrawingExtraNotes(
+                      "Controlla soprattutto tolleranze dimensionali, tolleranze geometriche, rugosità e coerenza con superfici funzionali, sedi, fori, filetti e accoppiamenti."
+                    )
+                  }
+                >
+                  Tolleranze/Rugosità
+                </button>
+              </div>
+
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <button
                   style={{ ...s.primaryBtn, background: theme.primary }}
