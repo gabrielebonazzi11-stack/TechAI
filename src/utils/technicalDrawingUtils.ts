@@ -22,11 +22,6 @@ export function isDrawingUpload(upload: { file?: File | null } | null) {
   return Boolean(upload?.file && (isImageFile(upload.file) || isPdfFile(upload.file)));
 }
 
-function toNumber(value: string, fallback = 0) {
-  const n = Number(String(value || "").replace(",", "."));
-  return Number.isFinite(n) ? n : fallback;
-}
-
 type DrawingCropDefinition = {
   id: string;
   label: string;
@@ -48,9 +43,9 @@ type PdfTextBox = {
 };
 
 const DRAWING_SAFE_CROP_DEFINITIONS: DrawingCropDefinition[] = [
-  { id: "full", label: "1. Tavola completa - orientamento generale", x: 0, y: 0, w: 1, h: 1, maxSide: 1900, quality: 0.82, source: "safe" },
-  { id: "bottom_band", label: "2. Fascia bassa completa - cartiglio, note, distinte", x: 0, y: 0.64, w: 1, h: 0.36, maxSide: 2600, quality: 0.9, source: "safe" },
-  { id: "right_band", label: "3. Fascia destra completa - cartiglio e dettagli laterali", x: 0.62, y: 0, w: 0.38, h: 1, maxSide: 2600, quality: 0.9, source: "safe" },
+  { id: "full", label: "Tavola completa - orientamento generale", x: 0, y: 0, w: 1, h: 1, maxSide: 1400, quality: 0.74, source: "safe" },
+  { id: "bottom_band", label: "Fascia bassa - cartiglio, note, distinte", x: 0, y: 0.64, w: 1, h: 0.36, maxSide: 1500, quality: 0.78, source: "safe" },
+  { id: "right_band", label: "Fascia destra - cartiglio e dettagli laterali", x: 0.62, y: 0, w: 0.38, h: 1, maxSide: 1500, quality: 0.78, source: "safe" },
 ];
 
 const PDF_KEYWORD_GROUPS = [
@@ -69,13 +64,6 @@ const PDF_KEYWORD_GROUPS = [
     maxLocal: 0,
   },
   {
-    id: "trattamenti",
-    label: "Trattamenti superficiali / termici trovati automaticamente",
-    keywords: ["trattamento superficiale", "trattamento termico", "ossidazione", "anodica", "ptfe", "duro", "dura", "sp."],
-    expand: 0.055,
-    maxLocal: 0,
-  },
-  {
     id: "tolleranze_note",
     label: "Tolleranze generali / note trovate automaticamente",
     keywords: ["tolleranze generali", "quote senza", "indicazione di tolleranza", "dimensioni lineari", "rug", "ra", "raccordi", "smussi", "norma"],
@@ -83,29 +71,15 @@ const PDF_KEYWORD_GROUPS = [
     maxLocal: 0,
   },
   {
-    id: "sezioni",
-    label: "Sezioni e tagli trovati automaticamente",
-    keywords: ["section", "sezione", "a-a", "b-b", "c-c", "d-d", "setion", "sez."],
-    expand: 0.075,
-    maxLocal: 4,
-  },
-  {
-    id: "viste_dettagli",
-    label: "Viste ausiliarie / dettagli trovati automaticamente",
-    keywords: ["vista", "vista da", "detail", "dettaglio", "scale", "scala", "marcare", "codice"],
-    expand: 0.075,
-    maxLocal: 4,
-  },
-  {
     id: "fori_filetti_lamature",
     label: "Fori, filetti, lamature e tolleranze locali trovati automaticamente",
     keywords: ["fori", "foro", "lam", "lam.", "svas", "m4", "m5", "m6", "n7", "toll.", "prima t.s", "dopo t.s"],
     expand: 0.085,
-    maxLocal: 5,
+    maxLocal: 2,
   },
 ];
 
-function canvasToBlob(canvas: HTMLCanvasElement, quality = 0.9): Promise<Blob> {
+function canvasToBlob(canvas: HTMLCanvasElement, quality = 0.72): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (!blob) reject(new Error("Conversione canvas non riuscita."));
@@ -140,7 +114,7 @@ function rectsOverlapEnough(a: DrawingCropDefinition, b: DrawingCropDefinition) 
 
 function addUniqueCrop(crops: DrawingCropDefinition[], crop: DrawingCropDefinition) {
   const normalized = normalizeCrop(crop);
-  const tooSimilar = crops.some(existing => rectsOverlapEnough(existing, normalized));
+  const tooSimilar = crops.some((existing) => rectsOverlapEnough(existing, normalized));
   if (!tooSimilar) crops.push(normalized);
 }
 
@@ -189,8 +163,8 @@ function cropAroundBoxes(
   canvasWidth: number,
   canvasHeight: number,
   expand = 0.06,
-  maxSide = 2600,
-  quality = 0.92
+  maxSide = 1500,
+  quality = 0.78
 ): DrawingCropDefinition | null {
   if (!boxes.length) return null;
 
@@ -260,26 +234,24 @@ function extractPdfTextBoxes(page: any, viewport: any): Promise<{ boxes: PdfText
 
         boxes.push({ text, x, y, w: width, h: height });
       } catch {
-        // Se un item non ha trasformazione valida, lo ignoriamo nei crop ma resta nel testo estratto.
+        // Il testo resta comunque disponibile nell'estrazione generale.
       }
     }
 
-    return { boxes, text: strings.join(" ") };
+    return { boxes, text: strings.join(" ").slice(0, 9000) };
   });
 }
 
 function textMatchesKeyword(value: string, keyword: string) {
-  const cleanValue = value.toLowerCase();
-  const cleanKeyword = keyword.toLowerCase();
-  return cleanValue.includes(cleanKeyword);
+  return value.toLowerCase().includes(keyword.toLowerCase());
 }
 
 function buildDynamicTextCrops(boxes: PdfTextBox[], canvasWidth: number, canvasHeight: number): DrawingCropDefinition[] {
   const crops: DrawingCropDefinition[] = [];
-  const allText = boxes.map(box => ({ ...box, lower: box.text.toLowerCase() }));
+  const allText = boxes.map((box) => ({ ...box, lower: box.text.toLowerCase() }));
 
   for (const group of PDF_KEYWORD_GROUPS) {
-    const matches = allText.filter(box => group.keywords.some(keyword => textMatchesKeyword(box.lower, keyword)));
+    const matches = allText.filter((box) => group.keywords.some((keyword) => textMatchesKeyword(box.lower, keyword)));
     if (matches.length === 0) continue;
 
     const aggregate = cropAroundBoxes(
@@ -289,8 +261,8 @@ function buildDynamicTextCrops(boxes: PdfTextBox[], canvasWidth: number, canvasH
       canvasWidth,
       canvasHeight,
       group.expand,
-      2700,
-      0.93
+      1500,
+      0.78
     );
 
     if (aggregate && aggregate.w * aggregate.h < 0.72) {
@@ -298,9 +270,8 @@ function buildDynamicTextCrops(boxes: PdfTextBox[], canvasWidth: number, canvasH
     }
 
     if (group.maxLocal > 0) {
-      const localMatches = matches.slice(0, group.maxLocal);
-      localMatches.forEach((box, index) => {
-        const nearBoxes = boxes.filter(other => {
+      matches.slice(0, group.maxLocal).forEach((box, index) => {
+        const nearBoxes = boxes.filter((other) => {
           const dx = Math.abs((other.x + other.w / 2) - (box.x + box.w / 2)) / canvasWidth;
           const dy = Math.abs((other.y + other.h / 2) - (box.y + box.h / 2)) / canvasHeight;
           return dx < 0.13 && dy < 0.11;
@@ -313,8 +284,8 @@ function buildDynamicTextCrops(boxes: PdfTextBox[], canvasWidth: number, canvasH
           canvasWidth,
           canvasHeight,
           group.expand,
-          2500,
-          0.93
+          1400,
+          0.76
         );
 
         if (localCrop && localCrop.w * localCrop.h < 0.42) {
@@ -331,9 +302,9 @@ function buildDensityCrops(canvas: HTMLCanvasElement): DrawingCropDefinition[] {
   const ctx = canvas.getContext("2d");
   if (!ctx) return [];
 
-  const cols = 5;
-  const rows = 4;
-  const sampleStep = 10;
+  const cols = 4;
+  const rows = 3;
+  const sampleStep = 16;
   const candidates: { crop: DrawingCropDefinition; score: number }[] = [];
 
   for (let row = 0; row < rows; row++) {
@@ -359,7 +330,7 @@ function buildDensityCrops(canvas: HTMLCanvasElement): DrawingCropDefinition[] {
       }
 
       const density = total > 0 ? dark / total : 0;
-      if (density < 0.018) continue;
+      if (density < 0.022) continue;
 
       candidates.push({
         score: density,
@@ -370,8 +341,8 @@ function buildDensityCrops(canvas: HTMLCanvasElement): DrawingCropDefinition[] {
           y: Math.max(0, row / rows - 0.035),
           w: Math.min(1, 1 / cols + 0.07),
           h: Math.min(1, 1 / rows + 0.07),
-          maxSide: 2300,
-          quality: 0.9,
+          maxSide: 1300,
+          quality: 0.74,
           source: "density",
         }),
       });
@@ -380,8 +351,8 @@ function buildDensityCrops(canvas: HTMLCanvasElement): DrawingCropDefinition[] {
 
   return candidates
     .sort((a, b) => b.score - a.score)
-    .slice(0, 4)
-    .map(item => item.crop);
+    .slice(0, 1)
+    .map((item) => item.crop);
 }
 
 async function makeDrawingImagesFromCanvas(
@@ -394,7 +365,7 @@ async function makeDrawingImagesFromCanvas(
   for (const crop of dynamicCrops) addUniqueCrop(allCrops, crop);
   for (const crop of buildDensityCrops(canvas)) addUniqueCrop(allCrops, crop);
 
-  const limited = allCrops.slice(0, 12);
+  const limited = allCrops.slice(0, 4);
   const images: DrawingCropImage[] = [];
 
   for (let i = 0; i < limited.length; i++) {
@@ -417,15 +388,18 @@ export async function makeDrawingImagesFromImageFile(file: File): Promise<Drawin
     image.src = dataUrl;
   });
 
+  const longest = Math.max(img.width, img.height);
+  const scale = Math.min(1, 1800 / longest);
+
   const canvas = document.createElement("canvas");
-  canvas.width = img.width;
-  canvas.height = img.height;
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
   const ctx = canvas.getContext("2d");
   if (!ctx) return [{ label: "Immagine tavola caricata", dataUrl }];
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(img, 0, 0);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
   return makeDrawingImagesFromCanvas(canvas, []);
 }
@@ -442,16 +416,16 @@ export async function pdfPageToImageFile(file: File): Promise<{
   const totalPages = pdf.numPages;
   const page = await pdf.getPage(1);
 
-  // Scala alta per A1/A0: le quote e il cartiglio sono piccoli.
-  // L'immagine intera viene ridotta per anteprima; i crop invece restano più leggibili.
-  const scale = 4.2;
+  const scale = 2.2;
   const viewport = page.getViewport({ scale });
 
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(viewport.width);
   canvas.height = Math.round(viewport.height);
 
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas non disponibile per renderizzare il PDF.");
+
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   await page.render({ canvasContext: ctx as any, viewport }).promise;
@@ -472,13 +446,13 @@ export async function pdfPageToImageFile(file: File): Promise<{
   previewCanvas.width = previewImg.width;
   previewCanvas.height = previewImg.height;
   previewCanvas.getContext("2d")?.drawImage(previewImg, 0, 0);
-  const blob = await canvasToBlob(previewCanvas, 0.86);
+  const blob = await canvasToBlob(previewCanvas, 0.72);
   const jpegFile = new File([blob], file.name.replace(/\.pdf$/i, "_p1_preview.jpg"), { type: "image/jpeg" });
 
   return { dataUrl, jpegFile, totalPages, drawingImages, extractedText: text };
 }
 
-export async function compressImageForVision(file: File, maxSide = 1600, quality = 0.82): Promise<File> {
+export async function compressImageForVision(file: File, maxSide = 1200, quality = 0.72): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
 
   const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -496,7 +470,7 @@ export async function compressImageForVision(file: File, maxSide = 1600, quality
   });
 
   const longestSide = Math.max(img.width, img.height);
-  if (longestSide <= maxSide && file.size <= 1_200_000 && file.type === "image/jpeg") {
+  if (longestSide <= maxSide && file.size <= 650_000 && file.type === "image/jpeg") {
     return file;
   }
 
@@ -528,13 +502,12 @@ export async function extractPdfText(file: File): Promise<string> {
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const pages: string[] = [];
 
-  for (let i = 1; i <= pdf.numPages; i++) {
+  for (let i = 1; i <= Math.min(pdf.numPages, 3); i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
-    const pageText = content.items.map((item: any) => ("str" in item ? item.str : "")).join(" ");
+    const pageText = content.items.map((item: any) => ("str" in item ? item.str : "")).join(" ").slice(0, 5000);
     pages.push(pageText);
   }
 
   return pages.join("\n\n");
 }
-
