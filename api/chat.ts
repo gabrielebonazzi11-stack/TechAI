@@ -383,7 +383,7 @@ ${analysisMode}`.toLowerCase();
   }
 
   if (
-    /tavola|disegno tecnico|rugosità|rugosita|tolleranza|gd&t|quota|sezione|cartiglio|materiale|acciaio|c45|42crmo4|aisi|inventor|solidworks|step|stp|distinta|bom|csv|json/i.test(routingText)
+    /tavola|disegno tecnico|rugosità|rugosita|tolleranza|gd&t|quota|quote funzionali|funzionale|critica|accoppiamento|sede|interasse|asola|battuta|datum|sezione|cartiglio|materiale|acciaio|c45|42crmo4|aisi|inventor|solidworks|step|stp|distinta|bom|csv|json/i.test(routingText)
   ) {
     score += 3;
     reasons.push("argomento tecnico CAD/progetto");
@@ -491,7 +491,7 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
  if (analysisMode === "drawing") {
   return (
     `\n\n## MODALITÀ PRE-LETTURA TAVOLA TECNICA - STRICT MODE\n` +
-    `Devi analizzare la tavola tecnica in modo accurato` +
+    `Devi analizzare la tavola tecnica in modo accurato.\n\n` +
 
     `REGOLE ANTI-ERRORE OBBLIGATORIE:\n` +
     `- Non inventare quote, tolleranze, materiali, rugosità, filetti, fori, trattamenti o note.\n` +
@@ -500,15 +500,52 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
     `- Non dedurre materiale, scala, unità o trattamento se non sono visibili nel cartiglio o nelle note.\n` +
     `- Non trasformare una mancanza di leggibilità in un errore di progettazione.\n` +
     `- Se l'immagine/PDF è poco leggibile, segnala prima il limite di qualità.\n` +
-    `- Distingui sempre tra "rilevato", "incerto" e "non rilevabile".\n\n` +
+    `- Distingui sempre tra "rilevato", "incerto" e "non rilevabile".\n` +
+    `- Per le quote funzionali non usare certezze assolute se non conosci l'assieme: usa "probabilmente funzionale", "potenzialmente critica" o "da verificare".\n\n` +
+
+    `ANALISI QUOTE FUNZIONALI E CRITICHE:\n` +
+    `Devi individuare, quando leggibili, le quote che possono influenzare montaggio, accoppiamento, centraggio, battuta, scorrimento, tenuta, resistenza, lavorazione o controllo qualità.\n` +
+    `Classifica ogni quota rilevante in una di queste categorie:\n` +
+    `- Funzionale probabile: quota che sembra influenzare montaggio, accoppiamento o funzione del pezzo.\n` +
+    `- Critica: quota che, se errata, può compromettere montaggio, funzionamento, sicurezza, intercambiabilità o produzione.\n` +
+    `- Descrittiva/secondaria: quota utile a definire la forma ma non chiaramente legata alla funzione principale.\n` +
+    `- Non valutabile: quota non leggibile o funzione non deducibile dalla tavola.\n\n` +
+
+    `Considera funzionali probabili soprattutto:\n` +
+    `- diametri di fori, perni, alberi, sedi cuscinetto, sedi boccole e sedi spine;\n` +
+    `- interassi tra fori, cave, asole e riferimenti di montaggio;\n` +
+    `- larghezze/profondità di cave, scanalature, asole, lamature e svasature;\n` +
+    `- spessori di battute, appoggi, flange, pareti sottili o zone resistenti;\n` +
+    `- quote con tolleranza stretta o accoppiamenti ISO tipo H7, h6, g6, f7, k6, m6, s6;\n` +
+    `- quote collegate a rugosità specifiche, simboli Ra/Rz o superfici lavorate;\n` +
+    `- quote collegate a tolleranze geometriche ISO 1101, datum A/B/C, posizione, planarità, parallelismo, perpendicolarità, coassialità;\n` +
+    `- superfici di appoggio, centraggio, rotazione, scorrimento, tenuta o fissaggio.\n\n` +
+
+    `Per ogni quota funzionale o critica devi scrivere:\n` +
+    `- Quota rilevata.\n` +
+    `- Classificazione.\n` +
+    `- Confidenza: alta / media / bassa.\n` +
+    `- Motivazione tecnica.\n` +
+    `- Controllo consigliato.\n` +
+    `- Eventuale dato mancante, ad esempio tolleranza, rugosità, datum, profondità foro, quantità fori o componente accoppiato.\n\n` +
+
+    `ESEMPI DI RAGIONAMENTO:\n` +
+    `- Ø20 H7: quota funzionale critica, perché H7 indica un probabile accoppiamento con perno, albero, boccola o sede.\n` +
+    `- Interasse tra due fori: quota funzionale probabile, perché influenza il montaggio del pezzo su un altro componente.\n` +
+    `- Ra 0.8 su superficie cilindrica: superficie probabilmente funzionale, possibile scorrimento, tenuta o accoppiamento.\n` +
+    `- Asola o cava quotata: quota funzionale probabile se serve per regolazione, guida, bloccaggio o passaggio componente.\n` +
+    `- Smusso 1x45°: descrittivo/secondario, salvo funzione evidente di invito, montaggio o sicurezza.\n` +
+    `- Raccordo R2 senza tolleranze particolari: descrittivo/secondario, salvo zona resistente o anticricca.\n\n` +
 
     `FORMATO RISPOSTA OBBLIGATORIO:\n` +
     `1. Qualità lettura tavola: buona / media / bassa, con motivo.\n` +
     `2. Dati rilevati con alta confidenza: cartiglio, materiale, scala, formato, unità, viste, sezioni, quote principali, tolleranze, rugosità, filetti, fori, note.\n` +
-    `3. Dati incerti o parzialmente leggibili: elenco con motivo dell'incertezza.\n` +
-    `4. Dati non rilevabili dalla tavola: elenco se assenti o non leggibili.\n` +
-    `5. Controlli consigliati al progettista: solo checklist, non conclusioni definitive.\n` +
-    `6. Possibili criticità: inserisci solo criticità supportate da evidenza chiara. Per ogni criticità scrivi: evidenza osservata, rischio, verifica consigliata.\n\n` +
+    `3. Quote funzionali e critiche rilevate: elenco con quota, classificazione, confidenza, motivazione e controllo consigliato.\n` +
+    `4. Quote descrittive/secondarie rilevate: elenco sintetico, solo se leggibili.\n` +
+    `5. Dati incerti o parzialmente leggibili: elenco con motivo dell'incertezza.\n` +
+    `6. Dati non rilevabili dalla tavola: elenco se assenti o non leggibili.\n` +
+    `7. Controlli consigliati al progettista: solo checklist, non conclusioni definitive.\n` +
+    `8. Possibili criticità: inserisci solo criticità supportate da evidenza chiara. Per ogni criticità scrivi: evidenza osservata, rischio, verifica consigliata.\n\n` +
 
     `SOGLIA DI CONFIDENZA:\n` +
     `- Alta confidenza: dato chiaramente leggibile.\n` +
@@ -932,6 +969,7 @@ ${extractedPdfText.slice(0, 26000)}
     `Utente: ${userName}. Settore: ${focus}. Modalità: ${params.analysisMode}. ` +
     "Il tuo compito è analizzare tavole tecniche meccaniche, immagini CAD, screenshot SolidWorks, componenti meccanici e distinte visive con la massima precisione. " +
     "Leggi quote, tolleranze, rugosità, filetti, fori, lamature, scale, materiale, trattamento e cartiglio quando visibili. " +
+    "Individua anche le quote probabilmente funzionali e critiche, spiegando sempre il motivo tecnico e il livello di confidenza. " +
     "Non inventare valori: se un dato non è leggibile o non è presente, scrivi chiaramente 'non leggibile' oppure 'non indicato'. " +
     "Quando la qualità dell'immagine è bassa, segnala il limite prima di giudicare la tavola. " +
     "Rispondi in italiano tecnico preciso. " +
@@ -950,8 +988,13 @@ ${extractedPdfText.slice(0, 26000)}
     "Per ogni voce usa ✅ / ❌ / ⚠️. Controlla nome pezzo, numero disegno, materiale, scala, autore, data, revisione, unità.\n\n" +
     "## 2. Viste e sezioni\n" +
     "Controlla se le viste sono sufficienti, se servono sezioni A-A/B-B, dettagli, viste ausiliarie o ingrandimenti.\n\n" +
-    "## 3. Quotatura\n" +
-    "Cita le quote leggibili. Segnala quote mancanti, ridondanti, catene chiuse, riferimenti poco chiari o quote funzionali assenti.\n\n" +
+    "## 3. Quotatura generale\n" +
+    "Cita le quote leggibili. Segnala quote mancanti, ridondanti, catene chiuse, riferimenti poco chiari o quote funzionali assenti. Non inventare quote non leggibili.\n\n" +
+    "## 3B. Quote funzionali e critiche\n" +
+    "Individua le quote probabilmente funzionali e critiche. Per ogni quota scrivi: quota rilevata, classificazione, confidenza alta/media/bassa, motivazione tecnica, controllo consigliato e dato eventualmente mancante.\n" +
+    "Categorie obbligatorie: funzionale probabile, critica, descrittiva/secondaria, non valutabile.\n" +
+    "Considera funzionali probabili: diametri di fori/perni/alberi/sedi, sedi cuscinetto o boccole, interassi tra fori, cave, asole, battute, spessori resistenti, quote con H7/h6/g6/f7/k6/m6/s6, quote associate a rugosità, datum o tolleranze geometriche.\n" +
+    "Non dichiarare mai con certezza assoluta che una quota è funzionale se dalla tavola non è chiaro l'assieme: usa formule come probabilmente funzionale, potenzialmente critica o da verificare.\n\n" +
     "## 4. Tolleranze dimensionali\n" +
     "Controlla tolleranze ISO, accoppiamenti H7/h6, H7/g6, k6, m6, tolleranze generali e quote funzionali.\n\n" +
     "## 5. Tolleranze geometriche\n" +
@@ -991,7 +1034,8 @@ ${extractedPdfText.slice(0, 26000)}
             "Usa la vista completa solo per orientarti.\n" +
             "Usa i crop dinamici per leggere cartiglio, note, viste, sezioni, quote, fori, filetti, lamature e lavorazioni.\n" +
             "Il testo estratto dal PDF serve come aiuto per riconoscere dati e parole, ma le conclusioni devono restare collegate alla tavola/crop visibili.\n" +
-            "Distingui chiaramente: rilevato / incerto / non leggibile. Non inventare dati mancanti e non trasformare la scarsa leggibilità in errore tecnico.\n"
+            "Distingui chiaramente: rilevato / incerto / non leggibile. Non inventare dati mancanti e non trasformare la scarsa leggibilità in errore tecnico.\n" +
+            "Quando l'utente chiede il riconoscimento delle quote funzionali, concentrati su quote funzionali probabili, quote critiche, quote descrittive/secondarie e quote non valutabili, sempre con motivazione tecnica.\n"
           : "\n\nIMPORTANTE ANALISI IMMAGINE GENERICA:\n" +
             "Rispondi alla domanda dell'utente guardando l'immagine.\n" +
             "Non usare automaticamente lo schema Cartiglio / Viste / Quotatura / Tolleranze, a meno che l'utente chieda una revisione di tavola tecnica.\n" +
