@@ -178,6 +178,11 @@ export type ProjectSavedItem = {
   createdAt: string;
   summary: string;
   payload?: any;
+
+  // Alcune memorie/progetti salvati nelle versioni precedenti hanno campi
+  // tecnici direttamente sull'oggetto invece che dentro payload. Mantenerli
+  // compatibili evita errori TypeScript e rotture durante il caricamento.
+  [key: string]: any;
 };
 
 export type ProjectChat = ProjectSavedItem;
