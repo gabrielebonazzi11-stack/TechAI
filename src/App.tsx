@@ -45,7 +45,7 @@ const STORAGE_KEY_BASE = "techai_stable_app_v7_scoped";
 const GUEST_ID_KEY = "techai_guest_id";
 const GUEST_USED_KEY = "techai_guest_used";
 const GUEST_LIMIT = 10;
-const GUEST_FILE_LIMIT = 1;
+const GUEST_FILE_LIMIT = 2;
 
 const DEFAULT_USER: UserProfile = { name: "Utente", email: "utente@techai.local" };
 
@@ -1767,7 +1767,7 @@ export default function App() {
               role: "AI",
               text:
                 `⚠️ **Limite caricamento file raggiunto** (${data.fileUsed}/${data.fileLimit} file usati).\n\n` +
-                `Come ospite puoi caricare massimo **1 file ogni 24 ore**.\n\n` +
+                `Come ospite puoi caricare massimo **${data.fileLimit || GUEST_FILE_LIMIT} file ogni 24 ore**.\n\n` +
                 `Puoi comunque continuare con domande testuali se hai ancora richieste disponibili.`,
             },
           ]);
@@ -2277,7 +2277,7 @@ export default function App() {
         formData.append(
           "message",
           `Sei un esperto di disegno tecnico meccanico secondo le norme ISO 128, ISO 1101 e ISO 286.
-Analizza con MASSIMA PRECISIONE questa tavola tecnica. Le immagini inviate sono crop automatici dinamici della stessa pagina: alcuni vengono da parole chiave del PDF, altri da aree grafiche dense, più alcuni crop di sicurezza. Leggi ogni quota, simbolo e annotazione visibile.
+Analizza con MASSIMA PRECISIONE questa tavola tecnica. Le immagini inviate sono crop automatici dinamici preparati da src/utils/technicalDrawingUtils.ts: alcuni vengono da parole chiave del PDF, altri da aree grafiche dense, più alcuni crop di sicurezza. Sono tutte porzioni della stessa tavola, non tavole diverse. Leggi ogni quota, simbolo e annotazione visibile.
 
 DATI DEL PEZZO FORNITI DALL'UTENTE:
 - Nome pezzo: ${f.partName || "non indicato"}
@@ -2308,6 +2308,7 @@ COSA DEVI CONTROLLARE:
 7. FILETTI E FORI: designazioni, profondità, lamature.
 8. TRATTAMENTI E MATERIALE.
 9. ERRORI CRITICI.
+10. VERIFICHE SPIEGABILI: per ogni criticità o quota funzionale indica motivazione tecnica, confidenza, riferimento tecnico ISO/UNI o principio tecnico e suggerimento correttivo.
 
 Rispondi SOLO con quanto vedi realmente. Se non è leggibile, dillo.
 Se nel testo estratto dal PDF trovi un dato ma non riesci a collegarlo chiaramente alla zona della tavola, scrivilo come dato da confermare e non usarlo per conclusioni definitive.
@@ -2322,10 +2323,20 @@ Struttura:
 ## 7. Filetti e fori
 ## 8. Materiale e trattamenti
 ## 9. Errori critici e correzioni prioritarie
-## 10. Giudizio finale (Approvata / Da correggere / Non producibile)`
+## 10. Verifiche spiegabili
+Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Riferimento tecnico, Suggerimento correttivo.
+## 11. Giudizio finale (Approvata / Da correggere / Non producibile)`
         );
         formData.append("file", fileToSend);
-        formData.append("drawingImages", JSON.stringify(drawingImages.slice(0, 12)));
+        formData.append(
+          "drawingImages",
+          JSON.stringify(
+            drawingImages.slice(0, 12).map((img, index) => ({
+              label: img.label || `Crop tavola ${index + 1}`,
+              dataUrl: img.dataUrl,
+            }))
+          )
+        );
         if (drawingReviewFile!.extractedText?.trim()) {
           formData.append("fileText", drawingReviewFile!.extractedText.slice(0, 26000));
         }
@@ -2345,7 +2356,7 @@ Struttura:
         }
 
         if (res.status === 403 && data?.error === "Limite file ospite raggiunto") {
-          throw new Error(`Limite caricamento file ospite raggiunto (${data.fileUsed}/${data.fileLimit} file usati). Come ospite puoi caricare massimo 1 file ogni 24 ore.`);
+          throw new Error(`Limite caricamento file ospite raggiunto (${data.fileUsed}/${data.fileLimit} file usati). Come ospite puoi caricare massimo ${data.fileLimit || GUEST_FILE_LIMIT} file ogni 24 ore.`);
         }
 
         if (res.status === 403 && data?.error === "Limite ospite raggiunto") {
@@ -3412,7 +3423,7 @@ Struttura:
                   style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}`, marginTop: 0 }}
                   onClick={() =>
                     setDrawingExtraNotes(
-                      "Analizza questa tavola e individua le quote funzionali, critiche, descrittive e non valutabili. Per ogni quota usa schema fisso con classificazione, motivazione tecnica, confidenza e controllo consigliato."
+                      "Analizza questa tavola e individua le quote funzionali, critiche, descrittive e non valutabili. Per ogni quota usa schema fisso con classificazione, motivazione tecnica, confidenza, riferimento tecnico e controllo consigliato."
                     )
                   }
                 >
@@ -3424,7 +3435,7 @@ Struttura:
                   style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}`, marginTop: 0 }}
                   onClick={() =>
                     setDrawingExtraNotes(
-                      "Controlla soprattutto tolleranze dimensionali, tolleranze geometriche, rugosità e coerenza con superfici funzionali, sedi, fori, filetti e accoppiamenti."
+                      "Controlla soprattutto tolleranze dimensionali, tolleranze geometriche, rugosità e coerenza con superfici funzionali, sedi, fori, filetti e accoppiamenti. Per ogni criticità aggiungi motivazione, confidenza, riferimento tecnico e correzione consigliata."
                     )
                   }
                 >
