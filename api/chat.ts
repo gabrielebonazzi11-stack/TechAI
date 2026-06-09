@@ -662,8 +662,7 @@ function normalizeForScope(value: string) {
   return String(value || "")
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim();
+    .replace(/[\u0300-\u036f]/g, " ");
 }
 
 function isAllowedTechnicalScope(params: {
@@ -672,35 +671,52 @@ function isAllowedTechnicalScope(params: {
   hasFile: boolean;
   analysisMode: AnalysisMode;
 }): ScopeCheckResult {
-  const currentMessage = normalizeForScope(params.message);
-
+  const message = normalizeForScope(params.message);
   const recentContext = Array.isArray(params.messages)
     ? normalizeForScope(
         params.messages
-          .slice(-4)
+          .slice(-5)
           .map((m) => m?.text || "")
           .join("\n")
       )
     : "";
 
-  // Se l'utente carica un file, lo lasciamo passare: spesso scrive solo "analizzalo"
-  // e il contenuto tecnico è nel PDF, immagine, STEP, distinta, ecc.
+  const text = `${message}\n${recentContext}`.trim();
+
+  // Se è stato caricato un file o l'utente è in una modalità tecnica specifica,
+  // la richiesta viene considerata interna allo scopo di TechAI.
   if (params.hasFile) {
     return { allowed: true, reason: "file allegato" };
   }
 
-  // Blocco esplicito sul messaggio ATTUALE.
-  // Questo viene prima di qualunque controllo su modalità, cronologia o parole tecniche.
+  if (params.analysisMode !== "chat") {
+    return { allowed: true, reason: `modalità tecnica ${params.analysisMode}` };
+  }
+
+  // Permette messaggi brevi di servizio senza obbligare l'utente a scrivere parole tecniche.
+  const servicePatterns = [
+    /\bciao\b/,
+    /\bsalve\b/,
+    /\bbuongiorno\b/,
+    /\bbuonasera\b/,
+    /\bhelp\b/,
+    /\baiuto\b/,
+    /\bcosa sai fare\b/,
+    /\bcome funziona\b/,
+    /\bfunzioni\b/,
+    /\bspiegami il sito\b/,
+    /\btechai\b/,
+  ];
+
+  if (servicePatterns.some((pattern) => pattern.test(text))) {
+    return { allowed: true, reason: "messaggio di servizio o onboarding" };
+  }
+
+  // Blocchi espliciti: servono a evitare che il modello risponda a temi palesemente fuori scopo.
   const blockedPatterns = [
     /\bnapoleone\b/,
-    /\bbonaparte\b/,
-    /\balessandro magno\b/,
-    /\balessandro iii\b/,
-    /\bmacedonia\b/,
     /\bimperatore\b/,
-    /\bimpero romano\b/,
     /\bstoria\b/,
-    /\bstorico\b/,
     /\bguerra mondiale\b/,
     /\bcalcio\b/,
     /\bserie a\b/,
@@ -718,32 +734,14 @@ function isAllowedTechnicalScope(params: {
     /\bcucina\b/,
     /\binstagram\b/,
     /\btiktok\b/,
+    /\brelazione amorosa\b/,
     /\bfidanzata\b/,
     /\bvacanza\b/,
     /\bviaggio\b/,
   ];
 
-  if (blockedPatterns.some((pattern) => pattern.test(currentMessage))) {
+  if (blockedPatterns.some((pattern) => pattern.test(text))) {
     return { allowed: false, reason: "tema esplicitamente fuori ambito" };
-  }
-
-  // Messaggi di servizio ammessi, ma solo se non contengono parole bloccate.
-  const servicePatterns = [
-    /\bciao\b/,
-    /\bsalve\b/,
-    /\bbuongiorno\b/,
-    /\bbuonasera\b/,
-    /\bhelp\b/,
-    /\baiuto\b/,
-    /\bcosa sai fare\b/,
-    /\bcome funziona\b/,
-    /\bfunzioni\b/,
-    /\bspiegami il sito\b/,
-    /\btechai\b/,
-  ];
-
-  if (servicePatterns.some((pattern) => pattern.test(currentMessage))) {
-    return { allowed: true, reason: "messaggio di servizio o onboarding" };
   }
 
   const allowedPatterns = [
@@ -763,180 +761,112 @@ function isAllowedTechnicalScope(params: {
     /\bfrontend\b/,
     /\bdebug\b/,
     /\berrore\b/,
-    /\bbug\b/,
+    /\bbuild\b/,
+    /\bdeploy\b/,
     /\bvercel\b/,
     /\bsupabase\b/,
     /\bopenai\b/,
-    /\bai\b/,
-    /\bintelligenza artificiale\b/,
     /\bdatabase\b/,
-    /\bdeploy\b/,
-    /\bruntime\b/,
     /\bserver\b/,
-    /\bclient\b/,
+    /\bruntime\b/,
+    /\bfunzione\b/,
+    /\bscript\b/,
+    /\bjson\b/,
+    /\bcsv\b/,
 
-    // Ingegneria / meccanica / produzione
+    // Ingegneria / meccanica / CAD
     /\bingegneria\b/,
     /\bmeccanica\b/,
     /\bprogettazione\b/,
-    /\bdisegno tecnico\b/,
     /\btavola\b/,
+    /\bdisegno tecnico\b/,
     /\bcad\b/,
     /\binventor\b/,
     /\bsolidworks\b/,
     /\bstep\b/,
     /\bstp\b/,
+    /\bassiem[ei]\b/,
+    /\bcomponente\b/,
+    /\bpezzo\b/,
     /\bmateriale\b/,
     /\bmateriali\b/,
     /\bacciaio\b/,
     /\balluminio\b/,
     /\bbronzo\b/,
-    /\bottone\b/,
+    /\botton[ei]\b/,
     /\bptfe\b/,
-    /\btolleranza\b/,
-    /\btolleranze\b/,
-    /\brugosita\b/,
-    /\bquota\b/,
-    /\bquote\b/,
-    /\bforo\b/,
-    /\bfori\b/,
-    /\bfiletto\b/,
-    /\bfilettatura\b/,
-    /\bcuscinetto\b/,
+    /\bteflon\b/,
     /\bboccola\b/,
+    /\bbronzina\b/,
+    /\bcuscinetto\b/,
     /\bvite\b/,
     /\bbullone\b/,
     /\bmolla\b/,
     /\balbero\b/,
     /\bingranaggio\b/,
-    /\bflessione\b/,
-    /\btorsione\b/,
-    /\bfatica\b/,
-    /\bvon mises\b/,
-    /\btresca\b/,
-    /\bgoodman\b/,
+    /\blinguetta\b/,
+    /\bperno\b/,
+    /\bflangia\b/,
+    /\bquota\b/,
+    /\bquote\b/,
+    /\btolleranza\b/,
+    /\btolleranze\b/,
+    /\brugosita\b/,
+    /\br[a-z]?\s*[0-9]/,
+    /\bgd&t\b/,
+    /\bdatum\b/,
+    /\bcartiglio\b/,
+    /\bsezione\b/,
+    /\bforo\b/,
+    /\bfiletto\b/,
+    /\blamatura\b/,
+    /\bsvasatura\b/,
+
+    // Calcoli tecnici / fisica applicata
+    /\bcalcolo\b/,
+    /\bcalcola\b/,
+    /\bdimensiona\b/,
     /\bdimensionamento\b/,
     /\bverifica\b/,
-    /\bcalcolo\b/,
     /\bforza\b/,
     /\bmomento\b/,
     /\bpressione\b/,
     /\btensione\b/,
     /\bresistenza\b/,
-    /\bpotenza\b/,
-    /\brendimento\b/,
+    /\bfatica\b/,
+    /\bflessione\b/,
+    /\btorsione\b/,
+    /\btaglio\b/,
+    /\bvon mises\b/,
+    /\btresca\b/,
+    /\bgoodman\b/,
+    /\bsoderberg\b/,
+    /\bformula\b/,
+    /\bmatematica\b/,
+    /\bfisica\b/,
+
+    // Automazione / elettronica
     /\bautomazione\b/,
     /\belettronica\b/,
-    /\bpneumatica\b/,
     /\boleodinamica\b/,
     /\boleoidraulica\b/,
+    /\bpneumatica\b/,
     /\bplc\b/,
-    /\bbom\b/,
-    /\bdistinta\b/,
-
-    // Termini tecnici comuni di disegno/meccanica che prima erano troppo restrittivi
-    /\brondella\b/,
-    /\brondelle\b/,
-    /\bchiavetta\b/,
-    /\bchiavette\b/,
-    /\blinguetta\b/,
-    /\blinguette\b/,
-    /\bcava\b/,
-    /\bcave\b/,
-    /\bsede\b/,
-    /\bsedi\b/,
-    /\bcartiglio\b/,
-    /\bcartigli\b/,
-    /\bdado\b/,
-    /\bdadi\b/,
-    /\bperno\b/,
-    /\bperni\b/,
-    /\bspina\b/,
-    /\bspine\b/,
-    /\bseeger\b/,
-    /\bo-ring\b/,
-    /\boring\b/,
-    /\bguarnizione\b/,
-    /\bguarnizioni\b/,
-    /\blamiera\b/,
-    /\blamiere\b/,
-    /\bassieme\b/,
-    /\bassiemi\b/,
-    /\bcomponente\b/,
-    /\bcomponenti\b/,
-    /\bparticolare\b/,
-    /\bparticolari\b/,
-    /\besploso\b/,
-    /\bsezione\b/,
-    /\bsezioni\b/,
-    /\blamatura\b/,
-    /\blamature\b/,
-    /\bsvasatura\b/,
-    /\bsvasature\b/,
-    /\bsmusso\b/,
-    /\bsmussi\b/,
-    /\braccordo\b/,
-    /\braccordi\b/,
-    /\braggio\b/,
-    /\braggi\b/,
-    /\basola\b/,
-    /\basole\b/,
-    /\binterasse\b/,
-    /\binterassi\b/,
-    /\bdatum\b/,
-    /\bgd&t\b/,
-    /\bgdt\b/,
-    /\bnorma\b/,
-    /\bnormativa\b/,
-    /\buni\b/,
-    /\biso\b/,
-    /\bdin\b/,
-    /\baisi\b/,
-    /\btrattamento\b/,
-    /\btrattamenti\b/,
-    /\bdurezza\b/,
-    /\bsaldatura\b/,
-    /\bsaldature\b/,
-    /\blavorazione\b/,
-    /\blavorazioni\b/,
-    /\btornitura\b/,
-    /\bfresatura\b/,
-    /\balesaggio\b/,
-    /\bpuleggia\b/,
-    /\bpulegge\b/,
-    /\bcinghia\b/,
-    /\bcinghie\b/,
+    /\btwincat\b/,
+    /\bfesto\b/,
+    /\bvalvola\b/,
+    /\bcilindro\b/,
+    /\bsensore\b/,
+    /\battuator[ei]\b/,
   ];
 
-  if (allowedPatterns.some((pattern) => pattern.test(currentMessage))) {
-    return { allowed: true, reason: "messaggio tecnico" };
+  if (allowedPatterns.some((pattern) => pattern.test(text))) {
+    return { allowed: true, reason: "keyword tecnica rilevata" };
   }
 
-  // Follow-up brevi: ammessi solo se la cronologia recente era tecnica.
-  // Esempio: dopo una risposta su una tavola, "continua" deve funzionare.
-  const shortFollowUpPatterns = [
-    /\bcontinua\b/,
-    /\bprosegui\b/,
-    /\bapprofondisci\b/,
-    /\bspiegamelo meglio\b/,
-    /\brifallo\b/,
-    /\bcorreggilo\b/,
-    /\bsistemalo\b/,
-    /\bfammi il file\b/,
-  ];
-
-  const recentContextLooksTechnical = allowedPatterns.some((pattern) => pattern.test(recentContext));
-
-  if (
-    currentMessage.length <= 80 &&
-    shortFollowUpPatterns.some((pattern) => pattern.test(currentMessage)) &&
-    recentContextLooksTechnical
-  ) {
-    return { allowed: true, reason: "follow-up tecnico" };
-  }
-
-  return { allowed: false, reason: "nessun indicatore tecnico trovato" };
+  return { allowed: false, reason: "nessun riferimento tecnico rilevato" };
 }
+
 
 function cleanAiOutput(text: string) {
   const withoutMarkdown = String(text || "")
