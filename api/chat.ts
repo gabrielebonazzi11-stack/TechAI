@@ -649,6 +649,225 @@ function buildFullTechAiSystemPrompt(params: {
 }
 
 
+
+type ScopeCheckResult = {
+  allowed: boolean;
+  reason: string;
+};
+
+const OUT_OF_SCOPE_MESSAGE =
+  "Domanda fuori ambito. Questo assistente è progettato per supportare attività tecniche legate a ingegneria, programmazione, informatica, CAD, materiali, progettazione meccanica, automazione, elettronica e analisi di tavole tecniche. Riformula la domanda in un contesto tecnico e sarò felice di aiutarti.";
+
+function normalizeForScope(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, " ");
+}
+
+function isAllowedTechnicalScope(params: {
+  message: string;
+  messages: ChatMessage[];
+  hasFile: boolean;
+  analysisMode: AnalysisMode;
+}): ScopeCheckResult {
+  const message = normalizeForScope(params.message);
+  const recentContext = Array.isArray(params.messages)
+    ? normalizeForScope(
+        params.messages
+          .slice(-5)
+          .map((m) => m?.text || "")
+          .join("\n")
+      )
+    : "";
+
+  const text = `${message}\n${recentContext}`.trim();
+
+  // Se è stato caricato un file o l'utente è in una modalità tecnica specifica,
+  // la richiesta viene considerata interna allo scopo di TechAI.
+  if (params.hasFile) {
+    return { allowed: true, reason: "file allegato" };
+  }
+
+  if (params.analysisMode !== "chat") {
+    return { allowed: true, reason: `modalità tecnica ${params.analysisMode}` };
+  }
+
+  // Permette messaggi brevi di servizio senza obbligare l'utente a scrivere parole tecniche.
+  const servicePatterns = [
+    /\bciao\b/,
+    /\bsalve\b/,
+    /\bbuongiorno\b/,
+    /\bbuonasera\b/,
+    /\bhelp\b/,
+    /\baiuto\b/,
+    /\bcosa sai fare\b/,
+    /\bcome funziona\b/,
+    /\bfunzioni\b/,
+    /\bspiegami il sito\b/,
+    /\btechai\b/,
+  ];
+
+  if (servicePatterns.some((pattern) => pattern.test(text))) {
+    return { allowed: true, reason: "messaggio di servizio o onboarding" };
+  }
+
+  // Blocchi espliciti: servono a evitare che il modello risponda a temi palesemente fuori scopo.
+  const blockedPatterns = [
+    /\bnapoleone\b/,
+    /\bimperatore\b/,
+    /\bstoria\b/,
+    /\bguerra mondiale\b/,
+    /\bcalcio\b/,
+    /\bserie a\b/,
+    /\bchampions\b/,
+    /\bfilm\b/,
+    /\bserie tv\b/,
+    /\bmusica\b/,
+    /\bcantante\b/,
+    /\battore\b/,
+    /\battrice\b/,
+    /\boroscopo\b/,
+    /\bpolitica\b/,
+    /\bpresidente\b/,
+    /\bricetta\b/,
+    /\bcucina\b/,
+    /\binstagram\b/,
+    /\btiktok\b/,
+    /\brelazione amorosa\b/,
+    /\bfidanzata\b/,
+    /\bvacanza\b/,
+    /\bviaggio\b/,
+  ];
+
+  if (blockedPatterns.some((pattern) => pattern.test(text))) {
+    return { allowed: false, reason: "tema esplicitamente fuori ambito" };
+  }
+
+  const allowedPatterns = [
+    // Programmazione / informatica
+    /\bcodice\b/,
+    /\bprogramma\b/,
+    /\bprogrammazione\b/,
+    /\binformatica\b/,
+    /\bsoftware\b/,
+    /\btypescript\b/,
+    /\bjavascript\b/,
+    /\breact\b/,
+    /\btsx\b/,
+    /\bjsx\b/,
+    /\bapi\b/,
+    /\bbackend\b/,
+    /\bfrontend\b/,
+    /\bdebug\b/,
+    /\berrore\b/,
+    /\bbuild\b/,
+    /\bdeploy\b/,
+    /\bvercel\b/,
+    /\bsupabase\b/,
+    /\bopenai\b/,
+    /\bdatabase\b/,
+    /\bserver\b/,
+    /\bruntime\b/,
+    /\bfunzione\b/,
+    /\bscript\b/,
+    /\bjson\b/,
+    /\bcsv\b/,
+
+    // Ingegneria / meccanica / CAD
+    /\bingegneria\b/,
+    /\bmeccanica\b/,
+    /\bprogettazione\b/,
+    /\btavola\b/,
+    /\bdisegno tecnico\b/,
+    /\bcad\b/,
+    /\binventor\b/,
+    /\bsolidworks\b/,
+    /\bstep\b/,
+    /\bstp\b/,
+    /\bassiem[ei]\b/,
+    /\bcomponente\b/,
+    /\bpezzo\b/,
+    /\bmateriale\b/,
+    /\bmateriali\b/,
+    /\bacciaio\b/,
+    /\balluminio\b/,
+    /\bbronzo\b/,
+    /\botton[ei]\b/,
+    /\bptfe\b/,
+    /\bteflon\b/,
+    /\bboccola\b/,
+    /\bbronzina\b/,
+    /\bcuscinetto\b/,
+    /\bvite\b/,
+    /\bbullone\b/,
+    /\bmolla\b/,
+    /\balbero\b/,
+    /\bingranaggio\b/,
+    /\blinguetta\b/,
+    /\bperno\b/,
+    /\bflangia\b/,
+    /\bquota\b/,
+    /\bquote\b/,
+    /\btolleranza\b/,
+    /\btolleranze\b/,
+    /\brugosita\b/,
+    /\br[a-z]?\s*[0-9]/,
+    /\bgd&t\b/,
+    /\bdatum\b/,
+    /\bcartiglio\b/,
+    /\bsezione\b/,
+    /\bforo\b/,
+    /\bfiletto\b/,
+    /\blamatura\b/,
+    /\bsvasatura\b/,
+
+    // Calcoli tecnici / fisica applicata
+    /\bcalcolo\b/,
+    /\bcalcola\b/,
+    /\bdimensiona\b/,
+    /\bdimensionamento\b/,
+    /\bverifica\b/,
+    /\bforza\b/,
+    /\bmomento\b/,
+    /\bpressione\b/,
+    /\btensione\b/,
+    /\bresistenza\b/,
+    /\bfatica\b/,
+    /\bflessione\b/,
+    /\btorsione\b/,
+    /\btaglio\b/,
+    /\bvon mises\b/,
+    /\btresca\b/,
+    /\bgoodman\b/,
+    /\bsoderberg\b/,
+    /\bformula\b/,
+    /\bmatematica\b/,
+    /\bfisica\b/,
+
+    // Automazione / elettronica
+    /\bautomazione\b/,
+    /\belettronica\b/,
+    /\boleodinamica\b/,
+    /\boleoidraulica\b/,
+    /\bpneumatica\b/,
+    /\bplc\b/,
+    /\btwincat\b/,
+    /\bfesto\b/,
+    /\bvalvola\b/,
+    /\bcilindro\b/,
+    /\bsensore\b/,
+    /\battuator[ei]\b/,
+  ];
+
+  if (allowedPatterns.some((pattern) => pattern.test(text))) {
+    return { allowed: true, reason: "keyword tecnica rilevata" };
+  }
+
+  return { allowed: false, reason: "nessun riferimento tecnico rilevato" };
+}
+
+
 function cleanAiOutput(text: string) {
   const withoutMarkdown = String(text || "")
     // Toglie il grassetto Markdown anche se il modello lo usa male.
@@ -1584,6 +1803,23 @@ export default async function handler(req: Request) {
 
     if (auth.ok === false) {
       return auth.response;
+    }
+
+    const scopeCheck = isAllowedTechnicalScope({
+      message: body.message,
+      messages: body.messages,
+      hasFile: body.hasFile,
+      analysisMode: body.analysisMode,
+    });
+
+    if (!scopeCheck.allowed) {
+      return jsonResponse({
+        answer: OUT_OF_SCOPE_MESSAGE,
+        mode: auth.mode,
+        usage: auth.mode === "guest" ? auth.usage : null,
+        blockedByScope: true,
+        scopeReason: scopeCheck.reason,
+      });
     }
 
     const hasVisionInput =
