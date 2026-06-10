@@ -2599,6 +2599,10 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
       note: "Nota",
     };
 
+    const savedChatMessages = Array.isArray(item.payload?.messages)
+      ? item.payload.messages
+      : [];
+
     return (
       <div
         key={item.id}
@@ -2615,6 +2619,67 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
 
         <p style={s.resultDetail}>{item.summary}</p>
         <p style={s.muted}>{new Date(item.createdAt).toLocaleString("it-IT")}</p>
+
+        {item.type === "chat" && savedChatMessages.length > 0 && (
+          <details
+            style={{
+              marginTop: 12,
+              borderTop: `1px solid ${theme.border}`,
+              paddingTop: 10,
+            }}
+          >
+            <summary
+              style={{
+                cursor: "pointer",
+                color: theme.primary,
+                fontWeight: 800,
+                userSelect: "none",
+              }}
+            >
+              Apri contenuto chat · {savedChatMessages.length} messaggi
+            </summary>
+
+            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+              {savedChatMessages.map((message: Message, messageIndex: number) => (
+                <div
+                  key={`${item.id}-saved-message-${messageIndex}`}
+                  style={{
+                    border: `1px solid ${theme.border}`,
+                    borderRadius: 14,
+                    padding: 12,
+                    background: message.role === "utente"
+                      ? theme.surface
+                      : isDark
+                        ? "#050505"
+                        : "#f8fafc",
+                  }}
+                >
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      fontSize: 12,
+                      fontWeight: 900,
+                      color: message.role === "utente" ? theme.text : theme.primary,
+                      opacity: 0.85,
+                    }}
+                  >
+                    {message.role === "utente" ? "Utente" : "TechAI"}
+                  </div>
+
+                  <div style={{ fontSize: 14, lineHeight: 1.55 }}>
+                    {renderFormattedText(message.text)}
+                  </div>
+
+                  {message.fileAttachment && (
+                    <div style={{ ...s.attachmentBox, marginTop: 8 }}>
+                      📄 {message.fileAttachment.name} · {(message.fileAttachment.size / 1024).toFixed(1)} KB
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
 
         {item.type === "decision" && item.payload?.reason && (
           <p style={{ ...s.resultSuggestion, borderLeft: `3px solid ${theme.primary}` }}>
