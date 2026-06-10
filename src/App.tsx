@@ -205,6 +205,10 @@ export default function App() {
   const [bomFileName, setBomFileName] = useState("");
   const [bomIssues, setBomIssues] = useState<BomIssue[]>([]);
 
+  const [showSaveChatModal, setShowSaveChatModal] = useState(false);
+  const [isSelectingProjectMessages, setIsSelectingProjectMessages] = useState(false);
+  const [selectedProjectMessageIndexes, setSelectedProjectMessageIndexes] = useState<number[]>([]);
+
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const drawingReviewInputRef = useRef<HTMLInputElement>(null);
@@ -628,23 +632,102 @@ export default function App() {
     setActiveProjectId(targetId);
   };
 
-  const saveCurrentChatToProject = () => {
+  const openSaveChatModal = () => {
     if (!activeChat || activeChat.messages.length === 0) {
       alert("Apri una chat con almeno un messaggio prima di salvarla nel progetto.");
       return;
     }
 
+    setShowSaveChatModal(true);
+  };
+
+  const saveChatMessagesToProject = (messagesToSave: Message[], mode: "full" | "selected") => {
+    if (!activeChat || messagesToSave.length === 0) {
+      alert("Non ci sono messaggi da salvare.");
+      return;
+    }
+
+    const nowLabel = new Date().toLocaleString("it-IT");
+    const isFull = mode === "full";
+
     addProjectItem({
       type: "chat",
-      title: `Chat - ${activeChat.title || "senza titolo"}`,
-      summary: `${activeChat.messages.length} messaggi salvati come memoria del progetto.`,
+      title: isFull
+        ? `Chat completa - ${activeChat.title || "senza titolo"}`
+        : `Messaggi selezionati - ${activeChat.title || "senza titolo"}`,
+      summary: isFull
+        ? `${messagesToSave.length} messaggi salvati come chat completa del progetto.`
+        : `${messagesToSave.length} messaggi selezionati e salvati nella memoria del progetto.`,
       payload: {
         chatId: activeChat.id,
         title: activeChat.title,
-        messages: activeChat.messages,
+        savedAtLabel: nowLabel,
+        saveMode: mode,
+        messages: messagesToSave,
       },
     });
+
+    setProjectMemoryTab("Chat");
   };
+
+  const saveFullCurrentChatToProject = () => {
+    if (!activeChat || activeChat.messages.length === 0) {
+      alert("Apri una chat con almeno un messaggio prima di salvarla nel progetto.");
+      return;
+    }
+
+    saveChatMessagesToProject(activeChat.messages, "full");
+    setShowSaveChatModal(false);
+  };
+
+  const startSelectiveChatSave = () => {
+    if (!activeChat || activeChat.messages.length === 0) {
+      alert("Apri una chat con almeno un messaggio prima di salvarla nel progetto.");
+      return;
+    }
+
+    setShowSaveChatModal(false);
+    setShowProjects(false);
+    setIsSelectingProjectMessages(true);
+    setSelectedProjectMessageIndexes([]);
+  };
+
+  const toggleProjectMessageSelection = (messageIndex: number) => {
+    setSelectedProjectMessageIndexes(prev =>
+      prev.includes(messageIndex)
+        ? prev.filter(index => index !== messageIndex)
+        : [...prev, messageIndex]
+    );
+  };
+
+  const cancelProjectMessageSelection = () => {
+    setIsSelectingProjectMessages(false);
+    setSelectedProjectMessageIndexes([]);
+  };
+
+  const saveSelectedMessagesToProject = () => {
+    if (!activeChat || activeChat.messages.length === 0) {
+      alert("Apri una chat con almeno un messaggio prima di salvarla nel progetto.");
+      return;
+    }
+
+    const selectedMessages = activeChat.messages.filter((_, index) =>
+      selectedProjectMessageIndexes.includes(index)
+    );
+
+    if (selectedMessages.length === 0) {
+      alert("Seleziona almeno un messaggio da salvare.");
+      return;
+    }
+
+    saveChatMessagesToProject(selectedMessages, "selected");
+    setIsSelectingProjectMessages(false);
+    setSelectedProjectMessageIndexes([]);
+    setShowProjects(true);
+  };
+
+  const saveCurrentChatToProject = openSaveChatModal;
+
 
   const saveDecisionToProject = () => {
     if (!projectDecisionTitle.trim() && !projectDecisionText.trim()) {
@@ -2896,15 +2979,85 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           ) : (
             <div style={s.chatView}>
               <div style={s.msgList}>
-                {currentMessages.map((message, index) => (
-                  <div key={index} style={message.role === "utente" ? s.uRow : s.aRow}>
-                    {message.role === "AI" && <div style={{ ...s.aiAvatar, background: theme.primary }}>T</div>}
-                    <div style={message.role === "utente" ? { ...s.uBox, background: theme.surface, border: `1px solid ${theme.border}` } : { ...s.aBox, background: isDark ? "#0b0b0b" : "#fff", border: `1px solid ${theme.border}` }}>
-                      {renderFormattedText(message.text)}
-                      {message.fileAttachment && <div style={s.attachmentBox}>📄 {message.fileAttachment.name} · {(message.fileAttachment.size / 1024).toFixed(1)} KB</div>}
+                {isSelectingProjectMessages && (
+                  <div
+                    style={{
+                      position: "sticky",
+                      top: 0,
+                      zIndex: 5,
+                      marginBottom: 14,
+                      padding: "12px 14px",
+                      borderRadius: 16,
+                      background: isDark ? "#111827" : "#eff6ff",
+                      border: `1px solid ${theme.border}`,
+                      color: theme.text,
+                    }}
+                  >
+                    <strong style={{ color: theme.primary }}>Modalità selezione attiva</strong>
+                    <div style={{ ...s.muted, marginTop: 4 }}>
+                      Clicca sui messaggi che vuoi salvare nella memoria del progetto.
                     </div>
                   </div>
-                ))}
+                )}
+
+                {currentMessages.map((message, index) => {
+                  const isSelectedForProject = selectedProjectMessageIndexes.includes(index);
+
+                  return (
+                    <div
+                      key={index}
+                      style={{
+                        ...(message.role === "utente" ? s.uRow : s.aRow),
+                        cursor: isSelectingProjectMessages ? "pointer" : "default",
+                        opacity: isSelectingProjectMessages && !isSelectedForProject ? 0.86 : 1,
+                      }}
+                      onClick={() => {
+                        if (isSelectingProjectMessages) toggleProjectMessageSelection(index);
+                      }}
+                    >
+                      {message.role === "AI" && <div style={{ ...s.aiAvatar, background: theme.primary }}>T</div>}
+
+                      {isSelectingProjectMessages && (
+                        <button
+                          type="button"
+                          aria-label={isSelectedForProject ? "Deseleziona messaggio" : "Seleziona messaggio"}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleProjectMessageSelection(index);
+                          }}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            minWidth: 28,
+                            borderRadius: "999px",
+                            border: `2px solid ${isSelectedForProject ? theme.primary : theme.border}`,
+                            background: isSelectedForProject ? theme.primary : isDark ? "#050505" : "#ffffff",
+                            color: "#ffffff",
+                            fontWeight: 900,
+                            display: "grid",
+                            placeItems: "center",
+                            marginTop: 8,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {isSelectedForProject ? "✓" : ""}
+                        </button>
+                      )}
+
+                      <div
+                        style={{
+                          ...(message.role === "utente"
+                            ? { ...s.uBox, background: theme.surface, border: `1px solid ${theme.border}` }
+                            : { ...s.aBox, background: isDark ? "#0b0b0b" : "#fff", border: `1px solid ${theme.border}` }),
+                          boxShadow: isSelectedForProject ? `0 0 0 2px ${theme.primary}` : undefined,
+                        }}
+                      >
+                        {renderFormattedText(message.text)}
+                        {message.fileAttachment && <div style={s.attachmentBox}>📄 {message.fileAttachment.name} · {(message.fileAttachment.size / 1024).toFixed(1)} KB</div>}
+                      </div>
+                    </div>
+                  );
+                })}
                 {loading && <div style={{ textAlign: "center", color: theme.primary }}>✨ TechAI sta elaborando...</div>}
                 <div ref={chatEndRef} />
               </div>
@@ -2913,6 +3066,111 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           )}
         </section>
       </main>
+
+      {isSelectingProjectMessages && (
+        <div
+          style={{
+            position: "fixed",
+            left: sidebarOpen ? 300 : 94,
+            right: 24,
+            bottom: 24,
+            zIndex: 60,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            padding: "14px 16px",
+            borderRadius: 18,
+            background: isDark ? "#111" : "#ffffff",
+            border: `1px solid ${theme.border}`,
+            boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+            color: theme.text,
+          }}
+        >
+          <strong>{selectedProjectMessageIndexes.length} messaggi selezionati</strong>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              type="button"
+              style={{ ...s.secondaryBtn, color: theme.text, border: `1px solid ${theme.border}`, marginTop: 0 }}
+              onClick={cancelProjectMessageSelection}
+            >
+              Annulla
+            </button>
+
+            <button
+              type="button"
+              style={{
+                ...s.primaryBtn,
+                background: theme.primary,
+                marginTop: 0,
+                opacity: selectedProjectMessageIndexes.length === 0 ? 0.55 : 1,
+              }}
+              disabled={selectedProjectMessageIndexes.length === 0}
+              onClick={saveSelectedMessagesToProject}
+            >
+              Salva selezionati
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showSaveChatModal && (
+        <div style={s.overlay}>
+          <div
+            style={{
+              width: "min(520px, calc(100vw - 32px))",
+              background: isDark ? "#111" : "#ffffff",
+              color: theme.text,
+              border: `1px solid ${theme.border}`,
+              borderRadius: 24,
+              padding: 22,
+              boxShadow: "0 24px 80px rgba(0,0,0,0.35)",
+            }}
+          >
+            <div style={s.modalHeader}>
+              <div>
+                <h2 style={{ margin: 0 }}>Salva chat nel progetto</h2>
+                <p style={s.muted}>Scegli se salvare tutta la conversazione o solo alcuni messaggi.</p>
+              </div>
+
+              <button
+                style={{ ...s.backBtn, color: theme.text, border: `1px solid ${theme.border}` }}
+                onClick={() => setShowSaveChatModal(false)}
+                type="button"
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <button
+                type="button"
+                style={{ ...s.primaryBtn, background: theme.primary }}
+                onClick={saveFullCurrentChatToProject}
+              >
+                Salva tutta la chat
+              </button>
+
+              <button
+                type="button"
+                style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}` }}
+                onClick={startSelectiveChatSave}
+              >
+                Seleziona messaggi da salvare
+              </button>
+
+              <button
+                type="button"
+                style={{ ...s.secondaryBtn, color: theme.text, border: `1px solid ${theme.border}` }}
+                onClick={() => setShowSaveChatModal(false)}
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showLoginPanel && <div className="fade-in" style={s.overlay}><div style={s.loginModalWrap}>{renderLoginCard()}</div></div>}
 
