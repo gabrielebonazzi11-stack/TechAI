@@ -638,6 +638,7 @@ export default function App() {
       return;
     }
 
+    setShowProjects(false);
     setShowSaveChatModal(true);
   };
 
@@ -678,6 +679,7 @@ export default function App() {
 
     saveChatMessagesToProject(activeChat.messages, "full");
     setShowSaveChatModal(false);
+    setShowProjects(true);
   };
 
   const startSelectiveChatSave = () => {
