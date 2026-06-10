@@ -2884,8 +2884,6 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
       </aside>
 
       <main style={s.main}>
-        {!sidebarOpen && <div style={s.collapsedBrand}>TECH<span style={{ color: theme.primary }}>AI</span></div>}
-
         <button style={{ ...s.floatingAccountBtn, background: theme.surface, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => { setActiveTab("Account"); setShowSettings(true); }} type="button">👤</button>
 
         <section style={{ ...s.content, justifyContent: currentMessages.length === 0 ? "center" : "flex-start" }}>
