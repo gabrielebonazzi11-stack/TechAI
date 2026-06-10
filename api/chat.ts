@@ -103,18 +103,15 @@ IN SINTESI
    Inserisci simboli, valori e riferimenti datum.
 `;
 
-const ENERGY_ONLY_RULES =
+const TECHNICAL_ONLY_RULES =
   `
 
 REGOLE DI DOMINIO OBBLIGATORIE:
-` +
-  `- Sei un assistente specializzato esclusivamente nel settore energia.
-` +
-  `- Puoi rispondere solo a domande su energia, consumi energetici, impianti elettrici, fotovoltaico, accumulo, inverter, bollette luce/gas, efficienza energetica, risparmio energetico, pompe di calore, climatizzazione, isolamento termico, rinnovabili, comunità energetiche, diagnosi energetica e certificazioni energetiche.
-` +
-  `- Se la domanda non riguarda il settore energetico, devi rifiutare gentilmente.
-` +
-  `- Non rispondere a domande generiche su meccanica, CAD, programmazione, storia, sport, salute, vita privata o altri argomenti non energetici.
+- Sei un assistente specializzato in ambito tecnico, industriale e ingegneristico.
+- Puoi rispondere a domande riguardanti ingegneria, meccanica, elettronica, elettrotecnica, automazione, pneumatica, oleodinamica, energia, impianti, CAD, materiali, disegno tecnico, tavole tecniche, tolleranze, rugosità, calcoli tecnici, progettazione, componenti meccanici e sviluppo tecnico della piattaforma.
+- Puoi aiutare anche con codice, React, TypeScript, API, frontend, backend, Vercel, Supabase, OpenAI e bug se riguardano questa piattaforma o un progetto tecnico.
+- Se la domanda non riguarda un ambito tecnico, devi rifiutare gentilmente.
+- Non rispondere a domande generiche su storia, sport, calcio, cucina, viaggi, musica, film, vita privata, politica, medicina o argomenti non tecnici.
 `;
 
 function jsonResponse(data: unknown, status = 200) {
@@ -468,12 +465,12 @@ function buildLightSystemPrompt(params: {
   const { userName, focus, route, analysisMode } = params;
 
   return (
-    `Sei TechAI, assistente tecnico specializzato nel settore energia.\n` +
+    `Sei TechAI, assistente tecnico specializzato in ingegneria industriale.\n` +
     `Utente: ${userName}. Focus: ${focus}. Modalità: ${analysisMode}. Livello: ${route.level}. Motivo: ${route.reason}.\n` +
     `Rispondi nella stessa lingua dell'utente. Sii diretto, pratico e ordinato. ` +
     `Non inventare dati. Se mancano dati, chiedili. ` +
     `Per codice, dai modifiche complete e copiabili.` +
-    ENERGY_ONLY_RULES +
+    TECHNICAL_ONLY_RULES +
     TECHAI_FORMATTING_RULES
   );
 }
@@ -615,7 +612,7 @@ function buildCompactTechAiSystemPrompt(params: {
   const { userName, focus, route, analysisMode } = params;
 
   return (
-    `Sei TechAI, copilot tecnico specializzato nel settore energia.\n` +
+    `Sei TechAI, copilot tecnico specializzato in ingegneria industriale.\n` +
     `Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo: ${route.reason}. Modalità: ${analysisMode}.\n\n` +
     `REGOLE RISPOSTA:\n` +
@@ -626,8 +623,8 @@ function buildCompactTechAiSystemPrompt(params: {
     `- Se mancano dati, chiedili e non inventare.\n` +
     `- Se la richiesta riguarda codice, dai modifiche precise e copiabili.\n` +
     `- Se l'utente chiede un file completo, riscrivi il file completo.\n` +
-    `- Se si parla di componenti o impianti energetici, quando opportuno scrivi: "fare riferimento a normativa: ...".\n` +
-    ENERGY_ONLY_RULES +
+    `- Se si parla di componenti, impianti o sistemi tecnici, quando opportuno scrivi: "fare riferimento a normativa: ...".\n` +
+    TECHNICAL_ONLY_RULES +
     TECHAI_FORMATTING_RULES +
     `\nPROMEMORIA TECNICO COMPATTO:\n` +
     `Meccanica: equilibrio ΣF=0, ΣM=0; F=ma; P=Fv=Mω; Mt[Nm]=9550P[kW]/n[rpm]. Trazione σ=F/A; flessione σ=Mf/Wf; torsione τ=Mt/Wt. Von Mises σid=√(σ²+3τ²). Fatica: Goodman/Soderberg. Bulloni: precarico, taglio, trazione, classe 8.8/10.9. Tolleranze: H7, k6, m6, H7/f7. Rugosità: Ra 3,2÷6,3 generica; Ra 0,8÷1,6 sedi/tenute.\n` +
@@ -644,11 +641,11 @@ function buildFullTechAiSystemPrompt(params: {
   const { userName, focus, route, analysisMode } = params;
 
   return (
-    `Sei TechAI, copilot tecnico specializzato nel settore energia. Utente: ${userName}. Focus: ${focus}.\n` +
+    `Sei TechAI, copilot tecnico specializzato in ingegneria industriale. Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo scelta: ${route.reason}. Modalità: ${analysisMode}.\n` +
     `Rispondi in italiano, tecnico e preciso. Usa notazione chiara per formule, ma senza Markdown grezzo visibile. Cita sempre le unità. Se mancano dati, chiedi.\n` +
-    `Se la richiesta riguarda codice collegato alle funzioni energetiche dell'app, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
-    ENERGY_ONLY_RULES +
+    `Se la richiesta riguarda codice collegato alle funzioni tecniche dell'app, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
+    TECHNICAL_ONLY_RULES +
     TECHAI_FORMATTING_RULES +
     buildModeInstructions(analysisMode) +
     `\n\n` +
@@ -666,22 +663,22 @@ function buildFullTechAiSystemPrompt(params: {
 
 
 
-type EnergyScopeResult = {
+type TechnicalScopeResult = {
   allowed: boolean;
   reason: string;
 };
 
 const OUT_OF_SCOPE_MESSAGE =
-  "Posso aiutarti solo con domande riguardanti energia, consumi energetici, impianti elettrici, fotovoltaico, bollette, efficienza energetica, risparmio energetico, pompe di calore, climatizzazione, gas, rinnovabili e argomenti collegati.";
+  "Posso aiutarti solo con domande riguardanti ingegneria, meccanica, elettronica, elettrotecnica, automazione, energia, impianti, CAD, materiali, disegno tecnico, programmazione della piattaforma, analisi di tavole tecniche e argomenti tecnici collegati.";
 
-async function classifyEnergyDomain(params: {
+async function classifyTechnicalDomain(params: {
   message: string;
   messages: ChatMessage[];
   fileText: string;
   fileMeta: string;
   analysisMode: AnalysisMode;
   hasFile: boolean;
-}): Promise<EnergyScopeResult> {
+}): Promise<TechnicalScopeResult> {
   const openAiApiKey =
     process.env.OPENAI_TEXT_API_KEY ||
     process.env.OPENAI_API_KEY;
@@ -689,7 +686,7 @@ async function classifyEnergyDomain(params: {
   if (!openAiApiKey) {
     return {
       allowed: false,
-      reason: "chiave OpenAI mancante per classificazione dominio energia",
+      reason: "chiave OpenAI mancante per classificazione dominio tecnico",
     };
   }
 
@@ -727,16 +724,43 @@ async function classifyEnergyDomain(params: {
             {
               role: "system",
               content:
-                "Sei un classificatore di dominio per una chat verticale sul settore energia.\n\n" +
-                "Devi decidere se la richiesta dell'utente è pertinente al settore energetico.\n\n" +
+                "Sei un classificatore di dominio per una chat tecnica verticale.\n\n" +
+                "Devi decidere se la richiesta dell'utente è pertinente ad ambiti tecnici, industriali, ingegneristici o allo sviluppo della piattaforma.\n\n" +
                 "Rispondi SOLO con JSON valido, senza markdown, senza spiegazioni, in questo formato:\n" +
                 "{\"allowed\":true,\"reason\":\"motivo breve\"}\n" +
                 "oppure:\n" +
                 "{\"allowed\":false,\"reason\":\"motivo breve\"}\n\n" +
-                "Considera pertinente solo ciò che riguarda direttamente o indirettamente energia, consumi energetici, impianti elettrici, fotovoltaico, accumulo, inverter, bollette luce/gas, efficienza energetica, risparmio energetico, pompe di calore, climatizzazione legata ai consumi, isolamento termico, rinnovabili, comunità energetiche, diagnosi energetica, certificazioni energetiche, gestione energetica di edifici, industrie o abitazioni.\n\n" +
+                "Devi mettere allowed true se la richiesta riguarda uno di questi ambiti:\n" +
+                "- ingegneria;\n" +
+                "- meccanica;\n" +
+                "- elettronica;\n" +
+                "- elettrotecnica;\n" +
+                "- automazione;\n" +
+                "- pneumatica;\n" +
+                "- oleodinamica;\n" +
+                "- energia e impianti energetici;\n" +
+                "- materiali;\n" +
+                "- CAD, Inventor, SolidWorks, STEP, STP;\n" +
+                "- disegno tecnico, tavole tecniche, quote, tolleranze, rugosità, GD&T;\n" +
+                "- calcoli tecnici, dimensionamenti, verifiche, formule, fisica applicata;\n" +
+                "- componenti meccanici, alberi, cuscinetti, molle, bulloni, ingranaggi, boccole, flange;\n" +
+                "- analisi file tecnici, distinte base, BOM, documentazione industriale;\n" +
+                "- programmazione, React, TypeScript, API, frontend, backend, Vercel, Supabase, OpenAI, bug, deploy o modifiche tecniche della piattaforma.\n\n" +
+                "Devi mettere allowed false se la richiesta riguarda argomenti non tecnici, ad esempio:\n" +
+                "- storia;\n" +
+                "- sport o calcio;\n" +
+                "- musica, film o serie TV;\n" +
+                "- cucina e ricette;\n" +
+                "- viaggi e vacanze;\n" +
+                "- gossip;\n" +
+                "- social network senza collegamento tecnico;\n" +
+                "- medicina o salute personale;\n" +
+                "- politica;\n" +
+                "- relazioni personali;\n" +
+                "- domande generiche non collegate ad ambiti tecnici.\n\n" +
                 "Non usare una semplice ricerca di parole. Valuta il significato della richiesta.\n" +
-                "Se la richiesta è informatica, storica, personale, sportiva, medica, meccanica, CAD, programmazione o generica senza collegamento chiaro con l'energia, allowed deve essere false.\n" +
-                "Se l'utente chiede come usare questa app o le sue funzioni energetiche, allowed può essere true.\n" +
+                "Se l'utente carica un file tecnico, una tavola, un'immagine CAD, codice o documentazione tecnica, allowed deve essere true.\n" +
+                "Se l'utente chiede come funziona l'app o come modificarla, allowed deve essere true.\n" +
                 "Se hai dubbi, allowed deve essere false."
             },
             {
@@ -767,7 +791,7 @@ async function classifyEnergyDomain(params: {
     if (parsed && parsed.allowed === true) {
       return {
         allowed: true,
-        reason: String(parsed.reason || "richiesta pertinente al settore energia"),
+        reason: String(parsed.reason || "richiesta pertinente al dominio tecnico"),
       };
     }
 
@@ -775,7 +799,7 @@ async function classifyEnergyDomain(params: {
       allowed: false,
       reason: parsed?.reason
         ? String(parsed.reason)
-        : "richiesta non pertinente al settore energia",
+        : "richiesta non pertinente al dominio tecnico",
     };
   } catch (error: any) {
     return {
@@ -887,7 +911,7 @@ ${params.fileText}`,
   }
 
   const userName = params.profile?.userName || "Utente";
-  const focus = params.profile?.focus || "Energia";
+  const focus = params.profile?.focus || "Ingegneria tecnica";
 
   const fastModel =
     process.env.OPENAI_TEXT_MODEL_FAST ||
@@ -1088,7 +1112,7 @@ async function callOpenAIVision(params: {
   }
 
   const userName = params.profile?.userName || "Utente";
-  const focus = params.profile?.focus || "Energia";
+  const focus = params.profile?.focus || "Ingegneria tecnica";
 
   const extractedPdfText = String(params.fileText || "").trim();
 
@@ -1722,7 +1746,7 @@ export default async function handler(req: Request) {
       return auth.response;
     }
 
-    const scopeCheck = await classifyEnergyDomain({
+    const scopeCheck = await classifyTechnicalDomain({
       message: body.message,
       messages: body.messages,
       fileText: body.fileText,
