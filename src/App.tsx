@@ -248,19 +248,6 @@ export default function App() {
     });
   }, [projects, projectSearch]);
 
-  const makeUserStorageKey = (email: string) => {
-    const cleanEmail = String(email || "utente")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9@._-]/g, "_");
-
-    return `${STORAGE_KEY_BASE}:user:${cleanEmail}`;
-  };
-
-  const makeGuestStorageKey = (guestId: string) => {
-    const cleanGuestId = String(guestId || "guest").trim().replace(/[^a-zA-Z0-9_-]/g, "_");
-    return `${STORAGE_KEY_BASE}:guest:${cleanGuestId}`;
-  };
 
   const resetWorkspace = () => {
     setChats([]);
