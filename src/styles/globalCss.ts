@@ -1,0 +1,16 @@
+export const globalCss = `
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+@keyframes slideInUp { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.slide-in { animation: slideInUp 0.32s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.fade-in  { animation: fadeIn 0.22s ease both; }
+* { font-family: 'Inter', 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif !important; box-sizing: border-box; }
+html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+button { font-family: inherit; transition: transform 0.15s ease, opacity 0.15s ease !important; }
+button:hover:not(:disabled) { transform: scale(1.05); }
+button:active:not(:disabled) { transform: scale(0.97); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+input::placeholder, textarea::placeholder { opacity: 0.55; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-thumb { background: rgba(120,120,120,0.35); border-radius: 10px; }
+`;
