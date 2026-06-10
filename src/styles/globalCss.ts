@@ -14,3 +14,4 @@ input::placeholder, textarea::placeholder { opacity: 0.55; }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-thumb { background: rgba(120,120,120,0.35); border-radius: 10px; }
 `;
+
