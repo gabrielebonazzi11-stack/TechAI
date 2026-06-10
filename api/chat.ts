@@ -103,15 +103,41 @@ IN SINTESI
    Inserisci simboli, valori e riferimenti datum.
 `;
 
-const TECHNICAL_ONLY_RULES =
+
+
+const TECHNICAL_STANDARDS_RULES =
   `
 
-REGOLE DI DOMINIO OBBLIGATORIE:
-- Sei un assistente specializzato in ambito tecnico, industriale e ingegneristico.
-- Puoi rispondere a domande riguardanti ingegneria, meccanica, elettronica, elettrotecnica, automazione, pneumatica, oleodinamica, energia, impianti, CAD, materiali, disegno tecnico, tavole tecniche, tolleranze, rugosità, calcoli tecnici, progettazione, componenti meccanici e sviluppo tecnico della piattaforma.
-- Puoi aiutare anche con codice, React, TypeScript, API, frontend, backend, Vercel, Supabase, OpenAI e bug se riguardano questa piattaforma o un progetto tecnico.
-- Se la domanda non riguarda un ambito tecnico, devi rifiutare gentilmente.
-- Non rispondere a domande generiche su storia, sport, calcio, cucina, viaggi, musica, film, vita privata, politica, medicina o argomenti non tecnici.
+REGOLE OBBLIGATORIE SUI RIFERIMENTI NORMATIVI:
+- Quando rispondi a domande tecniche, indica sempre le norme o i riferimenti tecnici utili, quando pertinenti.
+- Non scrivere solo "secondo normativa": indica la norma probabile e il motivo per cui è collegata al caso.
+- Per disegno tecnico, viste, sezioni e rappresentazione: cita ISO 128 quando pertinente.
+- Per tolleranze geometriche, datum, planarità, parallelismo, perpendicolarità, posizione, concentricità/coassialità: cita ISO 1101 quando pertinente.
+- Per tolleranze dimensionali e accoppiamenti tipo H7, h6, g6, f7, k6, m6, s6: cita ISO 286 quando pertinente.
+- Per rugosità e stato delle superfici: cita ISO 1302 quando pertinente.
+- Per tolleranze generali dimensionali/geometriche: cita ISO 2768 quando pertinente.
+- Per filettature metriche: cita ISO 965 oppure ISO 261/262 quando pertinente.
+- Per viti, bulloni e classi 8.8, 10.9, 12.9: cita ISO 898-1 quando pertinente.
+- Per materiali metallici cita la norma materiale specifica quando nota, ad esempio UNI EN 10025, UNI EN 10083, UNI EN 10088, UNI EN 10277, UNI EN 10087.
+- Per saldature cita ISO 2553 per simboli di saldatura e ISO 5817 per livelli di qualità quando pertinente.
+- Per cuscinetti, linguette, seeger, spine e componenti normalizzati cita la norma o il catalogo tecnico di riferimento se conosciuto; se non sei sicuro scrivi "riferimento tecnico da verificare".
+- Se non sei sicuro della norma precisa, non inventare: scrivi "norma da confermare in base al componente e al settore applicativo".
+`;
+
+const TECHNICAL_DEPTH_RULES =
+  `
+
+REGOLE DI APPROFONDIMENTO TECNICO:
+- Le risposte tecniche devono essere complete, motivate e utili per progettazione, verifica o correzione.
+- Evita risposte troppo corte quando la domanda riguarda tavole, materiali, tolleranze, rugosità, dimensionamenti, elettronica, automazione, oleodinamica, CAD, codice o API.
+- Quando analizzi un problema tecnico, usa sempre sezioni ordinate e spiega il perché tecnico delle scelte.
+- Indica dati usati, dati mancanti, ipotesi, controlli consigliati e rischi principali.
+- Per calcoli tecnici indica: dati, formule, sostituzione numerica quando possibile, risultato, unità di misura, verifica e conclusione.
+- Per tavole tecniche indica: cartiglio, materiale, viste/sezioni, quote funzionali, tolleranze dimensionali, tolleranze geometriche, rugosità, filetti/fori, criticità, norme utili e giudizio finale.
+- Per codice indica: problema individuato, causa probabile, modifica da fare, codice corretto o blocco da sostituire, e test da eseguire.
+- Per componenti meccanici indica: funzione, sollecitazioni principali, controlli da fare, norme/riferimenti e dati necessari per confermare.
+- Non inventare dati mancanti: quando un dato non c'è, dichiaralo e spiega come recuperarlo o verificarlo.
+- Sii diretto, ma non superficiale: preferisci una risposta tecnica corposa rispetto a una risposta minimale.
 `;
 
 function jsonResponse(data: unknown, status = 200) {
@@ -431,8 +457,8 @@ ${analysisMode}`.toLowerCase();
     return {
       level: "fast",
       model: fastModel,
-      maxTokens: 700,
-      timeoutMs: 18000,
+      maxTokens: 1000,
+      timeoutMs: 22000,
       reason: "domanda breve/semplice",
     };
   }
@@ -441,8 +467,8 @@ ${analysisMode}`.toLowerCase();
     return {
       level: "hard",
       model: hardModel,
-      maxTokens: 2200,
-      timeoutMs: 40000,
+      maxTokens: 4000,
+      timeoutMs: 50000,
       reason: reasons.join(", ") || "richiesta complessa",
     };
   }
@@ -450,8 +476,8 @@ ${analysisMode}`.toLowerCase();
   return {
     level: "medium",
     model: mediumModel,
-    maxTokens: 1400,
-    timeoutMs: 28000,
+    maxTokens: 2400,
+    timeoutMs: 36000,
     reason: reasons.join(", ") || "richiesta media",
   };
 }
@@ -465,12 +491,13 @@ function buildLightSystemPrompt(params: {
   const { userName, focus, route, analysisMode } = params;
 
   return (
-    `Sei TechAI, assistente tecnico specializzato in ingegneria industriale.\n` +
+    `Sei TechAI, assistente tecnico per meccanica industriale e sviluppo React/TypeScript.\n` +
     `Utente: ${userName}. Focus: ${focus}. Modalità: ${analysisMode}. Livello: ${route.level}. Motivo: ${route.reason}.\n` +
-    `Rispondi nella stessa lingua dell'utente. Sii diretto, pratico e ordinato. ` +
-    `Non inventare dati. Se mancano dati, chiedili. ` +
-    `Per codice, dai modifiche complete e copiabili.` +
-    TECHNICAL_ONLY_RULES +
+    `Rispondi nella stessa lingua dell'utente. Sii tecnico, pratico, ordinato e sufficientemente approfondito. ` +
+    `Non inventare dati. Se mancano dati, dichiarali e spiega quali servono. ` +
+    `Per codice, dai modifiche complete e copiabili. Per problemi tecnici, includi motivazione, riferimenti normativi quando pertinenti e controlli consigliati.` +
+    TECHNICAL_STANDARDS_RULES +
+    TECHNICAL_DEPTH_RULES +
     TECHAI_FORMATTING_RULES
   );
 }
@@ -612,19 +639,20 @@ function buildCompactTechAiSystemPrompt(params: {
   const { userName, focus, route, analysisMode } = params;
 
   return (
-    `Sei TechAI, copilot tecnico specializzato in ingegneria industriale.\n` +
+    `Sei TechAI, copilot tecnico per ingegneria meccanica industriale.\n` +
     `Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo: ${route.reason}. Modalità: ${analysisMode}.\n\n` +
     `REGOLE RISPOSTA:\n` +
     `- Rispondi nella stessa lingua dell'utente.\n` +
-    `- Sii diretto, ordinato, tecnico e pratico.\n` +
+    `- Sii diretto, ordinato, tecnico, pratico e approfondito quando l'argomento lo richiede.\n` +
     `- Usa formule leggibili senza Markdown grezzo visibile.\n` +
     `- Cita sempre le unità di misura.\n` +
-    `- Se mancano dati, chiedili e non inventare.\n` +
+    `- Se mancano dati, dichiarali, non inventare e spiega quali dati servono.\n` +
     `- Se la richiesta riguarda codice, dai modifiche precise e copiabili.\n` +
     `- Se l'utente chiede un file completo, riscrivi il file completo.\n` +
-    `- Se si parla di componenti, impianti o sistemi tecnici, quando opportuno scrivi: "fare riferimento a normativa: ...".\n` +
-    TECHNICAL_ONLY_RULES +
+    `- Se si parla di componenti, disegni tecnici, materiali, tolleranze o verifiche, indica norme ISO, UNI, EN, DIN o riferimenti tecnici applicabili quando pertinenti.\n` +
+    TECHNICAL_STANDARDS_RULES +
+    TECHNICAL_DEPTH_RULES +
     TECHAI_FORMATTING_RULES +
     `\nPROMEMORIA TECNICO COMPATTO:\n` +
     `Meccanica: equilibrio ΣF=0, ΣM=0; F=ma; P=Fv=Mω; Mt[Nm]=9550P[kW]/n[rpm]. Trazione σ=F/A; flessione σ=Mf/Wf; torsione τ=Mt/Wt. Von Mises σid=√(σ²+3τ²). Fatica: Goodman/Soderberg. Bulloni: precarico, taglio, trazione, classe 8.8/10.9. Tolleranze: H7, k6, m6, H7/f7. Rugosità: Ra 3,2÷6,3 generica; Ra 0,8÷1,6 sedi/tenute.\n` +
@@ -641,11 +669,12 @@ function buildFullTechAiSystemPrompt(params: {
   const { userName, focus, route, analysisMode } = params;
 
   return (
-    `Sei TechAI, copilot tecnico specializzato in ingegneria industriale. Utente: ${userName}. Focus: ${focus}.\n` +
+    `Sei TechAI, copilot tecnico per ingegneria meccanica industriale. Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo scelta: ${route.reason}. Modalità: ${analysisMode}.\n` +
-    `Rispondi in italiano, tecnico e preciso. Usa notazione chiara per formule, ma senza Markdown grezzo visibile. Cita sempre le unità. Se mancano dati, chiedi.\n` +
-    `Se la richiesta riguarda codice collegato alle funzioni tecniche dell'app, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
-    TECHNICAL_ONLY_RULES +
+    `Rispondi in italiano, tecnico, preciso e approfondito. Usa notazione chiara per formule, ma senza Markdown grezzo visibile. Cita sempre le unità. Se mancano dati, dichiarali e spiega quali servono.\n` +
+    `Se la richiesta riguarda codice, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
+    TECHNICAL_STANDARDS_RULES +
+    TECHNICAL_DEPTH_RULES +
     TECHAI_FORMATTING_RULES +
     buildModeInstructions(analysisMode) +
     `\n\n` +
@@ -663,151 +692,223 @@ function buildFullTechAiSystemPrompt(params: {
 
 
 
-type TechnicalScopeResult = {
+type ScopeCheckResult = {
   allowed: boolean;
   reason: string;
 };
 
 const OUT_OF_SCOPE_MESSAGE =
-  "Posso aiutarti solo con domande riguardanti ingegneria, meccanica, elettronica, elettrotecnica, automazione, energia, impianti, CAD, materiali, disegno tecnico, programmazione della piattaforma, analisi di tavole tecniche e argomenti tecnici collegati.";
+  "Domanda fuori ambito. Questo assistente è progettato per supportare attività tecniche legate a ingegneria, programmazione, informatica, CAD, materiali, progettazione meccanica, automazione, elettronica e analisi di tavole tecniche. Riformula la domanda in un contesto tecnico e sarò felice di aiutarti.";
 
-async function classifyTechnicalDomain(params: {
+function normalizeForScope(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, " ");
+}
+
+function isAllowedTechnicalScope(params: {
   message: string;
   messages: ChatMessage[];
-  fileText: string;
-  fileMeta: string;
-  analysisMode: AnalysisMode;
   hasFile: boolean;
-}): Promise<TechnicalScopeResult> {
-  const openAiApiKey =
-    process.env.OPENAI_TEXT_API_KEY ||
-    process.env.OPENAI_API_KEY;
-
-  if (!openAiApiKey) {
-    return {
-      allowed: false,
-      reason: "chiave OpenAI mancante per classificazione dominio tecnico",
-    };
-  }
-
+  analysisMode: AnalysisMode;
+}): ScopeCheckResult {
+  const message = normalizeForScope(params.message);
   const recentContext = Array.isArray(params.messages)
-    ? params.messages
-        .slice(-4)
-        .map((m) => `${m?.role || "user"}: ${m?.text || ""}`)
-        .join("\n")
+    ? normalizeForScope(
+        params.messages
+          .slice(-5)
+          .map((m) => m?.text || "")
+          .join("\n")
+      )
     : "";
 
-  const classifierInput =
-    `Messaggio utente:\n${params.message || ""}\n\n` +
-    `Contesto recente:\n${recentContext}\n\n` +
-    `Modalità analisi:\n${params.analysisMode}\n\n` +
-    `File presente:\n${params.hasFile ? "sì" : "no"}\n\n` +
-    `Metadata file:\n${String(params.fileMeta || "").slice(0, 1000)}\n\n` +
-    `Testo file, se presente:\n${String(params.fileText || "").slice(0, 2500)}`;
+  const text = `${message}\n${recentContext}`.trim();
 
-  try {
-    const response = await fetchWithTimeout(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openAiApiKey}`,
-        },
-        body: JSON.stringify({
-          model:
-            process.env.OPENAI_SCOPE_MODEL ||
-            process.env.OPENAI_TEXT_MODEL_FAST ||
-            process.env.OPENAI_TEXT_MODEL ||
-            "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content:
-                "Sei un classificatore di dominio per una chat tecnica verticale.\n\n" +
-                "Devi decidere se la richiesta dell'utente è pertinente ad ambiti tecnici, industriali, ingegneristici o allo sviluppo della piattaforma.\n\n" +
-                "Rispondi SOLO con JSON valido, senza markdown, senza spiegazioni, in questo formato:\n" +
-                "{\"allowed\":true,\"reason\":\"motivo breve\"}\n" +
-                "oppure:\n" +
-                "{\"allowed\":false,\"reason\":\"motivo breve\"}\n\n" +
-                "Devi mettere allowed true se la richiesta riguarda uno di questi ambiti:\n" +
-                "- ingegneria;\n" +
-                "- meccanica;\n" +
-                "- elettronica;\n" +
-                "- elettrotecnica;\n" +
-                "- automazione;\n" +
-                "- pneumatica;\n" +
-                "- oleodinamica;\n" +
-                "- energia e impianti energetici;\n" +
-                "- materiali;\n" +
-                "- CAD, Inventor, SolidWorks, STEP, STP;\n" +
-                "- disegno tecnico, tavole tecniche, quote, tolleranze, rugosità, GD&T;\n" +
-                "- calcoli tecnici, dimensionamenti, verifiche, formule, fisica applicata;\n" +
-                "- componenti meccanici, alberi, cuscinetti, molle, bulloni, ingranaggi, boccole, flange;\n" +
-                "- analisi file tecnici, distinte base, BOM, documentazione industriale;\n" +
-                "- programmazione, React, TypeScript, API, frontend, backend, Vercel, Supabase, OpenAI, bug, deploy o modifiche tecniche della piattaforma.\n\n" +
-                "Devi mettere allowed false se la richiesta riguarda argomenti non tecnici, ad esempio:\n" +
-                "- storia;\n" +
-                "- sport o calcio;\n" +
-                "- musica, film o serie TV;\n" +
-                "- cucina e ricette;\n" +
-                "- viaggi e vacanze;\n" +
-                "- gossip;\n" +
-                "- social network senza collegamento tecnico;\n" +
-                "- medicina o salute personale;\n" +
-                "- politica;\n" +
-                "- relazioni personali;\n" +
-                "- domande generiche non collegate ad ambiti tecnici.\n\n" +
-                "Non usare una semplice ricerca di parole. Valuta il significato della richiesta.\n" +
-                "Se l'utente carica un file tecnico, una tavola, un'immagine CAD, codice o documentazione tecnica, allowed deve essere true.\n" +
-                "Se l'utente chiede come funziona l'app o come modificarla, allowed deve essere true.\n" +
-                "Se hai dubbi, allowed deve essere false."
-            },
-            {
-              role: "user",
-              content: classifierInput,
-            },
-          ],
-          temperature: 0,
-          max_tokens: 80,
-        }),
-      },
-      12000
-    );
-
-    const raw = await response.text();
-
-    if (!response.ok) {
-      return {
-        allowed: false,
-        reason: `errore classificatore dominio: ${response.status}`,
-      };
-    }
-
-    const data = safeJsonParse<any>(raw, null);
-    const content = data?.choices?.[0]?.message?.content || "";
-    const parsed = safeJsonParse<any>(content, null);
-
-    if (parsed && parsed.allowed === true) {
-      return {
-        allowed: true,
-        reason: String(parsed.reason || "richiesta pertinente al dominio tecnico"),
-      };
-    }
-
-    return {
-      allowed: false,
-      reason: parsed?.reason
-        ? String(parsed.reason)
-        : "richiesta non pertinente al dominio tecnico",
-    };
-  } catch (error: any) {
-    return {
-      allowed: false,
-      reason: `errore classificazione dominio: ${error?.message || "errore sconosciuto"}`,
-    };
+  // Se è stato caricato un file o l'utente è in una modalità tecnica specifica,
+  // la richiesta viene considerata interna allo scopo di TechAI.
+  if (params.hasFile) {
+    return { allowed: true, reason: "file allegato" };
   }
+
+  if (params.analysisMode !== "chat") {
+    return { allowed: true, reason: `modalità tecnica ${params.analysisMode}` };
+  }
+
+  // Permette messaggi brevi di servizio senza obbligare l'utente a scrivere parole tecniche.
+  const servicePatterns = [
+    /\bciao\b/,
+    /\bsalve\b/,
+    /\bbuongiorno\b/,
+    /\bbuonasera\b/,
+    /\bhelp\b/,
+    /\baiuto\b/,
+    /\bcosa sai fare\b/,
+    /\bcome funziona\b/,
+    /\bfunzioni\b/,
+    /\bspiegami il sito\b/,
+    /\btechai\b/,
+  ];
+
+  if (servicePatterns.some((pattern) => pattern.test(text))) {
+    return { allowed: true, reason: "messaggio di servizio o onboarding" };
+  }
+
+  // Blocchi espliciti: servono a evitare che il modello risponda a temi palesemente fuori scopo.
+  const blockedPatterns = [
+    /\bnapoleone\b/,
+    /\bimperatore\b/,
+    /\bstoria\b/,
+    /\bguerra mondiale\b/,
+    /\bcalcio\b/,
+    /\bserie a\b/,
+    /\bchampions\b/,
+    /\bfilm\b/,
+    /\bserie tv\b/,
+    /\bmusica\b/,
+    /\bcantante\b/,
+    /\battore\b/,
+    /\battrice\b/,
+    /\boroscopo\b/,
+    /\bpolitica\b/,
+    /\bpresidente\b/,
+    /\bricetta\b/,
+    /\bcucina\b/,
+    /\binstagram\b/,
+    /\btiktok\b/,
+    /\brelazione amorosa\b/,
+    /\bfidanzata\b/,
+    /\bvacanza\b/,
+    /\bviaggio\b/,
+  ];
+
+  if (blockedPatterns.some((pattern) => pattern.test(text))) {
+    return { allowed: false, reason: "tema esplicitamente fuori ambito" };
+  }
+
+  const allowedPatterns = [
+    // Programmazione / informatica
+    /\bcodice\b/,
+    /\bprogramma\b/,
+    /\bprogrammazione\b/,
+    /\binformatica\b/,
+    /\bsoftware\b/,
+    /\btypescript\b/,
+    /\bjavascript\b/,
+    /\breact\b/,
+    /\btsx\b/,
+    /\bjsx\b/,
+    /\bapi\b/,
+    /\bbackend\b/,
+    /\bfrontend\b/,
+    /\bdebug\b/,
+    /\berrore\b/,
+    /\bbuild\b/,
+    /\bdeploy\b/,
+    /\bvercel\b/,
+    /\bsupabase\b/,
+    /\bopenai\b/,
+    /\bdatabase\b/,
+    /\bserver\b/,
+    /\bruntime\b/,
+    /\bfunzione\b/,
+    /\bscript\b/,
+    /\bjson\b/,
+    /\bcsv\b/,
+
+    // Ingegneria / meccanica / CAD
+    /\bingegneria\b/,
+    /\bmeccanica\b/,
+    /\bprogettazione\b/,
+    /\btavola\b/,
+    /\bdisegno tecnico\b/,
+    /\bcad\b/,
+    /\binventor\b/,
+    /\bsolidworks\b/,
+    /\bstep\b/,
+    /\bstp\b/,
+    /\bassiem[ei]\b/,
+    /\bcomponente\b/,
+    /\bpezzo\b/,
+    /\bmateriale\b/,
+    /\bmateriali\b/,
+    /\bacciaio\b/,
+    /\balluminio\b/,
+    /\bbronzo\b/,
+    /\botton[ei]\b/,
+    /\bptfe\b/,
+    /\bteflon\b/,
+    /\bboccola\b/,
+    /\bbronzina\b/,
+    /\bcuscinetto\b/,
+    /\bvite\b/,
+    /\bbullone\b/,
+    /\bmolla\b/,
+    /\balbero\b/,
+    /\bingranaggio\b/,
+    /\blinguetta\b/,
+    /\bperno\b/,
+    /\bflangia\b/,
+    /\bquota\b/,
+    /\bquote\b/,
+    /\btolleranza\b/,
+    /\btolleranze\b/,
+    /\brugosita\b/,
+    /\br[a-z]?\s*[0-9]/,
+    /\bgd&t\b/,
+    /\bdatum\b/,
+    /\bcartiglio\b/,
+    /\bsezione\b/,
+    /\bforo\b/,
+    /\bfiletto\b/,
+    /\blamatura\b/,
+    /\bsvasatura\b/,
+
+    // Calcoli tecnici / fisica applicata
+    /\bcalcolo\b/,
+    /\bcalcola\b/,
+    /\bdimensiona\b/,
+    /\bdimensionamento\b/,
+    /\bverifica\b/,
+    /\bforza\b/,
+    /\bmomento\b/,
+    /\bpressione\b/,
+    /\btensione\b/,
+    /\bresistenza\b/,
+    /\bfatica\b/,
+    /\bflessione\b/,
+    /\btorsione\b/,
+    /\btaglio\b/,
+    /\bvon mises\b/,
+    /\btresca\b/,
+    /\bgoodman\b/,
+    /\bsoderberg\b/,
+    /\bformula\b/,
+    /\bmatematica\b/,
+    /\bfisica\b/,
+
+    // Automazione / elettronica
+    /\bautomazione\b/,
+    /\belettronica\b/,
+    /\boleodinamica\b/,
+    /\boleoidraulica\b/,
+    /\bpneumatica\b/,
+    /\bplc\b/,
+    /\btwincat\b/,
+    /\bfesto\b/,
+    /\bvalvola\b/,
+    /\bcilindro\b/,
+    /\bsensore\b/,
+    /\battuator[ei]\b/,
+  ];
+
+  if (allowedPatterns.some((pattern) => pattern.test(text))) {
+    return { allowed: true, reason: "keyword tecnica rilevata" };
+  }
+
+  return { allowed: false, reason: "nessun riferimento tecnico rilevato" };
 }
+
 
 function cleanAiOutput(text: string) {
   const withoutMarkdown = String(text || "")
@@ -911,7 +1012,7 @@ ${params.fileText}`,
   }
 
   const userName = params.profile?.userName || "Utente";
-  const focus = params.profile?.focus || "Ingegneria tecnica";
+  const focus = params.profile?.focus || "Ingegneria Meccanica";
 
   const fastModel =
     process.env.OPENAI_TEXT_MODEL_FAST ||
@@ -924,15 +1025,15 @@ ${params.fileText}`,
     {
       level: "fast",
       model: fastModel,
-      maxTokens: 600,
-      timeoutMs: 18000,
+      maxTokens: 1000,
+      timeoutMs: 22000,
       reason: "fallback automatico economico dopo errore o limite",
     },
     {
       level: "fast",
       model: "gpt-4o-mini",
-      maxTokens: 550,
-      timeoutMs: 18000,
+      maxTokens: 900,
+      timeoutMs: 22000,
       reason: "fallback finale economico",
     },
   ];
@@ -953,11 +1054,11 @@ ${params.fileText}`,
           .filter((m: ChatMessage) => String(m.text || "").trim())
           .map((m: ChatMessage) => ({
             role: m.role === "AI" || m.role === "assistant" ? "assistant" : "user",
-            content: String(m.text || "").slice(0, isFallback ? 900 : 2200),
+            content: String(m.text || "").slice(0, isFallback ? 1400 : 3200),
           }))
       : [];
 
-    const fileTextLimit = isFallback ? 3500 : currentRoute.level === "hard" ? 12000 : 8000;
+    const fileTextLimit = isFallback ? 5000 : currentRoute.level === "hard" ? 18000 : 12000;
 
     const finalUserContent =
       `${params.message || "Rispondi all'utente."}` +
@@ -1112,7 +1213,7 @@ async function callOpenAIVision(params: {
   }
 
   const userName = params.profile?.userName || "Utente";
-  const focus = params.profile?.focus || "Ingegneria tecnica";
+  const focus = params.profile?.focus || "Ingegneria Meccanica";
 
   const extractedPdfText = String(params.fileText || "").trim();
 
@@ -1149,7 +1250,9 @@ ${extractedPdfText.slice(0, 26000)}
     `Se mostra un menu, una schermata software, un componente, una foto o uno screenshot, descrivilo normalmente. ` +
     `Usa l'analisi da tavola tecnica solo quando l'utente sta usando la modalità Tavole/drawing oppure chiede esplicitamente una revisione di tavola tecnica. ` +
     `Non inventare dati non visibili. Se qualcosa non è leggibile, scrivi che non è leggibile. ` +
-    `Rispondi in italiano, in modo tecnico ma naturale. Usa titoli, elenchi e grassetto Markdown leggero quando utile.`;
+    `Rispondi in italiano, in modo tecnico ma naturale. Usa titoli, elenchi e grassetto Markdown leggero quando utile. ` +
+    TECHNICAL_STANDARDS_RULES +
+    TECHNICAL_DEPTH_RULES;
 
   const drawingVisionSystemPrompt =
     `Sei TechAI Vision, un ingegnere meccanico senior specializzato in disegno tecnico secondo norme ISO 128, ISO 1101, ISO 286 e ISO 1302. ` +
@@ -1159,7 +1262,9 @@ ${extractedPdfText.slice(0, 26000)}
     "Individua anche le quote probabilmente funzionali e critiche, spiegando sempre il motivo tecnico, il livello di confidenza e il riferimento tecnico quando applicabile. " +
     "Non inventare valori: se un dato non è leggibile o non è presente, scrivi chiaramente 'non leggibile' oppure 'non indicato'. " +
     "Quando la qualità dell'immagine è bassa, segnala il limite prima di giudicare la tavola. " +
-    "Rispondi in italiano tecnico preciso. " +
+    "Rispondi in italiano tecnico preciso, completo e motivato. " +
+    TECHNICAL_STANDARDS_RULES +
+    TECHNICAL_DEPTH_RULES +
     "\n\nREGOLE DI FORMATTAZIONE OBBLIGATORIE:\n" +
     "Usa sempre emoji di stato all'inizio delle righe di controllo:\n" +
     "✅ = elemento corretto, presente, conforme o verificato.\n" +
@@ -1305,7 +1410,7 @@ ${extractedPdfText.slice(0, 26000)}
             },
           ],
           temperature: 0.15,
-          max_tokens: 4000,
+          max_tokens: 5500,
         }),
       },
       openAiTimeoutMs
@@ -1746,11 +1851,9 @@ export default async function handler(req: Request) {
       return auth.response;
     }
 
-    const scopeCheck = await classifyTechnicalDomain({
+    const scopeCheck = isAllowedTechnicalScope({
       message: body.message,
       messages: body.messages,
-      fileText: body.fileText,
-      fileMeta: body.fileMeta,
       hasFile: body.hasFile,
       analysisMode: body.analysisMode,
     });
