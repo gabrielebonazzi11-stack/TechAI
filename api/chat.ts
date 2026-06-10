@@ -103,6 +103,19 @@ IN SINTESI
    Inserisci simboli, valori e riferimenti datum.
 `;
 
+const ENERGY_ONLY_RULES =
+  `
+
+REGOLE DI DOMINIO OBBLIGATORIE:
+` +
+  `- Sei un assistente specializzato esclusivamente nel settore energia.
+` +
+  `- Puoi rispondere solo a domande su energia, consumi energetici, impianti elettrici, fotovoltaico, accumulo, inverter, bollette luce/gas, efficienza energetica, risparmio energetico, pompe di calore, climatizzazione, isolamento termico, rinnovabili, comunità energetiche, diagnosi energetica e certificazioni energetiche.
+` +
+  `- Se la domanda non riguarda il settore energetico, devi rifiutare gentilmente.
+` +
+  `- Non rispondere a domande generiche su meccanica, CAD, programmazione, storia, sport, salute, vita privata o altri argomenti non energetici.
+`;
 
 function jsonResponse(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -455,11 +468,12 @@ function buildLightSystemPrompt(params: {
   const { userName, focus, route, analysisMode } = params;
 
   return (
-    `Sei TechAI, assistente tecnico per meccanica industriale e sviluppo React/TypeScript.\n` +
+    `Sei TechAI, assistente tecnico specializzato nel settore energia.\n` +
     `Utente: ${userName}. Focus: ${focus}. Modalità: ${analysisMode}. Livello: ${route.level}. Motivo: ${route.reason}.\n` +
     `Rispondi nella stessa lingua dell'utente. Sii diretto, pratico e ordinato. ` +
     `Non inventare dati. Se mancano dati, chiedili. ` +
     `Per codice, dai modifiche complete e copiabili.` +
+    ENERGY_ONLY_RULES +
     TECHAI_FORMATTING_RULES
   );
 }
@@ -601,7 +615,7 @@ function buildCompactTechAiSystemPrompt(params: {
   const { userName, focus, route, analysisMode } = params;
 
   return (
-    `Sei TechAI, copilot tecnico per ingegneria meccanica industriale.\n` +
+    `Sei TechAI, copilot tecnico specializzato nel settore energia.\n` +
     `Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo: ${route.reason}. Modalità: ${analysisMode}.\n\n` +
     `REGOLE RISPOSTA:\n` +
@@ -612,7 +626,8 @@ function buildCompactTechAiSystemPrompt(params: {
     `- Se mancano dati, chiedili e non inventare.\n` +
     `- Se la richiesta riguarda codice, dai modifiche precise e copiabili.\n` +
     `- Se l'utente chiede un file completo, riscrivi il file completo.\n` +
-    `- Se si parla di componenti o disegni tecnici, quando opportuno scrivi: "fare riferimento a normativa: ...".\n` +
+    `- Se si parla di componenti o impianti energetici, quando opportuno scrivi: "fare riferimento a normativa: ...".\n` +
+    ENERGY_ONLY_RULES +
     TECHAI_FORMATTING_RULES +
     `\nPROMEMORIA TECNICO COMPATTO:\n` +
     `Meccanica: equilibrio ΣF=0, ΣM=0; F=ma; P=Fv=Mω; Mt[Nm]=9550P[kW]/n[rpm]. Trazione σ=F/A; flessione σ=Mf/Wf; torsione τ=Mt/Wt. Von Mises σid=√(σ²+3τ²). Fatica: Goodman/Soderberg. Bulloni: precarico, taglio, trazione, classe 8.8/10.9. Tolleranze: H7, k6, m6, H7/f7. Rugosità: Ra 3,2÷6,3 generica; Ra 0,8÷1,6 sedi/tenute.\n` +
@@ -629,10 +644,11 @@ function buildFullTechAiSystemPrompt(params: {
   const { userName, focus, route, analysisMode } = params;
 
   return (
-    `Sei TechAI, copilot tecnico per ingegneria meccanica industriale. Utente: ${userName}. Focus: ${focus}.\n` +
+    `Sei TechAI, copilot tecnico specializzato nel settore energia. Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo scelta: ${route.reason}. Modalità: ${analysisMode}.\n` +
     `Rispondi in italiano, tecnico e preciso. Usa notazione chiara per formule, ma senza Markdown grezzo visibile. Cita sempre le unità. Se mancano dati, chiedi.\n` +
-    `Se la richiesta riguarda codice, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
+    `Se la richiesta riguarda codice collegato alle funzioni energetiche dell'app, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
+    ENERGY_ONLY_RULES +
     TECHAI_FORMATTING_RULES +
     buildModeInstructions(analysisMode) +
     `\n\n` +
@@ -650,223 +666,124 @@ function buildFullTechAiSystemPrompt(params: {
 
 
 
-type ScopeCheckResult = {
+type EnergyScopeResult = {
   allowed: boolean;
   reason: string;
 };
 
 const OUT_OF_SCOPE_MESSAGE =
-  "Domanda fuori ambito. Questo assistente è progettato per supportare attività tecniche legate a ingegneria, programmazione, informatica, CAD, materiali, progettazione meccanica, automazione, elettronica e analisi di tavole tecniche. Riformula la domanda in un contesto tecnico e sarò felice di aiutarti.";
+  "Posso aiutarti solo con domande riguardanti energia, consumi energetici, impianti elettrici, fotovoltaico, bollette, efficienza energetica, risparmio energetico, pompe di calore, climatizzazione, gas, rinnovabili e argomenti collegati.";
 
-function normalizeForScope(value: string) {
-  return String(value || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, " ");
-}
-
-function isAllowedTechnicalScope(params: {
+async function classifyEnergyDomain(params: {
   message: string;
   messages: ChatMessage[];
-  hasFile: boolean;
+  fileText: string;
+  fileMeta: string;
   analysisMode: AnalysisMode;
-}): ScopeCheckResult {
-  const message = normalizeForScope(params.message);
+  hasFile: boolean;
+}): Promise<EnergyScopeResult> {
+  const openAiApiKey =
+    process.env.OPENAI_TEXT_API_KEY ||
+    process.env.OPENAI_API_KEY;
+
+  if (!openAiApiKey) {
+    return {
+      allowed: false,
+      reason: "chiave OpenAI mancante per classificazione dominio energia",
+    };
+  }
+
   const recentContext = Array.isArray(params.messages)
-    ? normalizeForScope(
-        params.messages
-          .slice(-5)
-          .map((m) => m?.text || "")
-          .join("\n")
-      )
+    ? params.messages
+        .slice(-4)
+        .map((m) => `${m?.role || "user"}: ${m?.text || ""}`)
+        .join("\n")
     : "";
 
-  const text = `${message}\n${recentContext}`.trim();
+  const classifierInput =
+    `Messaggio utente:\n${params.message || ""}\n\n` +
+    `Contesto recente:\n${recentContext}\n\n` +
+    `Modalità analisi:\n${params.analysisMode}\n\n` +
+    `File presente:\n${params.hasFile ? "sì" : "no"}\n\n` +
+    `Metadata file:\n${String(params.fileMeta || "").slice(0, 1000)}\n\n` +
+    `Testo file, se presente:\n${String(params.fileText || "").slice(0, 2500)}`;
 
-  // Se è stato caricato un file o l'utente è in una modalità tecnica specifica,
-  // la richiesta viene considerata interna allo scopo di TechAI.
-  if (params.hasFile) {
-    return { allowed: true, reason: "file allegato" };
+  try {
+    const response = await fetchWithTimeout(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openAiApiKey}`,
+        },
+        body: JSON.stringify({
+          model:
+            process.env.OPENAI_SCOPE_MODEL ||
+            process.env.OPENAI_TEXT_MODEL_FAST ||
+            process.env.OPENAI_TEXT_MODEL ||
+            "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content:
+                "Sei un classificatore di dominio per una chat verticale sul settore energia.\n\n" +
+                "Devi decidere se la richiesta dell'utente è pertinente al settore energetico.\n\n" +
+                "Rispondi SOLO con JSON valido, senza markdown, senza spiegazioni, in questo formato:\n" +
+                "{\"allowed\":true,\"reason\":\"motivo breve\"}\n" +
+                "oppure:\n" +
+                "{\"allowed\":false,\"reason\":\"motivo breve\"}\n\n" +
+                "Considera pertinente solo ciò che riguarda direttamente o indirettamente energia, consumi energetici, impianti elettrici, fotovoltaico, accumulo, inverter, bollette luce/gas, efficienza energetica, risparmio energetico, pompe di calore, climatizzazione legata ai consumi, isolamento termico, rinnovabili, comunità energetiche, diagnosi energetica, certificazioni energetiche, gestione energetica di edifici, industrie o abitazioni.\n\n" +
+                "Non usare una semplice ricerca di parole. Valuta il significato della richiesta.\n" +
+                "Se la richiesta è informatica, storica, personale, sportiva, medica, meccanica, CAD, programmazione o generica senza collegamento chiaro con l'energia, allowed deve essere false.\n" +
+                "Se l'utente chiede come usare questa app o le sue funzioni energetiche, allowed può essere true.\n" +
+                "Se hai dubbi, allowed deve essere false."
+            },
+            {
+              role: "user",
+              content: classifierInput,
+            },
+          ],
+          temperature: 0,
+          max_tokens: 80,
+        }),
+      },
+      12000
+    );
+
+    const raw = await response.text();
+
+    if (!response.ok) {
+      return {
+        allowed: false,
+        reason: `errore classificatore dominio: ${response.status}`,
+      };
+    }
+
+    const data = safeJsonParse<any>(raw, null);
+    const content = data?.choices?.[0]?.message?.content || "";
+    const parsed = safeJsonParse<any>(content, null);
+
+    if (parsed && parsed.allowed === true) {
+      return {
+        allowed: true,
+        reason: String(parsed.reason || "richiesta pertinente al settore energia"),
+      };
+    }
+
+    return {
+      allowed: false,
+      reason: parsed?.reason
+        ? String(parsed.reason)
+        : "richiesta non pertinente al settore energia",
+    };
+  } catch (error: any) {
+    return {
+      allowed: false,
+      reason: `errore classificazione dominio: ${error?.message || "errore sconosciuto"}`,
+    };
   }
-
-  if (params.analysisMode !== "chat") {
-    return { allowed: true, reason: `modalità tecnica ${params.analysisMode}` };
-  }
-
-  // Permette messaggi brevi di servizio senza obbligare l'utente a scrivere parole tecniche.
-  const servicePatterns = [
-    /\bciao\b/,
-    /\bsalve\b/,
-    /\bbuongiorno\b/,
-    /\bbuonasera\b/,
-    /\bhelp\b/,
-    /\baiuto\b/,
-    /\bcosa sai fare\b/,
-    /\bcome funziona\b/,
-    /\bfunzioni\b/,
-    /\bspiegami il sito\b/,
-    /\btechai\b/,
-  ];
-
-  if (servicePatterns.some((pattern) => pattern.test(text))) {
-    return { allowed: true, reason: "messaggio di servizio o onboarding" };
-  }
-
-  // Blocchi espliciti: servono a evitare che il modello risponda a temi palesemente fuori scopo.
-  const blockedPatterns = [
-    /\bnapoleone\b/,
-    /\bimperatore\b/,
-    /\bstoria\b/,
-    /\bguerra mondiale\b/,
-    /\bcalcio\b/,
-    /\bserie a\b/,
-    /\bchampions\b/,
-    /\bfilm\b/,
-    /\bserie tv\b/,
-    /\bmusica\b/,
-    /\bcantante\b/,
-    /\battore\b/,
-    /\battrice\b/,
-    /\boroscopo\b/,
-    /\bpolitica\b/,
-    /\bpresidente\b/,
-    /\bricetta\b/,
-    /\bcucina\b/,
-    /\binstagram\b/,
-    /\btiktok\b/,
-    /\brelazione amorosa\b/,
-    /\bfidanzata\b/,
-    /\bvacanza\b/,
-    /\bviaggio\b/,
-  ];
-
-  if (blockedPatterns.some((pattern) => pattern.test(text))) {
-    return { allowed: false, reason: "tema esplicitamente fuori ambito" };
-  }
-
-  const allowedPatterns = [
-    // Programmazione / informatica
-    /\bcodice\b/,
-    /\bprogramma\b/,
-    /\bprogrammazione\b/,
-    /\binformatica\b/,
-    /\bsoftware\b/,
-    /\btypescript\b/,
-    /\bjavascript\b/,
-    /\breact\b/,
-    /\btsx\b/,
-    /\bjsx\b/,
-    /\bapi\b/,
-    /\bbackend\b/,
-    /\bfrontend\b/,
-    /\bdebug\b/,
-    /\berrore\b/,
-    /\bbuild\b/,
-    /\bdeploy\b/,
-    /\bvercel\b/,
-    /\bsupabase\b/,
-    /\bopenai\b/,
-    /\bdatabase\b/,
-    /\bserver\b/,
-    /\bruntime\b/,
-    /\bfunzione\b/,
-    /\bscript\b/,
-    /\bjson\b/,
-    /\bcsv\b/,
-
-    // Ingegneria / meccanica / CAD
-    /\bingegneria\b/,
-    /\bmeccanica\b/,
-    /\bprogettazione\b/,
-    /\btavola\b/,
-    /\bdisegno tecnico\b/,
-    /\bcad\b/,
-    /\binventor\b/,
-    /\bsolidworks\b/,
-    /\bstep\b/,
-    /\bstp\b/,
-    /\bassiem[ei]\b/,
-    /\bcomponente\b/,
-    /\bpezzo\b/,
-    /\bmateriale\b/,
-    /\bmateriali\b/,
-    /\bacciaio\b/,
-    /\balluminio\b/,
-    /\bbronzo\b/,
-    /\botton[ei]\b/,
-    /\bptfe\b/,
-    /\bteflon\b/,
-    /\bboccola\b/,
-    /\bbronzina\b/,
-    /\bcuscinetto\b/,
-    /\bvite\b/,
-    /\bbullone\b/,
-    /\bmolla\b/,
-    /\balbero\b/,
-    /\bingranaggio\b/,
-    /\blinguetta\b/,
-    /\bperno\b/,
-    /\bflangia\b/,
-    /\bquota\b/,
-    /\bquote\b/,
-    /\btolleranza\b/,
-    /\btolleranze\b/,
-    /\brugosita\b/,
-    /\br[a-z]?\s*[0-9]/,
-    /\bgd&t\b/,
-    /\bdatum\b/,
-    /\bcartiglio\b/,
-    /\bsezione\b/,
-    /\bforo\b/,
-    /\bfiletto\b/,
-    /\blamatura\b/,
-    /\bsvasatura\b/,
-
-    // Calcoli tecnici / fisica applicata
-    /\bcalcolo\b/,
-    /\bcalcola\b/,
-    /\bdimensiona\b/,
-    /\bdimensionamento\b/,
-    /\bverifica\b/,
-    /\bforza\b/,
-    /\bmomento\b/,
-    /\bpressione\b/,
-    /\btensione\b/,
-    /\bresistenza\b/,
-    /\bfatica\b/,
-    /\bflessione\b/,
-    /\btorsione\b/,
-    /\btaglio\b/,
-    /\bvon mises\b/,
-    /\btresca\b/,
-    /\bgoodman\b/,
-    /\bsoderberg\b/,
-    /\bformula\b/,
-    /\bmatematica\b/,
-    /\bfisica\b/,
-
-    // Automazione / elettronica
-    /\bautomazione\b/,
-    /\belettronica\b/,
-    /\boleodinamica\b/,
-    /\boleoidraulica\b/,
-    /\bpneumatica\b/,
-    /\bplc\b/,
-    /\btwincat\b/,
-    /\bfesto\b/,
-    /\bvalvola\b/,
-    /\bcilindro\b/,
-    /\bsensore\b/,
-    /\battuator[ei]\b/,
-  ];
-
-  if (allowedPatterns.some((pattern) => pattern.test(text))) {
-    return { allowed: true, reason: "keyword tecnica rilevata" };
-  }
-
-  return { allowed: false, reason: "nessun riferimento tecnico rilevato" };
 }
-
 
 function cleanAiOutput(text: string) {
   const withoutMarkdown = String(text || "")
@@ -970,7 +887,7 @@ ${params.fileText}`,
   }
 
   const userName = params.profile?.userName || "Utente";
-  const focus = params.profile?.focus || "Ingegneria Meccanica";
+  const focus = params.profile?.focus || "Energia";
 
   const fastModel =
     process.env.OPENAI_TEXT_MODEL_FAST ||
@@ -1171,7 +1088,7 @@ async function callOpenAIVision(params: {
   }
 
   const userName = params.profile?.userName || "Utente";
-  const focus = params.profile?.focus || "Ingegneria Meccanica";
+  const focus = params.profile?.focus || "Energia";
 
   const extractedPdfText = String(params.fileText || "").trim();
 
@@ -1805,9 +1722,11 @@ export default async function handler(req: Request) {
       return auth.response;
     }
 
-    const scopeCheck = isAllowedTechnicalScope({
+    const scopeCheck = await classifyEnergyDomain({
       message: body.message,
       messages: body.messages,
+      fileText: body.fileText,
+      fileMeta: body.fileMeta,
       hasFile: body.hasFile,
       analysisMode: body.analysisMode,
     });
