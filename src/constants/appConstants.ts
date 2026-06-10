@@ -23,3 +23,4 @@ export const DEFAULT_USER: UserProfile = {
   name: "Utente",
   email: "utente@techai.local",
 };
+
