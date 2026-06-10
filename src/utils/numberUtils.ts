@@ -8,3 +8,4 @@ export function toNumber(value: unknown, fallback = 0): number {
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
+
