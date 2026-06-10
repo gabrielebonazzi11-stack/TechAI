@@ -632,6 +632,39 @@ export default function App() {
     setActiveProjectId(targetId);
   };
 
+  const deleteProjectSavedItem = (itemId: string) => {
+    if (!activeProject) return;
+
+    const confirmed = window.confirm("Vuoi eliminare questo elemento dalla memoria del progetto?");
+    if (!confirmed) return;
+
+    const now = new Date().toISOString();
+
+    setProjects(prev =>
+      prev.map(project => {
+        if (project.id !== activeProject.id) return project;
+
+        const normalizedProject = normalizeProjectRecord(project);
+        const removeItem = (items: ProjectSavedItem[]) =>
+          (items || []).filter(savedItem => savedItem.id !== itemId);
+
+        return {
+          ...normalizedProject,
+          updatedAt: now,
+          items: removeItem(normalizedProject.items),
+          chats: removeItem(normalizedProject.chats),
+          documents: removeItem(normalizedProject.documents),
+          drawings: removeItem(normalizedProject.drawings),
+          materials: removeItem(normalizedProject.materials),
+          verifications: removeItem(normalizedProject.verifications),
+          decisions: removeItem(normalizedProject.decisions),
+          revisions: removeItem(normalizedProject.revisions),
+          notes: removeItem(normalizedProject.notes),
+        };
+      })
+    );
+  };
+
   const openSaveChatModal = () => {
     if (!activeChat || activeChat.messages.length === 0) {
       alert("Apri una chat con almeno un messaggio prima di salvarla nel progetto.");
@@ -2612,9 +2645,29 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           background: isDark ? "#0b0b0b" : "#ffffff",
         }}
       >
-        <div style={s.resultTop}>
-          <strong>{item.title}</strong>
-          <span>{typeLabels[item.type] || item.type}</span>
+        <div style={{ ...s.resultTop, alignItems: "flex-start", gap: 10 }}>
+          <strong style={{ flex: 1, minWidth: 0 }}>{item.title}</strong>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <span>{typeLabels[item.type] || item.type}</span>
+
+            <button
+              type="button"
+              onClick={() => deleteProjectSavedItem(item.id)}
+              style={{
+                border: `1px solid ${isDark ? "rgba(248,113,113,0.45)" : "#fecaca"}`,
+                background: isDark ? "rgba(127,29,29,0.22)" : "#fff1f2",
+                color: isDark ? "#fecaca" : "#b91c1c",
+                borderRadius: 999,
+                padding: "5px 10px",
+                fontSize: 12,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              Elimina
+            </button>
+          </div>
         </div>
 
         <p style={s.resultDetail}>{item.summary}</p>
@@ -2623,60 +2676,109 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         {item.type === "chat" && savedChatMessages.length > 0 && (
           <details
             style={{
-              marginTop: 12,
+              marginTop: 16,
               borderTop: `1px solid ${theme.border}`,
-              paddingTop: 10,
+              paddingTop: 14,
             }}
           >
             <summary
               style={{
                 cursor: "pointer",
                 color: theme.primary,
-                fontWeight: 800,
+                fontWeight: 900,
                 userSelect: "none",
+                fontSize: 15,
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: `1px solid ${theme.border}`,
+                background: isDark ? "#050505" : "#f8fafc",
               }}
             >
               Apri contenuto chat · {savedChatMessages.length} messaggi
             </summary>
 
-            <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
-              {savedChatMessages.map((message: Message, messageIndex: number) => (
-                <div
-                  key={`${item.id}-saved-message-${messageIndex}`}
-                  style={{
-                    border: `1px solid ${theme.border}`,
-                    borderRadius: 14,
-                    padding: 12,
-                    background: message.role === "utente"
-                      ? theme.surface
-                      : isDark
-                        ? "#050505"
-                        : "#f8fafc",
-                  }}
-                >
+            <div
+              style={{
+                display: "grid",
+                gap: 16,
+                marginTop: 16,
+                maxHeight: 560,
+                overflowY: "auto",
+                paddingRight: 6,
+              }}
+            >
+              {savedChatMessages.map((message: Message, messageIndex: number) => {
+                const isUserMessage = message.role === "utente";
+
+                return (
                   <div
+                    key={`${item.id}-saved-message-${messageIndex}`}
                     style={{
-                      marginBottom: 8,
-                      fontSize: 12,
-                      fontWeight: 900,
-                      color: message.role === "utente" ? theme.text : theme.primary,
-                      opacity: 0.85,
+                      border: `1px solid ${isUserMessage ? theme.primary : theme.border}`,
+                      borderLeft: `5px solid ${isUserMessage ? theme.primary : isDark ? "#94a3b8" : "#64748b"}`,
+                      borderRadius: 16,
+                      padding: "16px 18px",
+                      background: isUserMessage
+                        ? isDark ? `${theme.primary}18` : `${theme.primary}12`
+                        : isDark
+                          ? "#050505"
+                          : "#ffffff",
+                      boxShadow: isDark ? "none" : "0 8px 22px rgba(15,23,42,0.06)",
                     }}
                   >
-                    {message.role === "utente" ? "Utente" : "TechAI"}
-                  </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        marginBottom: 12,
+                        paddingBottom: 10,
+                        borderBottom: `1px solid ${theme.border}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          fontSize: 13,
+                          fontWeight: 950,
+                          color: isUserMessage ? theme.primary : theme.text,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 24,
+                            height: 24,
+                            borderRadius: 999,
+                            display: "grid",
+                            placeItems: "center",
+                            background: isUserMessage ? theme.primary : isDark ? "#1f2937" : "#e2e8f0",
+                            color: isUserMessage ? "#fff" : theme.text,
+                            fontSize: 12,
+                          }}
+                        >
+                          {isUserMessage ? "U" : "T"}
+                        </span>
+                        {isUserMessage ? "Utente" : "TechAI"}
+                      </div>
 
-                  <div style={{ fontSize: 14, lineHeight: 1.55 }}>
-                    {renderFormattedText(message.text)}
-                  </div>
-
-                  {message.fileAttachment && (
-                    <div style={{ ...s.attachmentBox, marginTop: 8 }}>
-                      📄 {message.fileAttachment.name} · {(message.fileAttachment.size / 1024).toFixed(1)} KB
+                      <span style={{ ...s.muted, fontSize: 12 }}>Messaggio {messageIndex + 1}</span>
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    <div style={{ fontSize: 15.5, lineHeight: 1.7 }}>
+                      {renderFormattedText(message.text)}
+                    </div>
+
+                    {message.fileAttachment && (
+                      <div style={{ ...s.attachmentBox, marginTop: 12 }}>
+                        📄 {message.fileAttachment.name} · {(message.fileAttachment.size / 1024).toFixed(1)} KB
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </details>
         )}
