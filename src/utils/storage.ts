@@ -25,3 +25,21 @@ export function removeScopedData(userId?: string | null): void {
   const key = buildScopedStorageKey(userId);
   localStorage.removeItem(key);
 }
+
+export function makeUserStorageKey(email: string): string {
+  const cleanEmail = String(email || "utente")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9@._-]/g, "_");
+
+  return `${STORAGE_KEY_BASE}:user:${cleanEmail}`;
+}
+
+export function makeGuestStorageKey(guestId: string): string {
+  const cleanGuestId = String(guestId || "guest")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "_");
+
+  return `${STORAGE_KEY_BASE}:guest:${cleanGuestId}`;
+}
+
