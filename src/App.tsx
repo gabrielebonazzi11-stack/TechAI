@@ -2228,6 +2228,31 @@ COSA DEVI CONTROLLARE:
 9. ERRORI CRITICI.
 10. VERIFICHE SPIEGABILI: per ogni criticità o quota funzionale indica motivazione tecnica, confidenza, riferimento tecnico ISO/UNI o principio tecnico e suggerimento correttivo.
 
+CONTROLLO TOLLERANZE INTELLIGENTE:
+Quando analizzi le tolleranze, non limitarti a dire se sono presenti o assenti.
+
+Per ogni tolleranza, accoppiamento, quota funzionale o rugosità visibile devi valutare:
+- se è dimensionale, geometrica, di accoppiamento o di rugosità;
+- se è coerente con la funzione probabile del pezzo;
+- se è troppo stretta e quindi costosa da produrre;
+- se è troppo larga e quindi rischiosa per funzionamento o montaggio;
+- se manca su una quota funzionale;
+- se è collegata correttamente a datum, superfici funzionali e rugosità;
+- se è coerente con ISO 2768, ISO 286, ISO 1101 e ISO 1302 quando applicabile.
+
+Per ogni elemento usa questo schema:
+Elemento rilevato:
+Tipo:
+Funzione probabile:
+Esito:
+Motivazione tecnica:
+Rischio produttivo/funzionale:
+Riferimento tecnico:
+Suggerimento correttivo:
+
+Se il dato non è leggibile, scrivi “non leggibile”.
+Non inventare quote, tolleranze o simboli non visibili.
+
 Rispondi SOLO con quanto vedi realmente. Se non è leggibile, dillo.
 Se nel testo estratto dal PDF trovi un dato ma non riesci a collegarlo chiaramente alla zona della tavola, scrivilo come dato da confermare e non usarlo per conclusioni definitive.
 
@@ -3659,7 +3684,12 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                   style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}`, marginTop: 0 }}
                   onClick={() =>
                     setDrawingExtraNotes(
-                      "Controlla soprattutto tolleranze dimensionali, tolleranze geometriche, rugosità e coerenza con superfici funzionali, sedi, fori, filetti e accoppiamenti. Per ogni criticità aggiungi motivazione, confidenza, riferimento tecnico e correzione consigliata."
+                      "Esegui un controllo tolleranze intelligente. " +
+                      "Analizza tolleranze dimensionali, accoppiamenti ISO, tolleranze geometriche, datum, rugosità e superfici funzionali. " +
+                      "Per ogni quota, tolleranza o simbolo rilevato indica: elemento rilevato, funzione probabile, esito, motivazione tecnica, rischio produttivo/funzionale e suggerimento correttivo. " +
+                      "Valuta se le tolleranze sono troppo strette, troppo larghe, mancanti o incoerenti con la funzione del pezzo. " +
+                      "Confronta con ISO 2768 per tolleranze generali, ISO 286 per accoppiamenti foro/albero, ISO 1101 per tolleranze geometriche e ISO 1302 per rugosità. " +
+                      "Non inventare dati non leggibili: se una quota o un simbolo non è leggibile, scrivi chiaramente 'non leggibile'."
                     )
                   }
                 >
