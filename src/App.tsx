@@ -30,8 +30,6 @@ import type {
   ProjectMemoryTab,
   ProjectRecord,
   ProjectFileMeta,
-  SeriousVerificationForm,
-  SeriousVerificationResult,
   BomIssue,
   SectionData
 
@@ -52,7 +50,7 @@ import type {
   const [showMaterials, setShowMaterials] = useState(false);
   const [showDrawingGenerator, setShowDrawingGenerator] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
-  const [projectToolView, setProjectToolView] = useState<"memory" | "revisions" | "serious" | "bom">("memory");
+  const [projectToolView, setProjectToolView] = useState<"memory" | "revisions" | "bom">("memory");
   const [projectSearch, setProjectSearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState("Aspetto");
@@ -165,44 +163,6 @@ import type {
   const [projectRevisionChanges, setProjectRevisionChanges] = useState("");
   const [projectRevisionNotes, setProjectRevisionNotes] = useState("");
 
-  const [seriousForm, setSeriousForm] = useState<SeriousVerificationForm>({
-    mode: "fatigue",
-    material: "C45",
-    rm: "650",
-    re: "370",
-    sn: "260",
-    sigmaMax: "180",
-    sigmaMin: "20",
-    normalLoad: "2500",
-    contactArea: "120",
-    contactDiameter: "20",
-    contactLength: "15",
-    boltClass: "8.8",
-    boltSize: "M8",
-    boltArea: "36.6",
-    boltCount: "4",
-    shearForce: "4000",
-    tensileForce: "2000",
-    bendingMoment: "0",
-    torque: "80000",
-    diameter: "25",
-    distance: "120",
-    pressure: "30",
-    radius: "150",
-    thickness: "4",
-    weldLength: "80",
-    weldThroat: "3",
-    keyWidth: "8",
-    keyHeight: "7",
-    keyLength: "40",
-    rpm: "500",
-    lifeHours: "10000",
-    dynamicLoadRating: "12000",
-    frictionCoeff: "0.15",
-    interferencePressure: "30",
-  });
-  const [seriousResult, setSeriousResult] = useState<SeriousVerificationResult | null>(null);
-
   const [bomText, setBomText] = useState("");
   const [bomFileName, setBomFileName] = useState("");
   const [bomIssues, setBomIssues] = useState<BomIssue[]>([]);
@@ -269,7 +229,6 @@ import type {
     setProjects([]);
     setActiveProjectId(null);
     setProjectSmartFile(null);
-    setSeriousResult(null);
     setBomIssues([]);
     setBomText("");
     setBomFileName("");
@@ -547,10 +506,6 @@ import type {
     setLastDrawingAnalysisText("");
 
     if (drawingReviewInputRef.current) drawingReviewInputRef.current.value = "";
-  };
-
-  const updateSeriousField = (field: keyof SeriousVerificationForm, value: string) => {
-    setSeriousForm(prev => ({ ...prev, [field]: value }));
   };
 
   const createProject = (name?: string, description?: string) => {
@@ -906,271 +861,6 @@ import type {
       summary: drawingResults.length > 0 ? `${drawingResults.length} risultati/controlli salvati.` : "File tavola salvato come riferimento.",
       payload: { drawingForm, drawingExtraNotes, lastDrawingAnalysisText, drawingResults, drawingIssues, file: drawingReviewFile?.fileAttachment },
     });
-  };
-
-  const runSeriousVerification = () => {
-    const mode = seriousForm.mode;
-    const Rm = toNumber(seriousForm.rm, 650);
-    const Re = toNumber(seriousForm.re, 370);
-    const Sn = toNumber(seriousForm.sn, 0.5 * Rm);
-    const suggestions: string[] = [];
-    let rows: string[] = [];
-    let status: SeriousVerificationResult["status"] = "DA VERIFICARE";
-    let title = "Verifica avanzata";
-
-    if (mode === "fatigue") {
-      const sigmaMax = toNumber(seriousForm.sigmaMax);
-      const sigmaMin = toNumber(seriousForm.sigmaMin);
-      const sigmaM = (sigmaMax + sigmaMin) / 2;
-      const sigmaA = Math.abs(sigmaMax - sigmaMin) / 2;
-      const sigmaMPositive = Math.max(sigmaM, 0);
-      const nGoodman = 1 / (sigmaA / Sn + sigmaMPositive / Rm);
-      const nSoderberg = 1 / (sigmaA / Sn + sigmaMPositive / Re);
-      status = nGoodman >= 1.5 && nSoderberg >= 1.3 ? "OK" : "NON OK";
-      title = "Fatica - Goodman e Soderberg";
-      rows = [
-        `Materiale: ${seriousForm.material}`,
-        `Rm = ${Rm.toFixed(1)} MPa; Re/Rp0.2 = ${Re.toFixed(1)} MPa; Sn = ${Sn.toFixed(1)} MPa`,
-        `σmax = ${sigmaMax.toFixed(2)} MPa; σmin = ${sigmaMin.toFixed(2)} MPa`,
-        `σm = ${sigmaM.toFixed(2)} MPa; σa = ${sigmaA.toFixed(2)} MPa`,
-        `Goodman: n = ${nGoodman.toFixed(2)}`,
-        `Soderberg: n = ${nSoderberg.toFixed(2)}`,
-      ];
-      suggestions.push("Per progetto reale correggere Sn con rugosità, dimensione, tipo carico, affidabilità e intaglio Kf.");
-      suggestions.push("Soderberg è più conservativo perché usa Re al posto di Rm sulla tensione media.");
-    }
-
-    if (mode === "contact") {
-      const F = toNumber(seriousForm.normalLoad);
-      const area = toNumber(seriousForm.contactArea);
-      const d = toNumber(seriousForm.contactDiameter);
-      const L = toNumber(seriousForm.contactLength);
-      const projectedArea = d > 0 && L > 0 ? d * L : area;
-      const pSpecific = F / Math.max(projectedArea, 1);
-      status = pSpecific <= 80 ? "OK" : pSpecific <= 150 ? "DA VERIFICARE" : "NON OK";
-      title = "Contatto - pressione specifica";
-      rows = [
-        `Carico normale F = ${F.toFixed(2)} N`,
-        `Area inserita = ${area.toFixed(2)} mm²`,
-        `Area proiettata d·L = ${projectedArea.toFixed(2)} mm²`,
-        `Pressione specifica p = F/A = ${pSpecific.toFixed(2)} MPa`,
-      ];
-      suggestions.push("Per rulli, perni e camme usare questa come verifica preliminare; per progetto serio fare Hertz.");
-      suggestions.push("Se p è alta: aumentare area di contatto, diametro, lunghezza oppure usare materiale/trattamento più resistente all'usura.");
-    }
-
-    if (mode === "bolts") {
-      const boltCount = Math.max(1, toNumber(seriousForm.boltCount, 1));
-      const area = toNumber(seriousForm.boltArea, 36.6);
-      const shearForce = toNumber(seriousForm.shearForce);
-      const tensileForce = toNumber(seriousForm.tensileForce);
-      const preload = 0.75 * Re * area;
-      const shearStress = shearForce / (boltCount * area);
-      const tensileStress = tensileForce / (boltCount * area);
-      const vm = Math.sqrt(tensileStress ** 2 + 3 * shearStress ** 2);
-      const n = Re / Math.max(vm, 0.001);
-      status = n >= 2 ? "OK" : n >= 1.3 ? "DA VERIFICARE" : "NON OK";
-      title = "Bulloni - precarico, taglio e trazione";
-      rows = [
-        `Classe: ${seriousForm.boltClass}; vite: ${seriousForm.boltSize}; n° viti = ${boltCount}`,
-        `Area resistente usata Ares = ${area.toFixed(2)} mm²`,
-        `Precarico consigliato indicativo Fp ≈ 0,75·Re·Ares = ${preload.toFixed(0)} N per vite`,
-        `Taglio medio per vite: τ = ${shearStress.toFixed(2)} MPa`,
-        `Trazione media per vite: σ = ${tensileStress.toFixed(2)} MPa`,
-        `Von Mises vite: σVM = ${vm.toFixed(2)} MPa`,
-        `Coefficiente indicativo n = ${n.toFixed(2)}`,
-      ];
-      suggestions.push("Verifica anche schiacciamento dei pezzi collegati, rifollamento fori, attrito se giunto precaricato e normativa applicabile.");
-      suggestions.push("Per classi 8.8 e 10.9 usare dati reali UNI EN ISO 898-1 e coppia di serraggio coerente.");
-    }
-
-    if (mode === "shaft") {
-      const d = Math.max(0.001, toNumber(seriousForm.diameter, 25));
-      const F = toNumber(seriousForm.shearForce, 2500);
-      const L = toNumber(seriousForm.distance, 120);
-      const MInput = toNumber(seriousForm.bendingMoment, 0);
-      const M = MInput > 0 ? MInput : F * L;
-      const Mt = toNumber(seriousForm.torque, 80000);
-      const sigmaF = 32 * M / (Math.PI * d ** 3);
-      const tauT = 16 * Mt / (Math.PI * d ** 3);
-      const vm = Math.sqrt(sigmaF ** 2 + 3 * tauT ** 2);
-      const n = Re / Math.max(vm, 0.001);
-      const dSuggested = d * Math.pow(2 / Math.max(n, 0.001), 1 / 3);
-      status = n >= 2 ? "OK" : n >= 1.3 ? "DA VERIFICARE" : "NON OK";
-      title = "Albero - flessione + torsione";
-      rows = [
-        `Materiale: ${seriousForm.material}; Re = ${Re.toFixed(1)} MPa`,
-        `Diametro albero: d = ${d.toFixed(2)} mm`,
-        `Forza radiale: F = ${F.toFixed(2)} N; braccio L = ${L.toFixed(2)} mm`,
-        `Momento flettente usato: M = ${M.toFixed(2)} Nmm`,
-        `Momento torcente: Mt = ${Mt.toFixed(2)} Nmm`,
-        `σf = 32M/(πd³) = ${sigmaF.toFixed(2)} MPa`,
-        `τt = 16Mt/(πd³) = ${tauT.toFixed(2)} MPa`,
-        `Von Mises: σVM = ${vm.toFixed(2)} MPa`,
-        `Coefficiente indicativo n = ${n.toFixed(2)}`,
-        `Diametro stimato per n≈2: Ø ${Math.ceil(dSuggested / 2) * 2} mm`,
-      ];
-      suggestions.push("Controllo preliminare per alberi pieni: aggiungi intagli, cave linguetta, spallamenti e fatica prima del progetto definitivo.");
-    }
-
-    if (mode === "pin") {
-      const d = Math.max(0.001, toNumber(seriousForm.diameter, 20));
-      const F = toNumber(seriousForm.shearForce, 4000);
-      const L = Math.max(0.001, toNumber(seriousForm.contactLength, 15));
-      const M = F * L / 4;
-      const A = Math.PI * d ** 2 / 4;
-      const tauSingle = F / A;
-      const tauDouble = F / (2 * A);
-      const sigmaF = 32 * M / (Math.PI * d ** 3);
-      const pContact = F / (d * L);
-      const vmSingle = Math.sqrt(sigmaF ** 2 + 3 * tauSingle ** 2);
-      const n = Re / Math.max(vmSingle, 0.001);
-      status = n >= 2 && pContact <= 80 ? "OK" : n >= 1.3 ? "DA VERIFICARE" : "NON OK";
-      title = "Perno - taglio, flessione e pressione specifica";
-      rows = [
-        `Diametro perno: d = ${d.toFixed(2)} mm; lunghezza contatto L = ${L.toFixed(2)} mm`,
-        `Forza sul perno: F = ${F.toFixed(2)} N`,
-        `Momento flettente semplificato: M ≈ F·L/4 = ${M.toFixed(2)} Nmm`,
-        `Taglio singolo: τ = ${tauSingle.toFixed(2)} MPa`,
-        `Taglio doppio: τ = ${tauDouble.toFixed(2)} MPa`,
-        `Flessione: σf = ${sigmaF.toFixed(2)} MPa`,
-        `Pressione specifica: p = F/(d·L) = ${pContact.toFixed(2)} MPa`,
-        `Von Mises con taglio singolo: σVM = ${vmSingle.toFixed(2)} MPa`,
-        `Coefficiente indicativo n = ${n.toFixed(2)}`,
-      ];
-      suggestions.push("Verifica se il perno lavora a taglio singolo o doppio e controlla anche rifollamento/ovalizzazione dei fori.");
-    }
-
-    if (mode === "pressure") {
-      const pBar = toNumber(seriousForm.pressure, 30);
-      const p = pBar * 0.1;
-      const r = Math.max(0.001, toNumber(seriousForm.radius, 150));
-      const sp = Math.max(0.001, toNumber(seriousForm.thickness, 4));
-      const sigmaCirc = p * r / sp;
-      const sigmaLong = p * r / (2 * sp);
-      const vm = Math.sqrt(sigmaCirc ** 2 - sigmaCirc * sigmaLong + sigmaLong ** 2);
-      const n = Re / Math.max(vm, 0.001);
-      const sSuggested = sp * 2 / Math.max(n, 0.001);
-      status = n >= 2 ? "OK" : n >= 1.3 ? "DA VERIFICARE" : "NON OK";
-      title = "Recipiente cilindrico - pressione interna";
-      rows = [
-        `Pressione: p = ${pBar.toFixed(2)} bar = ${p.toFixed(2)} MPa`,
-        `Raggio medio: r = ${r.toFixed(2)} mm; spessore s = ${sp.toFixed(2)} mm`,
-        `σ circonferenziale = p·r/s = ${sigmaCirc.toFixed(2)} MPa`,
-        `σ longitudinale = p·r/(2s) = ${sigmaLong.toFixed(2)} MPa`,
-        `Von Mises: σVM = ${vm.toFixed(2)} MPa`,
-        `Coefficiente indicativo n = ${n.toFixed(2)}`,
-        `Spessore stimato per n≈2: s ≈ ${sSuggested.toFixed(2)} mm`,
-      ];
-      suggestions.push("Formula valida come stima a parete sottile: per progetto reale considera fondi, saldature, aperture e normativa applicabile.");
-    }
-
-    if (mode === "weld") {
-      const Ft = toNumber(seriousForm.tensileForce, 2000);
-      const Fs = toNumber(seriousForm.shearForce, 4000);
-      const L = Math.max(0.001, toNumber(seriousForm.weldLength, 80));
-      const a = Math.max(0.001, toNumber(seriousForm.weldThroat, 3));
-      const A = a * L;
-      const sigma = Ft / A;
-      const tau = Fs / A;
-      const vm = Math.sqrt(sigma ** 2 + 3 * tau ** 2);
-      const allowable = 0.45 * Rm;
-      const n = allowable / Math.max(vm, 0.001);
-      status = n >= 2 ? "OK" : n >= 1.3 ? "DA VERIFICARE" : "NON OK";
-      title = "Saldatura - cordone d'angolo semplificato";
-      rows = [
-        `Lunghezza cordone L = ${L.toFixed(2)} mm; gola efficace a = ${a.toFixed(2)} mm`,
-        `Area gola A = a·L = ${A.toFixed(2)} mm²`,
-        `Trazione Ft = ${Ft.toFixed(2)} N; taglio Fs = ${Fs.toFixed(2)} N`,
-        `σ = Ft/A = ${sigma.toFixed(2)} MPa`,
-        `τ = Fs/A = ${tau.toFixed(2)} MPa`,
-        `Von Mises sul cordone: σVM = ${vm.toFixed(2)} MPa`,
-        `Ammissibile indicativa 0,45·Rm = ${allowable.toFixed(2)} MPa`,
-        `Coefficiente indicativo n = ${n.toFixed(2)}`,
-      ];
-      suggestions.push("Verifica semplificata: per saldature reali servono geometria completa del cordone, direzione dei carichi, normativa e coefficienti specifici.");
-    }
-
-    if (mode === "key") {
-      const Mt = toNumber(seriousForm.torque, 80000);
-      const d = Math.max(0.001, toNumber(seriousForm.diameter, 25));
-      const b = Math.max(0.001, toNumber(seriousForm.keyWidth, 8));
-      const h = Math.max(0.001, toNumber(seriousForm.keyHeight, 7));
-      const L = Math.max(0.001, toNumber(seriousForm.keyLength, 40));
-      const Ft = 2 * Mt / d;
-      const tau = Ft / (b * L);
-      const pCrush = Ft / (0.5 * h * L);
-      const nShear = (0.58 * Re) / Math.max(tau, 0.001);
-      const nCrush = Re / Math.max(pCrush, 0.001);
-      const n = Math.min(nShear, nCrush);
-      status = n >= 2 ? "OK" : n >= 1.3 ? "DA VERIFICARE" : "NON OK";
-      title = "Linguetta - taglio e schiacciamento";
-      rows = [
-        `Mt = ${Mt.toFixed(2)} Nmm; diametro albero d = ${d.toFixed(2)} mm`,
-        `Linguetta: b = ${b.toFixed(2)} mm; h = ${h.toFixed(2)} mm; L = ${L.toFixed(2)} mm`,
-        `Forza tangenziale Ft = 2Mt/d = ${Ft.toFixed(2)} N`,
-        `Taglio linguetta: τ = Ft/(b·L) = ${tau.toFixed(2)} MPa`,
-        `Schiacciamento: p = Ft/(0,5·h·L) = ${pCrush.toFixed(2)} MPa`,
-        `n taglio = ${nShear.toFixed(2)}; n schiacciamento = ${nCrush.toFixed(2)}`,
-        `Coefficiente indicativo minimo n = ${n.toFixed(2)}`,
-      ];
-      suggestions.push("Controlla anche cava sull'albero, indebolimento della sezione e dimensioni normalizzate UNI/DIN della linguetta.");
-    }
-
-    if (mode === "bearing") {
-      const P = Math.max(0.001, toNumber(seriousForm.normalLoad, 2500));
-      const nRpm = Math.max(0.001, toNumber(seriousForm.rpm, 500));
-      const hours = Math.max(0.001, toNumber(seriousForm.lifeHours, 10000));
-      const C = Math.max(0.001, toNumber(seriousForm.dynamicLoadRating, 12000));
-      const requiredRevMillions = (60 * nRpm * hours) / 1_000_000;
-      const L10Millions = (C / P) ** 3;
-      const L10h = (1_000_000 / (60 * nRpm)) * L10Millions;
-      const nLife = L10h / hours;
-      status = nLife >= 1.2 ? "OK" : nLife >= 0.8 ? "DA VERIFICARE" : "NON OK";
-      title = "Cuscinetto - durata L10h semplificata";
-      rows = [
-        `Carico equivalente P = ${P.toFixed(2)} N`,
-        `Velocità n = ${nRpm.toFixed(2)} rpm; vita richiesta = ${hours.toFixed(2)} h`,
-        `Carico dinamico C = ${C.toFixed(2)} N`,
-        `Vita richiesta in milioni di giri = ${requiredRevMillions.toFixed(2)}`,
-        `L10 = (C/P)^3 = ${L10Millions.toFixed(2)} milioni di giri`,
-        `L10h = ${L10h.toFixed(2)} h`,
-        `Rapporto vita L10h/richiesta = ${nLife.toFixed(2)}`,
-      ];
-      suggestions.push("Formula per cuscinetti a sfere con esponente 3. Per rulli usa esponente 10/3 e controlla catalogo, carichi assiali, lubrificazione e fattori applicativi.");
-    }
-
-    if (mode === "interference") {
-      const d = Math.max(0.001, toNumber(seriousForm.diameter, 25));
-      const L = Math.max(0.001, toNumber(seriousForm.contactLength, 30));
-      const pInt = Math.max(0.001, toNumber(seriousForm.interferencePressure, 30));
-      const mu = Math.max(0.001, toNumber(seriousForm.frictionCoeff, 0.15));
-      const Mt = toNumber(seriousForm.torque, 80000);
-      const Fmax = Math.PI * d * L * pInt * mu;
-      const MtMax = Fmax * d / 2;
-      const n = MtMax / Math.max(Mt, 0.001);
-      status = n >= 2 ? "OK" : n >= 1.2 ? "DA VERIFICARE" : "NON OK";
-      title = "Accoppiamento forzato - trasmissione coppia";
-      rows = [
-        `Diametro d = ${d.toFixed(2)} mm; lunghezza L = ${L.toFixed(2)} mm`,
-        `Pressione di contatto stimata p = ${pInt.toFixed(2)} MPa`,
-        `Coefficiente attrito μ = ${mu.toFixed(2)}`,
-        `Forza trasmissibile F = π·d·L·p·μ = ${Fmax.toFixed(2)} N`,
-        `Coppia trasmissibile Mt,max = F·d/2 = ${MtMax.toFixed(2)} Nmm`,
-        `Coppia richiesta Mt = ${Mt.toFixed(2)} Nmm`,
-        `Coefficiente indicativo n = ${n.toFixed(2)}`,
-      ];
-      suggestions.push("Controllo preliminare: per progetto reale calcola interferenza, pressioni su albero/mozzo, tensioni circonferenziali e montaggio termico/meccanico.");
-    }
-
-    const result = { title, status, rows, suggestions };
-    setSeriousResult(result);
-    addProjectItem({ type: "advanced", title, summary: `${status} - ${rows[rows.length - 1] || "verifica avanzata"}`, payload: { seriousForm, result } });
-  };
-
-  const resetSeriousVerification = () => {
-    setSeriousResult(null);
-    setSeriousForm(prev => ({ ...prev, sigmaMax: "180", sigmaMin: "20", normalLoad: "2500", shearForce: "4000", tensileForce: "2000" }));
   };
 
   const parseBomRows = (raw: string) => {
@@ -3751,11 +3441,6 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           setNewProjectDescription={setNewProjectDescription}
           createProject={createProject}
           renderProjectMemory={renderProjectMemory}
-          seriousForm={seriousForm}
-          updateSeriousField={updateSeriousField}
-          runSeriousVerification={runSeriousVerification}
-          resetSeriousVerification={resetSeriousVerification}
-          seriousResult={seriousResult}
           bomFileInputRef={bomFileInputRef}
           handleBomFileUpload={handleBomFileUpload}
           bomText={bomText}
