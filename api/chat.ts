@@ -1266,14 +1266,18 @@ ${extractedPdfText.slice(0, 26000)}
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES +
     "\n\nREGOLE DI FORMATTAZIONE OBBLIGATORIE:\n" +
-    "Usa sempre emoji di stato all'inizio delle righe di controllo:\n" +
-    "✅ = elemento corretto, presente, conforme o verificato.\n" +
-    "❌ = errore, mancanza, incongruenza, non conformità o problema critico.\n" +
-    "⚠️ = dato dubbio, poco leggibile, incompleto o da verificare.\n" +
+    "Usa sempre uno di questi stati per ogni controllo tecnico:\n" +
+    "✅ OK = elemento presente, leggibile, coerente o apparentemente conforme.\n" +
+    "⚠️ Da verificare = dato assente, poco leggibile, incompleto o non confermabile dalla tavola.\n" +
+    "⚠️ Possibile anomalia = elemento potenzialmente errato, fuori standard o tecnicamente sospetto.\n" +
+    "⚠️ Possibile incoerenza = contrasto possibile tra quote, note, materiale, tolleranze, rugosità o funzione del pezzo.\n" +
+    "❌ Errore critico = problema evidente che può impedire produzione, montaggio o controllo.\n" +
     "Puoi usare **testo** per evidenziare parole importanti: il frontend lo renderizza come grassetto senza mostrare gli asterischi.\n" +
-    "Esempio corretto: ✅ Materiale: 11SMnPb37 - UNI EN 10087.\n" +
-    "Esempio corretto: ❌ Rugosità: non indicata sulle superfici funzionali.\n" +
-    "Esempio corretto: ⚠️ Tolleranze geometriche: non visibili, da verificare se necessarie.\n" +
+    "Esempio corretto: ✅ OK Materiale: 11SMnPb37 - UNI EN 10087.\n" +
+    "Esempio corretto: ⚠️ Da verificare Rugosità: non leggibile o non indicata chiaramente sulle superfici funzionali.\n" +
+    "Esempio corretto: ⚠️ Possibile anomalia Tolleranze geometriche: assenti su una sede probabilmente funzionale, da verificare con assieme.\n" +
+    "Esempio corretto: ⚠️ Possibile incoerenza Materiale indicato nel cartiglio diverso da quello richiamato nelle note.\n" +
+    "Esempio corretto: ❌ Errore critico Quota principale mancante e necessaria per la produzione.\n" +
     "\n\nSTRUTTURA RISPOSTA OBBLIGATORIA PER TAVOLE TECNICHE:\n" +
     "Usa titoli Markdown chiari, ad esempio ## 1. Cartiglio.\n" +
     "## 1. Cartiglio\n" +
