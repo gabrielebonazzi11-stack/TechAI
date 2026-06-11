@@ -12,6 +12,8 @@ import { toNumber } from "./utils/numberUtils";
 import { globalCss } from "./styles/globalCss";
 import { s } from "./styles/appStyles";
 import type {
+
+  
   UserProfile,
   PendingFile,
   Message,
@@ -32,11 +34,10 @@ import type {
   SeriousVerificationResult,
   BomIssue,
   SectionData
+
 } from "./types/appTypes";
 
-
-
-export default function App() {
+  export default function App() {
   const [query, setQuery] = useState("");
   const [chats, setChats] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -228,15 +229,15 @@ export default function App() {
   );
 
   const filteredProjects = useMemo(() => {
-    const q = projectSearch.trim().toLowerCase();
-    if (!q) return projects;
+  const q = projectSearch.trim().toLowerCase();
+       if (!q) return projects;
 
-    return projects.filter(project => {
-      const itemsText = (project.items || [])
+  return projects.filter(project => {
+    const itemsText = (project.items || [])
         .map(item => `${item.title} ${item.summary} ${item.type}`)
-        .join(" ");
+         .join(" ");
 
-      const memoryText = [
+    const memoryText = [
         ...(project.chats || []).map(item => `${item.title} ${item.messages?.map(message => message.text).join(" ") || ""}`),
         ...(project.documents || []).map(item => `${item.name} ${item.category} ${item.note}`),
         ...(project.drawings || []).map(item => `${item.title} ${item.fileName || ""} ${item.partName || ""} ${item.material || ""}`),
@@ -246,7 +247,7 @@ export default function App() {
         ...(project.notes || []).map(item => `${item.title} ${item.text}`),
       ].join(" ");
 
-      return `${project.name} ${project.description} ${itemsText} ${memoryText}`
+ return `${project.name} ${project.description} ${itemsText} ${memoryText}`
         .toLowerCase()
         .includes(q);
     });
@@ -276,7 +277,7 @@ export default function App() {
     setStorageReady(false);
     setActiveStorageKey(storageKey);
 
-    const saved = localStorage.getItem(storageKey);
+  const saved = localStorage.getItem(storageKey);
 
     if (!saved) {
       resetWorkspace();
