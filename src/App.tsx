@@ -148,6 +148,7 @@ import type {
     productionQuantity: "",
   });
   const [drawingExtraNotes, setDrawingExtraNotes] = useState("");
+  const [lastDrawingAnalysisText, setLastDrawingAnalysisText] = useState("");
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [newProjectName, setNewProjectName] = useState("");
@@ -264,6 +265,7 @@ import type {
     setDrawingReviewFile(null);
     setDrawingResults([]);
     setDrawingIssues([]);
+    setLastDrawingAnalysisText("");
     setProjects([]);
     setActiveProjectId(null);
     setProjectSmartFile(null);
@@ -307,6 +309,7 @@ import type {
     setCustomMaterials(Array.isArray(data.customMaterials) ? data.customMaterials : []);
     setProjects(normalizeProjectRecords(data.projects));
     setActiveProjectId(data.activeProjectId || null);
+    setLastDrawingAnalysisText(String(data.lastDrawingAnalysisText || ""));
     setPendingFile(null);
     setQuery("");
     setStorageReady(true);
@@ -385,9 +388,10 @@ import type {
         customMaterials,
         projects,
         activeProjectId,
+        lastDrawingAnalysisText,
       })
     );
-  }, [theme, user, interest, chats, activeChatId, sidebarOpen, isLoggedIn, isGuest, customMaterials, projects, activeProjectId, storageReady, activeStorageKey]);
+  }, [theme, user, interest, chats, activeChatId, sidebarOpen, isLoggedIn, isGuest, customMaterials, projects, activeProjectId, lastDrawingAnalysisText, storageReady, activeStorageKey]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -540,6 +544,7 @@ import type {
     });
 
     setDrawingExtraNotes("");
+    setLastDrawingAnalysisText("");
 
     if (drawingReviewInputRef.current) drawingReviewInputRef.current.value = "";
   };
@@ -899,7 +904,7 @@ import type {
       type: "drawing",
       title: `Tavola - ${drawingForm.partName || drawingReviewFile?.fileAttachment.name || "senza nome"}`,
       summary: drawingResults.length > 0 ? `${drawingResults.length} risultati/controlli salvati.` : "File tavola salvato come riferimento.",
-      payload: { drawingForm, drawingExtraNotes, drawingResults, drawingIssues, file: drawingReviewFile?.fileAttachment },
+      payload: { drawingForm, drawingExtraNotes, lastDrawingAnalysisText, drawingResults, drawingIssues, file: drawingReviewFile?.fileAttachment },
     });
   };
 
@@ -1646,7 +1651,15 @@ import type {
         "\n\nRegola importante: se l'utente chiede quali materiali o funzioni sono disponibili nel software, rispondi usando questo contesto interno. Se non hai l'elenco completo, dillo, ma non rispondere come se non sapessi nulla del software.\n" +
         "[FINE CONTESTO INTERNO]\n";
 
-      formData.append("message", text + techAiSoftwareContext);
+      const lastDrawingAnalysisContext = lastDrawingAnalysisText.trim()
+        ? "\n\n[ULTIMA ANALISI TAVOLA DISPONIBILE - USARE SE L'UTENTE CHIEDE COSA È STATO SCRITTO, RILEVATO O RISPOSTO NELLA FUNZIONE TAVOLE]\n" +
+          "Questa è la risposta reale generata dall'ultima analisi della funzione Tavole. " +
+          "Se l'utente chiede di ripetere, riassumere, spiegare o confrontare il contenuto della funzione Tavole, devi usare questo testo e non descrivere genericamente la funzione.\n\n" +
+          lastDrawingAnalysisText.slice(0, 12000) +
+          "\n[FINE ULTIMA ANALISI TAVOLA]\n"
+        : "";
+
+      formData.append("message", text + techAiSoftwareContext + lastDrawingAnalysisContext);
       formData.append("messages", JSON.stringify(updatedMessages.map(m => ({ role: m.role, text: m.text }))));
       formData.append("profile", JSON.stringify({ userName: user.name, focus: interest }));
       formData.append("analysisMode", "chat");
@@ -2228,9 +2241,6 @@ COSA DEVI CONTROLLARE:
 9. ERRORI CRITICI.
 10. VERIFICHE SPIEGABILI: per ogni criticità o quota funzionale indica motivazione tecnica, confidenza, riferimento tecnico ISO/UNI o principio tecnico e suggerimento correttivo.
 
-CONTROLLO TOLLERANZE/RUGOSITÀ:
-Valuta le tolleranze e le rugosità solo quando sono leggibili. Evidenzia al massimo 8 elementi critici o funzionali, indicando: elemento, esito, motivazione tecnica sintetica, rischio e suggerimento. Non inventare dati non visibili.
-
 Rispondi SOLO con quanto vedi realmente. Se non è leggibile, dillo.
 Se nel testo estratto dal PDF trovi un dato ma non riesci a collegarlo chiaramente alla zona della tavola, scrivilo come dato da confermare e non usarlo per conclusioni definitive.
 
@@ -2252,14 +2262,14 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         formData.append(
           "drawingImages",
           JSON.stringify(
-            drawingImages.slice(0, 8).map((img, index) => ({
+            drawingImages.slice(0, 12).map((img, index) => ({
               label: img.label || `Crop tavola ${index + 1}`,
               dataUrl: img.dataUrl,
             }))
           )
         );
         if (drawingReviewFile!.extractedText?.trim()) {
-          formData.append("fileText", drawingReviewFile!.extractedText.slice(0, 16000));
+          formData.append("fileText", drawingReviewFile!.extractedText.slice(0, 26000));
         }
         formData.append("profile", JSON.stringify({ userName: user.name, focus: interest }));
         formData.append("messages", JSON.stringify([]));
@@ -2287,6 +2297,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         if (!res.ok) throw new Error(data?.error || raw || `Errore HTTP ${res.status}`);
 
         const answer = data?.answer || data?.message || raw || "Nessuna risposta ricevuta dall'analisi immagine.";
+        setLastDrawingAnalysisText(String(answer));
         syncGuestUsageFromBackend(data);
 
         setDrawingIssues([]);
@@ -3662,11 +3673,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                   style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}`, marginTop: 0 }}
                   onClick={() =>
                     setDrawingExtraNotes(
-                      "Controllo mirato su tolleranze e rugosità. " +
-                      "Analizza solo quote, accoppiamenti, tolleranze geometriche, datum e simboli Ra/Rz realmente leggibili. " +
-                      "Evidenzia massimo 8 elementi importanti o critici. Per ciascuno indica: elemento, esito, motivazione tecnica sintetica, rischio e suggerimento correttivo. " +
-                      "Confronta in modo qualitativo con ISO 2768, ISO 286, ISO 1101 e ISO 1302 solo quando applicabile. " +
-                      "Non inventare dati non leggibili."
+                      "Controlla soprattutto tolleranze dimensionali, tolleranze geometriche, rugosità e coerenza con superfici funzionali, sedi, fori, filetti e accoppiamenti. Per ogni criticità aggiungi motivazione, confidenza, riferimento tecnico e correzione consigliata."
                     )
                   }
                 >
