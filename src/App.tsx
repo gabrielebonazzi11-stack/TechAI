@@ -68,7 +68,7 @@ import type {
   const [activeStorageKey, setActiveStorageKey] = useState("");
   const [storageReady, setStorageReady] = useState(false);
 
-  const [theme, setTheme] = useState(THEMES[5]);
+  const [theme, setTheme] = useState(THEMES[1]);
   const [interest, setInterest] = useState("Ingegneria Meccanica");
 
   const [customMaterials, setCustomMaterials] = useState<MaterialInfo[]>([]);
@@ -242,7 +242,7 @@ import type {
 
     if (!saved) {
       resetWorkspace();
-      setTheme(THEMES[5]);
+      setTheme(THEMES[1]);
       setInterest("Ingegneria Meccanica");
       setSidebarOpen(true);
       setCustomMaterials([]);
@@ -260,7 +260,7 @@ import type {
       return;
     }
 
-    setTheme(THEMES.find(t => t.name === data.themeName) || THEMES[5]);
+    setTheme(THEMES.find(t => t.name === data.themeName) || THEMES[1]);
     setInterest(data.interest || "Ingegneria Meccanica");
     setChats(Array.isArray(data.chats) ? data.chats : []);
     setActiveChatId(data.activeChatId || null);
