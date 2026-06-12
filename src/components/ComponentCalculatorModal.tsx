@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Modal, Field } from "./common/AppUiComponents";
 import type {
   ComponentCalcForm,
@@ -67,6 +67,57 @@ const localStyles: Record<string, React.CSSProperties> = {
     marginBottom: 14,
     outline: "none",
     fontSize: 14,
+  },
+  comboWrap: {
+    position: "relative",
+    marginBottom: 14,
+  },
+  comboInput: {
+    width: "100%",
+    padding: "12px 42px 12px 12px",
+    borderRadius: 12,
+    outline: "none",
+    fontSize: 14,
+    fontWeight: 750,
+  },
+  comboArrow: {
+    position: "absolute",
+    right: 12,
+    top: 12,
+    pointerEvents: "none",
+    fontSize: 16,
+    opacity: 0.7,
+  },
+  comboDropdown: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: "calc(100% + 6px)",
+    zIndex: 40,
+    borderRadius: 14,
+    padding: 6,
+    maxHeight: 260,
+    overflowY: "auto",
+    boxShadow: "0 18px 45px rgba(0,0,0,0.35)",
+  },
+  comboOption: {
+    width: "100%",
+    border: "none",
+    borderRadius: 11,
+    padding: "10px 11px",
+    cursor: "pointer",
+    textAlign: "left",
+    display: "flex",
+    flexDirection: "column",
+    gap: 3,
+    fontSize: 13,
+    fontWeight: 850,
+  },
+  comboOptionDesc: {
+    fontSize: 11,
+    lineHeight: 1.35,
+    opacity: 0.62,
+    fontWeight: 650,
   },
   primaryBtn: {
     width: "100%",
@@ -197,6 +248,141 @@ const localStyles: Record<string, React.CSSProperties> = {
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
   },
 };
+
+function normalizeSearchText(value: string) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+}
+
+const MODE_SEARCH_ALIASES: Record<ComponentCalcMode, string> = {
+  solid_circular_section: "area diametro tondo cilindro pieno albero barra sezione modulo resistente inerzia volume massa",
+  hollow_circular_section: "tubo boccola bronzina cava anello diametro interno esterno spessore area inerzia volume massa",
+  solid_rectangular_section: "rettangolo piastra barra piatta braccio staffa base altezza area inerzia modulo resistente volume massa",
+  hollow_rectangular_section: "tubolare quadro rettangolare scatolato profilo cavo base altezza area inerzia volume massa",
+  pin: "perno spina cerniera braccio taglio doppio singolo pressione foro flessione",
+  key: "linguetta chiavetta cava albero mozzo momento torcente taglio schiacciamento",
+  bolt: "bullone vite viti dado tirante trazione taglio area resistente classe",
+  weld: "saldatura cordone gola saldato angolo tensione normale tangenziale",
+  pressure_vessel: "recipiente pressione spessore serbatoio tubo cilindro parete sottile circonferenziale longitudinale",
+  mass_from_volume: "massa peso volume densita materiale kg grammi",
+};
+
+function SearchableModeSelect({
+  value,
+  onChange,
+  theme,
+  isDark,
+}: {
+  value: ComponentCalcMode;
+  onChange: (value: ComponentCalcMode) => void;
+  theme: Theme;
+  isDark: boolean;
+}) {
+  const selected = COMPONENT_CALC_MODES.find((mode) => mode.value === value) || COMPONENT_CALC_MODES[0];
+  const [search, setSearch] = useState(selected.label);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setSearch(selected.label);
+  }, [selected.label]);
+
+  const filteredModes = useMemo(() => {
+    const q = normalizeSearchText(search);
+    if (!q) return COMPONENT_CALC_MODES;
+
+    return COMPONENT_CALC_MODES.filter((mode) => {
+      const haystack = normalizeSearchText(`${mode.label} ${mode.description} ${MODE_SEARCH_ALIASES[mode.value] || ""}`);
+      return haystack.includes(q);
+    });
+  }, [search]);
+
+  const selectMode = (mode: (typeof COMPONENT_CALC_MODES)[number]) => {
+    onChange(mode.value);
+    setSearch(mode.label);
+    setOpen(false);
+  };
+
+  return (
+    <div style={localStyles.comboWrap}>
+      <input
+        style={{
+          ...localStyles.comboInput,
+          background: isDark ? "#050505" : "#fff",
+          color: theme.text,
+          border: `1px solid ${theme.border}`,
+        }}
+        value={search}
+        placeholder="Scrivi: bullone, braccio, perno, area..."
+        onFocus={() => setOpen(true)}
+        onChange={(event) => {
+          setSearch(event.target.value);
+          setOpen(true);
+        }}
+        onBlur={() => {
+          window.setTimeout(() => {
+            setOpen(false);
+            const exact = COMPONENT_CALC_MODES.find(
+              (mode) => normalizeSearchText(mode.label) === normalizeSearchText(search)
+            );
+            if (!exact) setSearch(selected.label);
+          }, 120);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && filteredModes[0]) {
+            event.preventDefault();
+            selectMode(filteredModes[0]);
+          }
+          if (event.key === "Escape") {
+            setOpen(false);
+            setSearch(selected.label);
+          }
+        }}
+      />
+
+      <span style={localStyles.comboArrow}>⌄</span>
+
+      {open && (
+        <div
+          style={{
+            ...localStyles.comboDropdown,
+            background: isDark ? "#050505" : "#ffffff",
+            border: `1px solid ${theme.border}`,
+          }}
+        >
+          {filteredModes.length === 0 ? (
+            <div style={{ padding: 12, fontSize: 12, opacity: 0.65 }}>
+              Nessun calcolo trovato.
+            </div>
+          ) : (
+            filteredModes.map((mode) => {
+              const selectedOption = mode.value === value;
+
+              return (
+                <button
+                  key={mode.value}
+                  type="button"
+                  style={{
+                    ...localStyles.comboOption,
+                    background: selectedOption ? `${theme.primary}22` : "transparent",
+                    color: selectedOption ? theme.primary : theme.text,
+                  }}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => selectMode(mode)}
+                >
+                  <span>{mode.label}</span>
+                  <small style={localStyles.comboOptionDesc}>{mode.description}</small>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ResultSection({ title, rows, theme, isDark }: { title: string; rows: string[]; theme: Theme; isDark: boolean }) {
   if (!rows.length) return null;
@@ -410,13 +596,12 @@ export default function ComponentCalculatorModal({
           <div style={localStyles.grid}>
             <div>
               <label style={localStyles.label}>Tipo calcolo</label>
-              <select style={inputStyle} value={form.mode} onChange={(e) => setMode(e.target.value as ComponentCalcMode)}>
-                {COMPONENT_CALC_MODES.map((mode) => (
-                  <option key={mode.value} value={mode.value}>
-                    {mode.label}
-                  </option>
-                ))}
-              </select>
+              <SearchableModeSelect
+                value={form.mode}
+                onChange={setMode}
+                theme={theme}
+                isDark={isDark}
+              />
             </div>
 
             <Field label="Titolo calcolo" value={form.title} onChange={(value) => setField("title", value)} placeholder="Es. Perno cerniera superiore" theme={theme} isDark={isDark} />
