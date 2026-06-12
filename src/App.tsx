@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { MATERIALS_DB, MaterialInfo } from "./data/materials";
 import MaterialsLibrary from "./components/MaterialsLibrary";
 import ProjectsModal from "./components/projects/ProjectsModal";
+import ComponentCalculatorModal from "./components/ComponentCalculatorModal";
 import { Modal, Field, ResultCard, QuickCalcCard, FileCard, DrawingResultCard, DrawingPreview } from "./components/common/AppUiComponents";
 import { isImageFile, isPdfFile, isDrawingUpload, makeDrawingImagesFromImageFile, pdfPageToImageFile, compressImageForVision, extractPdfText } from "./utils/technicalDrawingUtils";
 import { supabase, isSupabaseConfigured } from "./lib/supabaseClient";
