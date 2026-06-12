@@ -3240,8 +3240,12 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                       gap: 6,
                       maxHeight: 220,
                       overflowY: "auto",
+                      overflowX: "hidden",
                       paddingRight: 4,
                       marginBottom: 14,
+                      width: "100%",
+                      maxWidth: "100%",
+                      minWidth: 0,
                     }}
                   >
                     {filteredQuickCalcVerificationOptions.length === 0 ? (
@@ -3270,6 +3274,12 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                               textAlign: "left",
                               borderRadius: 14,
                               padding: "10px 12px",
+                              width: "100%",
+                              maxWidth: "100%",
+                              minWidth: 0,
+                              overflow: "hidden",
+                              whiteSpace: "normal",
+                              overflowWrap: "break-word",
                               cursor: "pointer",
                               border: `1px solid ${selected ? theme.primary : theme.border}`,
                               background: selected
@@ -3283,8 +3293,25 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                               fontWeight: 850,
                             }}
                           >
-                            <div>{option.label}</div>
-                            <small style={{ opacity: 0.62, lineHeight: 1.35 }}>
+                            <div
+                              style={{
+                                whiteSpace: "normal",
+                                overflowWrap: "break-word",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {option.label}
+                            </div>
+                            <small
+                              style={{
+                                opacity: 0.62,
+                                lineHeight: 1.35,
+                                display: "block",
+                                whiteSpace: "normal",
+                                overflowWrap: "break-word",
+                                wordBreak: "break-word",
+                              }}
+                            >
                               {option.description}
                             </small>
                           </button>
