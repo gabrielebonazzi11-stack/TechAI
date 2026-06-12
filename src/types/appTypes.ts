@@ -114,6 +114,75 @@ export type QuickCalcResult = {
   notes: string[];
 };
 
+export type ComponentCalcMode =
+  | "solid_circular_section"
+  | "hollow_circular_section"
+  | "solid_rectangular_section"
+  | "hollow_rectangular_section"
+  | "pin"
+  | "key"
+  | "bolt"
+  | "weld"
+  | "pressure_vessel"
+  | "mass_from_volume";
+
+export type ComponentCalcForm = {
+  mode: ComponentCalcMode;
+  title: string;
+  material: string;
+  density: string;
+  length: string;
+
+  diameter: string;
+  outerDiameter: string;
+  innerDiameter: string;
+
+  base: string;
+  height: string;
+  outerBase: string;
+  outerHeight: string;
+  innerBase: string;
+  innerHeight: string;
+
+  force: string;
+  shearForce: string;
+  shearPlanes: string;
+  contactLength: string;
+  torque: string;
+
+  keyWidth: string;
+  keyHeight: string;
+  keyLength: string;
+
+  boltArea: string;
+  boltCount: string;
+
+  weldLength: string;
+  weldThroat: string;
+
+  pressure: string;
+  radius: string;
+  thickness: string;
+
+  volumeCm3: string;
+  yieldStrength: string;
+  safetyFactorRequired: string;
+};
+
+export type ComponentCalcResult = {
+  title: string;
+  mode: ComponentCalcMode;
+  component: string;
+  formulas: string[];
+  inputs: string[];
+  results: string[];
+  notes: string[];
+  mainValue?: number;
+  secondaryValue?: number;
+  safetyFactor?: number;
+  outcome: "OK" | "NON OK" | "DA VERIFICARE";
+};
+
 export type DrawingUpload = {
   file: File;
   fileAttachment: FileAttachment;
