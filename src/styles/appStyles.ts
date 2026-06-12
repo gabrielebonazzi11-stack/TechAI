@@ -41,7 +41,7 @@ export const s: Record<string, CSSProperties> = {
   roundBtn: { width: 30, height: 30, borderRadius: "50%", border: "none", background: "rgba(120,120,120,0.16)", cursor: "pointer", fontSize: 18, lineHeight: 1 },
   muted: { fontSize: 12, opacity: 0.65, margin: "4px 0 0", lineHeight: 1.45 },
   chatView: { width: "100%", maxWidth: "none", flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "14px 22px", overflow: "hidden" },
-  msgList: { flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 18, padding: "10px 0" },
+  msgList: { flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 18, padding: "10px 8px 10px 0", scrollbarWidth: "thin",  scrollbarColor: "rgba(96,165,250,0.85) rgba(120,120,120,0.16)", scrollbarGutter: "stable", },
   uRow: { display: "flex", justifyContent: "flex-end", width: "min(940px, 100%)", margin: "0 auto" },
   aRow: { display: "flex", justifyContent: "flex-start", alignItems: "flex-start", gap: 12, width: "min(940px, 100%)", margin: "0 auto" },
   uBox: { padding: "13px 18px", borderRadius: "22px 22px 6px 22px", maxWidth: "78%", fontSize: 15, whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.55 },
