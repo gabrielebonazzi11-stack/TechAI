@@ -3240,7 +3240,19 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           </div>
         </Modal>
       )}
-
+    
+      {showComponentCalculator && (
+        <ComponentCalculatorModal
+          theme={theme}
+          isDark={isDark}
+          onClose={() => setShowComponentCalculator(false)}
+          projects={projects}
+          activeProject={activeProject}
+          addProjectItem={addProjectItem}
+          setProjectMemoryTab={setProjectMemoryTab}
+        />
+      )}
+    
       {showMaterials && (
         <Modal
           title="Libreria materiali"
