@@ -128,6 +128,7 @@ import type {
   const [quickCalcResult, setQuickCalcResult] = useState<QuickCalcResult | null>(null);
   const [quickCalcSaveTitle, setQuickCalcSaveTitle] = useState("");
   const [quickCalcTargetProjectId, setQuickCalcTargetProjectId] = useState("");
+  const [quickCalcVerificationSearch, setQuickCalcVerificationSearch] = useState("Flessione + torsione");
 
   const [drawingReviewFile, setDrawingReviewFile] = useState<DrawingUpload | null>(null);
   const [drawingAiLoading, setDrawingAiLoading] = useState(false);
@@ -184,7 +185,92 @@ import type {
   const activeChat = chats.find(chat => chat.id === activeChatId);
   const currentMessages = activeChat?.messages || [];
   const allMaterials = useMemo(() => [...MATERIALS_DB, ...customMaterials], [customMaterials]);
+  const quickCalcVerificationOptions = useMemo(
+  () => [
+    {
+      value: "assiale",
+      label: "Trazione / compressione",
+      description: "Barre, tiranti, aste, bulloni caricati assialmente.",
+      keywords: "assiale trazione compressione barra tirante asta bullone vite forza normale carico assiale",
+    },
+    {
+      value: "taglio",
+      label: "Taglio",
+      description: "Perni, spine, bulloni, viti, collegamenti a taglio.",
+      keywords: "taglio perno spina bullone vite cesoiamento collegamento forza trasversale",
+    },
+    {
+      value: "flessione",
+      label: "Flessione",
+      description: "Bracci, mensole, staffe, alberi e travi con momento flettente.",
+      keywords: "flessione braccio mensola staffa trave albero momento flettente forza distanza",
+    },
+    {
+      value: "torsione",
+      label: "Torsione",
+      description: "Alberi, perni e organi rotanti soggetti a momento torcente.",
+      keywords: "torsione momento torcente coppia albero rotazione trasmissione",
+    },
+    {
+      value: "flessione_torsione",
+      label: "Flessione + torsione",
+      description: "Caso tipico degli alberi con momento flettente e torcente.",
+      keywords: "flessione torsione albero braccio puleggia ruota dentata momento flettente torcente",
+    },
+    {
+      value: "flessione_taglio",
+      label: "Flessione + taglio",
+      description: "Staffe, bracci, perni e supporti con forza trasversale.",
+      keywords: "flessione taglio braccio staffa perno supporto forza trasversale",
+    },
+    {
+      value: "trazione_flessione",
+      label: "Trazione/compressione + flessione",
+      description: "Componenti con carico assiale e momento flettente.",
+      keywords: "trazione compressione flessione barra tirante montante staffa braccio",
+    },
+    {
+      value: "trazione_torsione",
+      label: "Trazione/compressione + torsione",
+      description: "Componenti con carico assiale e momento torcente.",
+      keywords: "trazione compressione torsione bullone vite albero coppia carico assiale",
+    },
+    {
+      value: "generale",
+      label: "Flessione + torsione + taglio + assiale",
+      description: "Verifica completa quando hai più sollecitazioni insieme.",
+      keywords: "generale completa assiale flessione torsione taglio albero staffa braccio bullone vite perno",
+    },
+    {
+      value: "pressione_interna",
+      label: "Pressione interna recipiente cilindrico",
+      description: "Tubi, serbatoi, cilindri e recipienti in pressione.",
+      keywords: "pressione interna recipiente tubo serbatoio cilindro spessore parete pressione bar",
+    },
+    {
+      value: "stato_piano",
+      label: "Stato piano di tensione",
+      description: "Calcolo da sigma x, sigma y e tau xy.",
+      keywords: "stato piano tensione sigma tau von mises tresca principale mohr",
+    },
+    {
+      value: "fatica",
+      label: "Fatica con σmax e σmin",
+      description: "Verifica semplificata a fatica tipo Goodman.",
+      keywords: "fatica goodman alternata media ciclica sigma max min durata",
+    },
+  ],
+  []
+);
 
+const filteredQuickCalcVerificationOptions = useMemo(() => {
+  const q = quickCalcVerificationSearch.trim().toLowerCase();
+  if (!q) return quickCalcVerificationOptions;
+
+  return quickCalcVerificationOptions.filter((option) =>
+    `${option.label} ${option.description} ${option.keywords}`.toLowerCase().includes(q)
+  );
+}, [quickCalcVerificationOptions, quickCalcVerificationSearch]);
 
   const activeProject = useMemo(
     () => projects.find(project => project.id === activeProjectId) || projects[0] || null,
@@ -3115,23 +3201,41 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
               <div style={s.checklistGrid}>
                 <Field label="Tipo componente" value={quickCalcForm.componentType} onChange={v => updateQuickCalcField("componentType", v)} placeholder="Perno, albero, staffa..." theme={theme} isDark={isDark} />
 
-                <div>
-                  <label style={s.label}>Tipo verifica</label>
-                  <select style={{ ...s.input, background: isDark ? "#050505" : "#fff", color: theme.text, border: `1px solid ${theme.border}` }} value={quickCalcForm.verificationType} onChange={e => updateQuickCalcField("verificationType", e.target.value)}>
-                    <option value="assiale">Trazione / compressione</option>
-                    <option value="taglio">Taglio</option>
-                    <option value="flessione">Flessione</option>
-                    <option value="torsione">Torsione</option>
-                    <option value="flessione_torsione">Flessione + torsione</option>
-                    <option value="flessione_taglio">Flessione + taglio</option>
-                    <option value="trazione_flessione">Trazione/compressione + flessione</option>
-                    <option value="trazione_torsione">Trazione/compressione + torsione</option>
-                    <option value="generale">Flessione + torsione + taglio + assiale</option>
-                    <option value="pressione_interna">Pressione interna recipiente cilindrico</option>
-                    <option value="stato_piano">Stato piano di tensione</option>
-                    <option value="fatica">Fatica con σmax e σmin</option>
-                  </select>
-                </div>
+              <div>
+              <label style={s.label}>Tipo verifica</label>
+            
+              <div style={{ marginBottom: 14 }}>
+                <input
+                  style={{
+                    ...s.input,
+                    marginBottom: 8,
+                    background: isDark ? "#050505" : "#fff",
+                    color: theme.text,
+                    border: `1px solid ${theme.border}`,
+                  }}
+                  value={quickCalcVerificationSearch}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setQuickCalcVerificationSearch(value);
+            
+                    const exact = quickCalcVerificationOptions.find(
+                      (option) => option.label.toLowerCase() === value.trim().toLowerCase()
+                    );
+            
+                    if (exact) updateQuickCalcField("verificationType", exact.value);
+                  }}
+                  placeholder="Scrivi: bullone, braccio, torsione, fatica..."
+                />
+            
+                <div style={{ display: "grid", gap: 6, maxHeight: 220, overflowY: "auto", paddingRight: 4 }}>
+                  {filteredQuickCalcVerificationOptions.length === 0 ? (
+                    <div style={{ ...s.emptyText, border: `1px dashed ${theme.border}`, borderRadius: 12 }}>
+                      Nessun tipo verifica trovato.
+                    </div>
+                  ) : (
+                    filteredQuickCalcVerificationOptions.map((option) => {
+                      const selected = quickCalcForm.verificationType === option.value;
+
 
                 <Field label="Materiale" value={quickCalcForm.material} onChange={v => updateQuickCalcField("material", v)} placeholder="C45" theme={theme} isDark={isDark} />
 
