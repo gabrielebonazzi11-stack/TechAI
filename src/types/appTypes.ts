@@ -170,6 +170,7 @@ export type ProjectSavedItem = {
     | "revision"
     | "checklist"
     | "quickcalc"
+    | "calculation"
     | "file"
     | "bom"
     | "solidworks"
