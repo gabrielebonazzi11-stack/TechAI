@@ -48,6 +48,7 @@ import type {
   const [showSettings, setShowSettings] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
   const [showQuickCalc, setShowQuickCalc] = useState(false);
+  const [showComponentCalculator, setShowComponentCalculator] = useState(false);  
   const [showMaterials, setShowMaterials] = useState(false);
   const [showDrawingGenerator, setShowDrawingGenerator] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
