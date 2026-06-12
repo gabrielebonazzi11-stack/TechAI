@@ -86,7 +86,7 @@ export function normalizeProjectRecord(rawProject: any): ProjectRecord {
     materials: Array.isArray(rawProject?.materials) ? rawProject.materials : byType(["material"]),
     verifications: Array.isArray(rawProject?.verifications)
       ? rawProject.verifications
-      : byType(["checklist", "quickcalc", "bom", "solidworks", "advanced", "verification"]),
+      : byType(["checklist", "quickcalc", "calculation", "bom", "solidworks", "advanced", "verification"]),
     decisions: Array.isArray(rawProject?.decisions) ? rawProject.decisions : byType(["decision"]),
     revisions: Array.isArray(rawProject?.revisions) ? rawProject.revisions : byType(["revision"]),
     notes: Array.isArray(rawProject?.notes) ? rawProject.notes : byType(["note"]),
