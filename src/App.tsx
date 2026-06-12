@@ -1335,6 +1335,7 @@ import type {
         "Funzioni principali visibili in TechAI:\n" +
         "- Checklist: controllo preliminare di componente, materiale, carichi, ambiente, tolleranze, rugosità e note tecniche.\n" +
         "- Verifica: calcoli meccanici rapidi su trazione/compressione, taglio, flessione, torsione, sollecitazioni combinate, pressione interna, stato piano e fatica.\n" +
+        "- Calcoli: calcolatore tecnico geometrico/dimensionale per sezioni, aree, inerzie, massa, perni, linguette, viti, saldature e recipienti in pressione.\n" +
         "- Materiali: libreria materiali interna con acciai, inox, allumini, ottoni, ghise, polimeri, elastomeri, compositi, ceramici e materiali speciali.\n" +
         "- Tavole: analisi di tavole tecniche PDF/immagine con controllo di cartiglio, viste, quote, tolleranze dimensionali/geometriche, rugosità, filetti, fori, materiale e trattamenti.\n" +
         "- Progetti: memoria progetto con chat, documenti, tavole, materiali, verifiche, decisioni, revisioni e note.\n\n" +
