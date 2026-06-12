@@ -2813,6 +2813,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
             {sidebarOpen && <div style={{ ...s.toolsTitle, color: theme.primary }}>Strumenti tecnici</div>}
             {iconBtn("✓", "Checklist", () => setShowChecklist(true))}
             {iconBtn("∑", "Verifica", () => setShowQuickCalc(true))}
+            {iconBtn("📐", "Calcoli", () => setShowComponentCalculator(true))}
             {iconBtn("▦", "Materiali", () => setShowMaterials(true))}
             {iconBtn("▣", "Tavole", () => setShowDrawingGenerator(true))}
             {iconBtn("⌘", "Progetti", () => setShowProjects(true))}
