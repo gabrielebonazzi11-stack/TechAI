@@ -48,7 +48,7 @@ import type {
   const [showSettings, setShowSettings] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
   const [showQuickCalc, setShowQuickCalc] = useState(false);
-  const [showComponentCalculator, setShowComponentCalculator] = useState(false);  
+  const [showComponentCalculator, setShowComponentCalculator] = useState(false);
   const [showMaterials, setShowMaterials] = useState(false);
   const [showDrawingGenerator, setShowDrawingGenerator] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
@@ -185,92 +185,93 @@ import type {
   const activeChat = chats.find(chat => chat.id === activeChatId);
   const currentMessages = activeChat?.messages || [];
   const allMaterials = useMemo(() => [...MATERIALS_DB, ...customMaterials], [customMaterials]);
+
   const quickCalcVerificationOptions = useMemo(
-  () => [
-    {
-      value: "assiale",
-      label: "Trazione / compressione",
-      description: "Barre, tiranti, aste, bulloni caricati assialmente.",
-      keywords: "assiale trazione compressione barra tirante asta bullone vite forza normale carico assiale",
-    },
-    {
-      value: "taglio",
-      label: "Taglio",
-      description: "Perni, spine, bulloni, viti, collegamenti a taglio.",
-      keywords: "taglio perno spina bullone vite cesoiamento collegamento forza trasversale",
-    },
-    {
-      value: "flessione",
-      label: "Flessione",
-      description: "Bracci, mensole, staffe, alberi e travi con momento flettente.",
-      keywords: "flessione braccio mensola staffa trave albero momento flettente forza distanza",
-    },
-    {
-      value: "torsione",
-      label: "Torsione",
-      description: "Alberi, perni e organi rotanti soggetti a momento torcente.",
-      keywords: "torsione momento torcente coppia albero rotazione trasmissione",
-    },
-    {
-      value: "flessione_torsione",
-      label: "Flessione + torsione",
-      description: "Caso tipico degli alberi con momento flettente e torcente.",
-      keywords: "flessione torsione albero braccio puleggia ruota dentata momento flettente torcente",
-    },
-    {
-      value: "flessione_taglio",
-      label: "Flessione + taglio",
-      description: "Staffe, bracci, perni e supporti con forza trasversale.",
-      keywords: "flessione taglio braccio staffa perno supporto forza trasversale",
-    },
-    {
-      value: "trazione_flessione",
-      label: "Trazione/compressione + flessione",
-      description: "Componenti con carico assiale e momento flettente.",
-      keywords: "trazione compressione flessione barra tirante montante staffa braccio",
-    },
-    {
-      value: "trazione_torsione",
-      label: "Trazione/compressione + torsione",
-      description: "Componenti con carico assiale e momento torcente.",
-      keywords: "trazione compressione torsione bullone vite albero coppia carico assiale",
-    },
-    {
-      value: "generale",
-      label: "Flessione + torsione + taglio + assiale",
-      description: "Verifica completa quando hai più sollecitazioni insieme.",
-      keywords: "generale completa assiale flessione torsione taglio albero staffa braccio bullone vite perno",
-    },
-    {
-      value: "pressione_interna",
-      label: "Pressione interna recipiente cilindrico",
-      description: "Tubi, serbatoi, cilindri e recipienti in pressione.",
-      keywords: "pressione interna recipiente tubo serbatoio cilindro spessore parete pressione bar",
-    },
-    {
-      value: "stato_piano",
-      label: "Stato piano di tensione",
-      description: "Calcolo da sigma x, sigma y e tau xy.",
-      keywords: "stato piano tensione sigma tau von mises tresca principale mohr",
-    },
-    {
-      value: "fatica",
-      label: "Fatica con σmax e σmin",
-      description: "Verifica semplificata a fatica tipo Goodman.",
-      keywords: "fatica goodman alternata media ciclica sigma max min durata",
-    },
-  ],
-  []
-);
-
-const filteredQuickCalcVerificationOptions = useMemo(() => {
-  const q = quickCalcVerificationSearch.trim().toLowerCase();
-  if (!q) return quickCalcVerificationOptions;
-
-  return quickCalcVerificationOptions.filter((option) =>
-    `${option.label} ${option.description} ${option.keywords}`.toLowerCase().includes(q)
+    () => [
+      {
+        value: "assiale",
+        label: "Trazione / compressione",
+        description: "Barre, tiranti, aste, bulloni caricati assialmente.",
+        keywords: "assiale trazione compressione barra tirante asta bullone vite forza normale carico assiale",
+      },
+      {
+        value: "taglio",
+        label: "Taglio",
+        description: "Perni, spine, bulloni, viti, collegamenti a taglio.",
+        keywords: "taglio perno spina bullone vite cesoiamento collegamento forza trasversale",
+      },
+      {
+        value: "flessione",
+        label: "Flessione",
+        description: "Bracci, mensole, staffe, alberi e travi con momento flettente.",
+        keywords: "flessione braccio mensola staffa trave albero momento flettente forza distanza",
+      },
+      {
+        value: "torsione",
+        label: "Torsione",
+        description: "Alberi, perni e organi rotanti soggetti a momento torcente.",
+        keywords: "torsione momento torcente coppia albero rotazione trasmissione",
+      },
+      {
+        value: "flessione_torsione",
+        label: "Flessione + torsione",
+        description: "Caso tipico degli alberi con momento flettente e torcente.",
+        keywords: "flessione torsione albero braccio puleggia ruota dentata momento flettente torcente",
+      },
+      {
+        value: "flessione_taglio",
+        label: "Flessione + taglio",
+        description: "Staffe, bracci, perni e supporti con forza trasversale.",
+        keywords: "flessione taglio braccio staffa perno supporto forza trasversale",
+      },
+      {
+        value: "trazione_flessione",
+        label: "Trazione/compressione + flessione",
+        description: "Componenti con carico assiale e momento flettente.",
+        keywords: "trazione compressione flessione barra tirante montante staffa braccio",
+      },
+      {
+        value: "trazione_torsione",
+        label: "Trazione/compressione + torsione",
+        description: "Componenti con carico assiale e momento torcente.",
+        keywords: "trazione compressione torsione bullone vite albero coppia carico assiale",
+      },
+      {
+        value: "generale",
+        label: "Flessione + torsione + taglio + assiale",
+        description: "Verifica completa quando hai più sollecitazioni insieme.",
+        keywords: "generale completa assiale flessione torsione taglio albero staffa braccio bullone vite perno",
+      },
+      {
+        value: "pressione_interna",
+        label: "Pressione interna recipiente cilindrico",
+        description: "Tubi, serbatoi, cilindri e recipienti in pressione.",
+        keywords: "pressione interna recipiente tubo serbatoio cilindro spessore parete pressione bar",
+      },
+      {
+        value: "stato_piano",
+        label: "Stato piano di tensione",
+        description: "Calcolo da sigma x, sigma y e tau xy.",
+        keywords: "stato piano tensione sigma tau von mises tresca principale mohr",
+      },
+      {
+        value: "fatica",
+        label: "Fatica con σmax e σmin",
+        description: "Verifica semplificata a fatica tipo Goodman.",
+        keywords: "fatica goodman alternata media ciclica sigma max min durata",
+      },
+    ],
+    []
   );
-}, [quickCalcVerificationOptions, quickCalcVerificationSearch]);
+
+  const filteredQuickCalcVerificationOptions = useMemo(() => {
+    const q = quickCalcVerificationSearch.trim().toLowerCase();
+    if (!q) return quickCalcVerificationOptions;
+
+    return quickCalcVerificationOptions.filter((option) =>
+      `${option.label} ${option.description} ${option.keywords}`.toLowerCase().includes(q)
+    );
+  }, [quickCalcVerificationOptions, quickCalcVerificationSearch]);
 
   const activeProject = useMemo(
     () => projects.find(project => project.id === activeProjectId) || projects[0] || null,
@@ -2418,7 +2419,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
       verification: "Verifica",
       checklist: "Verifica",
       quickcalc: "Verifica",
-      calculation: "Calcolo" ,
+      calculation: "Calcolo",
       bom: "Distinta",
       solidworks: "SolidWorks",
       advanced: "Verifica avanzata",
@@ -3199,49 +3200,121 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           <div style={s.quickCalcLayout}>
             <div style={s.checklistFormArea}>
               <div style={s.checklistGrid}>
-                <Field label="Tipo componente" value={quickCalcForm.componentType} onChange={v => updateQuickCalcField("componentType", v)} placeholder="Perno, albero, staffa..." theme={theme} isDark={isDark} />
-
-              <div>
-              <label style={s.label}>Tipo verifica</label>
-            
-              <div style={{ marginBottom: 14 }}>
-                <input
-                  style={{
-                    ...s.input,
-                    marginBottom: 8,
-                    background: isDark ? "#050505" : "#fff",
-                    color: theme.text,
-                    border: `1px solid ${theme.border}`,
-                  }}
-                  value={quickCalcVerificationSearch}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setQuickCalcVerificationSearch(value);
-            
-                    const exact = quickCalcVerificationOptions.find(
-                      (option) => option.label.toLowerCase() === value.trim().toLowerCase()
-                    );
-            
-                    if (exact) updateQuickCalcField("verificationType", exact.value);
-                  }}
-                  placeholder="Scrivi: bullone, braccio, torsione, fatica..."
+                <Field
+                  label="Tipo componente"
+                  value={quickCalcForm.componentType}
+                  onChange={v => updateQuickCalcField("componentType", v)}
+                  placeholder="Perno, albero, staffa..."
+                  theme={theme}
+                  isDark={isDark}
                 />
-            
-                <div style={{ display: "grid", gap: 6, maxHeight: 220, overflowY: "auto", paddingRight: 4 }}>
-                  {filteredQuickCalcVerificationOptions.length === 0 ? (
-                    <div style={{ ...s.emptyText, border: `1px dashed ${theme.border}`, borderRadius: 12 }}>
-                      Nessun tipo verifica trovato.
-                    </div>
-                  ) : (
-                    filteredQuickCalcVerificationOptions.map((option) => {
-                      const selected = quickCalcForm.verificationType === option.value;
 
+                <div>
+                  <label style={s.label}>Tipo verifica</label>
 
-                <Field label="Materiale" value={quickCalcForm.material} onChange={v => updateQuickCalcField("material", v)} placeholder="C45" theme={theme} isDark={isDark} />
+                  <input
+                    style={{
+                      ...s.input,
+                      marginBottom: 8,
+                      background: isDark ? "#050505" : "#fff",
+                      color: theme.text,
+                      border: `1px solid ${theme.border}`,
+                    }}
+                    value={quickCalcVerificationSearch}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setQuickCalcVerificationSearch(value);
+
+                      const exact = quickCalcVerificationOptions.find(
+                        (option) => option.label.toLowerCase() === value.trim().toLowerCase()
+                      );
+
+                      if (exact) updateQuickCalcField("verificationType", exact.value);
+                    }}
+                    placeholder="Scrivi: bullone, braccio, torsione, fatica..."
+                  />
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 6,
+                      maxHeight: 220,
+                      overflowY: "auto",
+                      paddingRight: 4,
+                      marginBottom: 14,
+                    }}
+                  >
+                    {filteredQuickCalcVerificationOptions.length === 0 ? (
+                      <div
+                        style={{
+                          ...s.emptyText,
+                          border: `1px dashed ${theme.border}`,
+                          borderRadius: 12,
+                        }}
+                      >
+                        Nessun tipo verifica trovato.
+                      </div>
+                    ) : (
+                      filteredQuickCalcVerificationOptions.map((option) => {
+                        const selected = quickCalcForm.verificationType === option.value;
+
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => {
+                              updateQuickCalcField("verificationType", option.value);
+                              setQuickCalcVerificationSearch(option.label);
+                            }}
+                            style={{
+                              textAlign: "left",
+                              borderRadius: 14,
+                              padding: "10px 12px",
+                              cursor: "pointer",
+                              border: `1px solid ${selected ? theme.primary : theme.border}`,
+                              background: selected
+                                ? isDark
+                                  ? `${theme.primary}24`
+                                  : `${theme.primary}14`
+                                : isDark
+                                  ? "#050505"
+                                  : "#fff",
+                              color: theme.text,
+                              fontWeight: 850,
+                            }}
+                          >
+                            <div>{option.label}</div>
+                            <small style={{ opacity: 0.62, lineHeight: 1.35 }}>
+                              {option.description}
+                            </small>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                <Field
+                  label="Materiale"
+                  value={quickCalcForm.material}
+                  onChange={v => updateQuickCalcField("material", v)}
+                  placeholder="C45"
+                  theme={theme}
+                  isDark={isDark}
+                />
 
                 <div>
                   <label style={s.label}>Tipo sezione</label>
-                  <select style={{ ...s.input, background: isDark ? "#050505" : "#fff", color: theme.text, border: `1px solid ${theme.border}` }} value={quickCalcForm.sectionType} onChange={e => updateQuickCalcField("sectionType", e.target.value)}>
+                  <select
+                    style={{
+                      ...s.input,
+                      background: isDark ? "#050505" : "#fff",
+                      color: theme.text,
+                      border: `1px solid ${theme.border}`,
+                    }}
+                    value={quickCalcForm.sectionType}
+                    onChange={e => updateQuickCalcField("sectionType", e.target.value)}
+                  >
                     <option value="circolare_piena">Circolare piena</option>
                     <option value="circolare_cava">Circolare cava</option>
                     <option value="rettangolare_piena">Rettangolare piena</option>
@@ -3346,7 +3419,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           </div>
         </Modal>
       )}
-    
+
       {showComponentCalculator && (
         <ComponentCalculatorModal
           theme={theme}
@@ -3358,7 +3431,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           setProjectMemoryTab={setProjectMemoryTab}
         />
       )}
-    
+
       {showMaterials && (
         <Modal
           title="Libreria materiali"
