@@ -2331,6 +2331,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
       verification: "Verifica",
       checklist: "Verifica",
       quickcalc: "Verifica",
+      calculation: "Calcolo" ,
       bom: "Distinta",
       solidworks: "SolidWorks",
       advanced: "Verifica avanzata",
