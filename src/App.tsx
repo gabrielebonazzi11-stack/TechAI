@@ -2082,16 +2082,41 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         setLastDrawingAnalysisText(String(answer));
         syncGuestUsageFromBackend(data);
 
-        setDrawingIssues([]);
+        // ── Parsa PINS_JSON dalla risposta AI ──
+        const answerText = String(answer);
+        const pinsMatch = answerText.match(/<PINS>\s*([\s\S]*?)\s*<\/PINS>/i);
+        let parsedIssues: DrawingIssue[] = [];
+        if (pinsMatch) {
+          try {
+            const pinsData = JSON.parse(pinsMatch[1].trim());
+            if (Array.isArray(pinsData)) {
+              parsedIssues = pinsData.map((p: any, i: number) => ({
+                id: String(p.id || `pin-${i}`),
+                label: String(p.label || 'Criticità'),
+                severity: ['errore','attenzione','info'].includes(p.severity) ? p.severity : 'attenzione',
+                x: Math.min(100, Math.max(0, Number(p.x) || 50)),
+                y: Math.min(100, Math.max(0, Number(p.y) || 50)),
+                detail: String(p.detail || ''),
+              }));
+            }
+          } catch { parsedIssues = []; }
+        }
+        if (parsedIssues.length === 0) {
+          parsedIssues = [{ id: 'ai-ok', label: 'Analisi completata', severity: 'info', x: 50, y: 50, detail: 'Nessuna criticità rilevata con evidenza chiara.' }];
+        }
+        // Rimuovi il blocco PINS dal testo mostrato all'utente
+        const cleanAnswer = answerText.replace(/<PINS>[\s\S]*?<\/PINS>/gi, '').trim();
+        setDrawingIssues(parsedIssues);
         setDrawingResults([
           {
             category: "Analisi AI immagine",
             status: "⚠️ Da verificare",
             item: drawingReviewFile!.fileAttachment.name,
-            reason: String(answer),
+            reason: cleanAnswer,
             suggestion: "Usa questa analisi come revisione preliminare: controlla manualmente la tavola originale.",
           },
         ]);
+        setLastDrawingAnalysisText(cleanAnswer);
       } catch (error: any) {
         setDrawingIssues([{ id: "ai-error", label: "Errore analisi", severity: "errore", x: 50, y: 50, detail: error?.message || "Errore durante l'analisi immagine." }]);
         setDrawingResults([
