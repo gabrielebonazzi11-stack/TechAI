@@ -12,6 +12,7 @@ import { makeUserStorageKey, makeGuestStorageKey } from "./utils/storage";
 import { toNumber } from "./utils/numberUtils";
 import { globalCss } from "./styles/globalCss";
 import { s } from "./styles/appStyles";
+import katex from "katex";
 import type {
 
   
@@ -2130,7 +2131,49 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
     setDrawingResults(results);
   };
 
-  const renderFormattedText = (text: string) => {
+  // ── KaTeX: renderizza LaTeX \[...\] e \(...\) ──
+  const renderLatex = (text: string): React.ReactNode[] => {
+    const parts: React.ReactNode[] = [];
+    const regex = /\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
+      const raw = match[0];
+      const isDisplay = raw.startsWith("\\[") || raw.startsWith("$$");
+      const inner = raw
+        .replace(/^\\\[/, "").replace(/\\\]$/, "")
+        .replace(/^\\\(/, "").replace(/\\\)$/, "")
+        .replace(/^\$\$/, "").replace(/\$\$$/, "")
+        .replace(/^\$/, "").replace(/\$$/, "");
+      try {
+        const html = katex.renderToString(inner.trim(), {
+          displayMode: isDisplay,
+          throwOnError: false,
+          output: "html",
+        });
+        parts.push(
+          <span
+            key={`katex-${match.index}`}
+            dangerouslySetInnerHTML={{ __html: html }}
+            style={{
+              display: isDisplay ? "block" : "inline",
+              margin: isDisplay ? "8px 0" : undefined,
+              overflowX: isDisplay ? "auto" : undefined,
+            }}
+          />
+        );
+      } catch { parts.push(raw); }
+      lastIndex = match.index + raw.length;
+    }
+    if (lastIndex < text.length) parts.push(text.slice(lastIndex));
+    return parts;
+  };
+
+  TSEOF
+
+echo "Block written, lines: $(wc -l < /tmp/renderlatex_block.tsx)"
+grep "const regex" /tmp/renderlatex_block.tsx  const renderFormattedText = (text: string) => {
     const blocks = text.split(/(```[\s\S]*?```)/g);
 
     return blocks.map((block, index) => {
@@ -2151,11 +2194,11 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         if (!trimmed) return <div key={key} style={{ height: 8 }} />;
 
         if (trimmed.startsWith("### ")) {
-          return <h3 key={key} style={{ color: theme.primary }}>{renderInlineMarkdown(trimmed.slice(4))}</h3>;
+          return <h3 key={key} style={{ color: theme.primary }}>{renderLatex(trimmed.slice(4))}</h3>;
         }
 
         if (trimmed.startsWith("## ")) {
-          return <h2 key={key} style={{ color: theme.primary }}>{renderInlineMarkdown(trimmed.slice(3))}</h2>;
+          return <h2 key={key} style={{ color: theme.primary }}>{renderLatex(trimmed.slice(3))}</h2>;
         }
 
         const numberedMatch = trimmed.match(/^(\d+\.\s+)(.*)$/);
@@ -2163,20 +2206,20 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           return (
             <div key={key} style={s.numberedLine}>
               <span>{numberedMatch[1]}</span>
-              {renderInlineMarkdown(numberedMatch[2])}
+              {renderLatex(numberedMatch[2])}
             </div>
           );
         }
 
         if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-          return <div key={key} style={s.bulletLine}>• {renderInlineMarkdown(trimmed.slice(2))}</div>;
+          return <div key={key} style={s.bulletLine}>• {renderLatex(trimmed.slice(2))}</div>;
         }
 
         if (trimmed.startsWith("• ")) {
-          return <div key={key} style={s.bulletLine}>• {renderInlineMarkdown(trimmed.slice(2))}</div>;
+          return <div key={key} style={s.bulletLine}>• {renderLatex(trimmed.slice(2))}</div>;
         }
 
-        return <div key={key} style={s.messageLine}>{renderInlineMarkdown(line)}</div>;
+        return <div key={key} style={s.messageLine}>{renderLatex(line)}</div>;
       });
     });
   };
