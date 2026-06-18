@@ -2106,11 +2106,30 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         }
         // Rimuovi il blocco PINS dal testo mostrato all'utente
         const cleanAnswer = answerText.replace(/<PINS>[\s\S]*?<\/PINS>/gi, '').trim();
+
+        // ── Allinea severity dei pin al giudizio finale nel testo ──
+        const isNotApproved = /non approvata|da correggere|non producibile/i.test(cleanAnswer);
+        const isApproved = /approvata(?! con riserva)|giudizio finale[^\n]*approvata/i.test(cleanAnswer);
+        // Se l'AI dice NON APPROVATA ma tutti i pin sono info/ok, forza almeno un pin errore
+        if (isNotApproved && parsedIssues.every(p => p.severity === 'info')) {
+          // Estrai il motivo principale dal testo
+          const motivoMatch = cleanAnswer.match(/(?:motivo principale|motivo)[^:]*:\s*([^\n.]+)/i);
+          const motivo = motivoMatch ? motivoMatch[1].trim() : 'Tavola non approvata: vedere analisi completa.';
+          parsedIssues = [{ id: 'ai-notapproved', label: 'Non approvata', severity: 'errore', x: 50, y: 88, detail: motivo }];
+        }
+        // Se l'AI dice APPROVATA, assicura che non ci siano pin errore
+        if (isApproved && !isNotApproved && parsedIssues.every(p => p.severity !== 'errore')) {
+          parsedIssues = parsedIssues.map(p => ({ ...p, severity: p.severity === 'attenzione' ? 'attenzione' : 'info' as any }));
+        }
+
+        // Status card allineato al giudizio
+        const cardStatus = isNotApproved ? '❌ Non approvata' : isApproved ? '✅ Approvata' : '⚠️ Da verificare';
+
         setDrawingIssues(parsedIssues);
         setDrawingResults([
           {
             category: "Analisi AI immagine",
-            status: "⚠️ Da verificare",
+            status: cardStatus,
             item: drawingReviewFile!.fileAttachment.name,
             reason: cleanAnswer,
             suggestion: "Usa questa analisi come revisione preliminare: controlla manualmente la tavola originale.",
