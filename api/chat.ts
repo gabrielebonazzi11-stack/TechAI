@@ -619,11 +619,25 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
     `- Se vedi "C45" chiaramente nel cartiglio, puoi scrivere materiale rilevato: C45.\n` +
     `- Se il materiale sembra "C4..." ma non è chiaro, scrivi: materiale incerto, possibile C45 ma da confermare.\n` +
     `- Se non leggi la rugosità, scrivi: rugosità non rilevabile dall'immagine.\n` +
-    `- Se non vedi tolleranze, non dire che sono sbagliate: scrivi tolleranze non rilevabili o non presenti nella porzione leggibile.\n`
+    `- Se non vedi tolleranze, non dire che sono sbagliate: scrivi tolleranze non rilevabili o non presenti nella porzione leggibile.\n` +
+
+    `PINS_JSON (obbligatorio, sempre alla fine della risposta):\n` +
+    `Dopo tutto il testo di analisi, scrivi un blocco JSON racchiuso esattamente tra i tag <PINS> e </PINS>.\n` +
+    `Ogni pin rappresenta una criticita' o punto di interesse posizionato sulla tavola.\n` +
+    `x e y sono coordinate percentuali (0-100) rispetto a larghezza e altezza dell'immagine della tavola.\n` +
+    `Posiziona i pin dove hai realmente rilevato il problema: cartiglio in basso a destra circa x:85 y:88, viste al centro, quote nella zona dove le hai lette.\n` +
+    `Formato esatto obbligatorio (nessun testo fuori dai tag PINS):\n` +
+    `<PINS>\n` +
+    `[{"id":"p1","label":"Cartiglio","severity":"errore","x":85,"y":88,"detail":"Materiale mancante"},{"id":"p2","label":"Quota critica","severity":"attenzione","x":42,"y":35,"detail":"Ø20 senza tolleranza"}]\n` +
+    `</PINS>\n` +
+    `severity: errore (rosso), attenzione (arancione), info (blu).\n` +
+    `Inserisci solo criticita' reali trovate con evidenza. Se la tavola e' corretta, inserisci un solo pin info con il giudizio positivo.\n` +
+    `Non omettere mai il blocco PINS.\n`
   );
 }
 
-  if (analysisMode === "file") {
+  if (analysisMode === "file")
+ {
     return (
       `\n\n## MODALITÀ FILE TECNICO\n` +
       `Analizza il file caricato e produci riepilogo tecnico, problemi rilevati, dati utili e azioni consigliate.\n`
