@@ -464,19 +464,41 @@ export function DrawingPreview({ issues, previewUrl, fileName, theme, isDark }: 
           <strong>Anteprima controllo tavola</strong>
           <p style={s.muted}>{previewUrl ? `Anteprima reale: ${fileName || "tavola caricata"}` : "Carica un'immagine PNG/JPG/WebP per vedere la tavola a destra."}</p>
         </div>
-        <span style={{ ...s.previewBadge, background: badgeColor }}>{issues.length}</span>
+        <span style={{ ...s.previewBadge, background: badgeColor, display: "flex", gap: 6, alignItems: "center" }}>
+          {issues.filter(i => i.severity === "errore").length > 0 && <span>❌ {issues.filter(i => i.severity === "errore").length}</span>}
+          {issues.filter(i => i.severity === "attenzione").length > 0 && <span>⚠️ {issues.filter(i => i.severity === "attenzione").length}</span>}
+          {issues.filter(i => i.severity === "info").length > 0 && <span>✅ {issues.filter(i => i.severity === "info").length}</span>}
+        </span>
       </div>
 
       <div style={{ ...s.realDrawingPreviewBox, background: isDark ? "#0b0b0b" : "#ffffff", border: `1px solid ${theme.border}` }}>
         {previewUrl ? <img src={previewUrl} alt={fileName || "Anteprima tavola"} style={s.realDrawingPreviewImage} /> : <div style={s.noIssuesOverlay}>Nessuna anteprima immagine disponibile</div>}
-        
-
+        {previewUrl && issues.map(issue => (
+          <div
+            key={issue.id}
+            title={`${issue.label}: ${issue.detail}`}
+            style={{
+              position: "absolute",
+              left: `${issue.x}%`,
+              top: `${issue.y}%`,
+              transform: "translate(-50%, -50%)",
+              fontSize: 22,
+              lineHeight: 1,
+              cursor: "pointer",
+              filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.7))",
+              zIndex: 10,
+              userSelect: "none",
+            }}
+          >
+            {issue.severity === "errore" ? "❌" : issue.severity === "attenzione" ? "⚠️" : "✅"}
+          </div>
+        ))}
       </div>
 
       <div style={s.issueList}>
         {issues.length === 0 ? <div style={s.emptyText}>Esegui il controllo per vedere gli errori evidenziati.</div> : issues.map(issue => (
           <div key={issue.id} style={s.issueRow}>
-            <span style={{ ...s.issueDot, background: issue.severity === "errore" ? "#dc2626" : issue.severity === "attenzione" ? "#f59e0b" : "#16a34a" }} />
+            <span style={{ fontSize: 16, lineHeight: 1, marginRight: 2 }}>{issue.severity === "errore" ? "❌" : issue.severity === "attenzione" ? "⚠️" : "✅"}</span>
             <div><strong>{issue.label}</strong><p>{issue.detail}</p></div>
           </div>
         ))}
