@@ -2172,9 +2172,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
   };
 
   const renderFormattedText = (text: string) => {
-    // Riassembla blocchi \[...\] spezzati su più righe in una singola riga
-    const preprocessed = text.replace(/\\\[\n([\s\S]*?)\n\\\]/g, (_, inner) => `\\[${inner.trim()}\\]`);
-    const blocks = preprocessed.split(/(```[\s\S]*?```)/g);
+    const blocks = text.split(/(```[\s\S]*?```)/g);
 
     return blocks.map((block, index) => {
       if (!block) return null;
@@ -2187,7 +2185,40 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         );
       }
 
-      return block.split("\n").map((line, lineIndex) => {
+      // Collassa blocchi \[...\] e \(...\) spezzati su più righe
+      const collapseLatexBlocks = (s: string): string => {
+        const result: string[] = [];
+        const rawLines = s.split("\n");
+        let i = 0;
+        while (i < rawLines.length) {
+          const trimmed = rawLines[i].trim();
+          if (trimmed === "\\[") {
+            const collected: string[] = [];
+            i++;
+            while (i < rawLines.length && rawLines[i].trim() !== "\\]") {
+              collected.push(rawLines[i]);
+              i++;
+            }
+            result.push("\\[" + collected.join(" ").trim() + "\\]");
+            i++; // skip the \]
+          } else if (trimmed === "\\(") {
+            const collected: string[] = [];
+            i++;
+            while (i < rawLines.length && rawLines[i].trim() !== "\\)") {
+              collected.push(rawLines[i]);
+              i++;
+            }
+            result.push("\\(" + collected.join(" ").trim() + "\\)");
+            i++;
+          } else {
+            result.push(rawLines[i]);
+            i++;
+          }
+        }
+        return result.join("\n");
+      };
+      const collapsedBlock = collapseLatexBlocks(block);
+      return collapsedBlock.split("\n").map((line, lineIndex) => {
         const trimmed = line.trim();
         const key = `${index}-${lineIndex}`;
 
