@@ -2172,7 +2172,9 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
   };
 
   const renderFormattedText = (text: string) => {
-    const blocks = text.split(/(```[\s\S]*?```)/g);
+    // Riassembla blocchi \[...\] spezzati su più righe in una singola riga
+    const preprocessed = text.replace(/\\\[\n([\s\S]*?)\n\\\]/g, (_, inner) => `\\[${inner.trim()}\\]`);
+    const blocks = preprocessed.split(/(```[\s\S]*?```)/g);
 
     return blocks.map((block, index) => {
       if (!block) return null;
