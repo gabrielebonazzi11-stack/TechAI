@@ -2974,7 +2974,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           {iconBtn("＋", "Nuova", createNewChat)}
           <div style={{ ...s.toolsGroup, background: theme.surface, border: `1px solid ${theme.border}` }}>
             {sidebarOpen && <div style={{ ...s.toolsTitle, color: theme.primary }}>Strumenti tecnici</div>}
-            {iconBtn("✓", "Checklist", () => setShowChecklist(true))}
+            {*iconBtn("✓", "Checklist", () => setShowChecklist(true))}
             {iconBtn("∑", "Verifica", () => setShowQuickCalc(true))}
             {iconBtn("📐", "Calcoli", () => setShowComponentCalculator(true))}
             {iconBtn("▦", "Materiali", () => setShowMaterials(true))}
