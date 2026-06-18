@@ -138,6 +138,9 @@ REGOLE DI APPROFONDIMENTO TECNICO:
 - Per componenti meccanici indica: funzione, sollecitazioni principali, controlli da fare, norme/riferimenti e dati necessari per confermare.
 - Non inventare dati mancanti: quando un dato non c'è, dichiaralo e spiega come recuperarlo o verificarlo.
 - Sii diretto, ma non superficiale: preferisci una risposta tecnica corposa rispetto a una risposta minimale.
+- Le risposte devono essere COMPLETE: non troncare calcoli, procedure o elenchi a meta'.
+- Quando spieghi una formula, mostra sempre la sostituzione numerica con i valori disponibili.
+- Per domande pratiche di progettazione dai sempre valori concreti, non solo principi generali.
 `;
 
 function jsonResponse(data: unknown, status = 200) {
@@ -453,12 +456,12 @@ ${analysisMode}`.toLowerCase();
     reasons.push("richiesta articolata");
   }
 
-  if (message.length < 220 && score <= 1) {
+  if (message.length < 120 && score <= 1) {
     return {
       level: "fast",
       model: fastModel,
-      maxTokens: 1000,
-      timeoutMs: 22000,
+      maxTokens: 1800,
+      timeoutMs: 28000,
       reason: "domanda breve/semplice",
     };
   }
@@ -476,8 +479,8 @@ ${analysisMode}`.toLowerCase();
   return {
     level: "medium",
     model: mediumModel,
-    maxTokens: 2400,
-    timeoutMs: 36000,
+    maxTokens: 3600,
+    timeoutMs: 44000,
     reason: reasons.join(", ") || "richiesta media",
   };
 }
@@ -645,7 +648,7 @@ function buildCompactTechAiSystemPrompt(params: {
     `REGOLE RISPOSTA:\n` +
     `- Rispondi nella stessa lingua dell'utente.\n` +
     `- Sii diretto, ordinato, tecnico, pratico e approfondito quando l'argomento lo richiede.\n` +
-    `- Usa formule leggibili senza Markdown grezzo visibile.\n` +
+    `- Scrivi le formule in LaTeX: \\( formula \\) per inline, \\[ formula \\] per display su riga dedicata. Esempio corretto: \\( \\sigma_{id} = \\sqrt{\\sigma^2 + 3\\tau^2} \\). Non usare Markdown grezzo visibile.\n` +
     `- Cita sempre le unità di misura.\n` +
     `- Se mancano dati, dichiarali, non inventare e spiega quali dati servono.\n` +
     `- Se la richiesta riguarda codice, dai modifiche precise e copiabili.\n` +
@@ -671,7 +674,7 @@ function buildFullTechAiSystemPrompt(params: {
   return (
     `Sei TechAI, copilot tecnico per ingegneria meccanica industriale. Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo scelta: ${route.reason}. Modalità: ${analysisMode}.\n` +
-    `Rispondi in italiano, tecnico, preciso e approfondito. Usa notazione chiara per formule, ma senza Markdown grezzo visibile. Cita sempre le unità. Se mancano dati, dichiarali e spiega quali servono.\n` +
+    `Rispondi in italiano, tecnico, preciso e approfondito. Per le formule usa LaTeX: \\( formula \\) per inline, \\[ formula \\] per display. Esempio: \\( \\sigma_{id} = \\sqrt{\\sigma^2 + 3\\tau^2} \\). Non usare Markdown grezzo visibile per il resto. Cita sempre le unità. Se mancano dati, dichiarali e spiega quali servono.\n` +
     `Se la richiesta riguarda codice, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES +
