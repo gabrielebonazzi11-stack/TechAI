@@ -16,7 +16,6 @@ import katex from "katex";
 import type {
 
   
-  
   UserProfile,
   PendingFile,
   Message,
@@ -2171,10 +2170,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
     return parts;
   };
 
-  TSEOF
-
-echo "Block written, lines: $(wc -l < /tmp/renderlatex_block.tsx)"
-grep "const regex" /tmp/renderlatex_block.tsx  const renderFormattedText = (text: string) => {
+  const renderFormattedText = (text: string) => {
     const blocks = text.split(/(```[\s\S]*?```)/g);
 
     return blocks.map((block, index) => {
