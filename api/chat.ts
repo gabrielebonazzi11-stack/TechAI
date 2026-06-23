@@ -767,6 +767,9 @@ function isAllowedTechnicalScope(params: {
     : "";
 
   const text = `${message}\n${recentContext}`.trim();
+  // messageOnly: solo il messaggio corrente, senza contesto storico
+  // Usato per blockedPatterns per evitare falsi positivi da nomi progetto
+  const messageOnly = message.trim();
 
   // Se è stato caricato un file o l'utente è in una modalità tecnica specifica,
   // la richiesta viene considerata interna allo scopo di TechAI.
@@ -825,7 +828,7 @@ function isAllowedTechnicalScope(params: {
     /\bviaggio\b/,
   ];
 
-  if (blockedPatterns.some((pattern) => pattern.test(text))) {
+  if (blockedPatterns.some((pattern) => pattern.test(messageOnly))) {
     return { allowed: false, reason: "tema esplicitamente fuori ambito" };
   }
 
