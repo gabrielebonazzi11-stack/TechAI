@@ -648,19 +648,17 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
 
     `PINS_JSON (obbligatorio, sempre alla fine della risposta):\n` +
 
-    `Dopo tutto il testo di analisi, scrivi un blocco JSON racchiuso esattamente tra i tag <PINS> e </PINS>.\n` +
-    `Ogni pin rappresenta una criticita' o punto di interesse posizionato sulla tavola.\n` +
-    `x e y sono coordinate percentuali (0-100) rispetto a larghezza e altezza dell'immagine della tavola.\n` +
-    `Posiziona i pin dove hai realmente rilevato il problema: cartiglio in basso a destra circa x:85 y:88, viste al centro, quote nella zona dove le hai lette.\n` +
-    `Formato esatto obbligatorio (nessun testo fuori dai tag PINS):\n` +
+    `Dopo tutto il testo scrivi un blocco JSON tra i tag <PINS> e </PINS>.\n` +
+    `USA SOLO il campo zona. NON usare x o y.\n` +
+    `Metti un pin per ogni criticita' distinta trovata nella tavola.\n` +
+    `Valori zona disponibili:\n` +
+    `cartiglio=zona cartiglio generica, cartiglio_materiale=materiale errato/mancante, cartiglio_scala=scala errata, vista_principale=vista frontale, vista_destra=vista laterale destra, vista_alto=vista dall'alto, sezione_aa=sezione A-A, sezione_bb=altre sezioni, quotatura=quote errate/mancanti, tolleranze=tolleranze dimensionali errate/mancanti, rugosita=rugosita errata/mancante, fori_filetti=problemi su fori o filetti, note_generali=note tecniche.\n` +
+    `Formato esatto (usa zona, NON usare x o y):\n` +
     `<PINS>\n` +
-    `[{"id":"p1","label":"Cartiglio","severity":"errore","zona":"cartiglio","detail":"Materiale mancante nel cartiglio"},{"id":"p2","label":"Tolleranza H7","severity":"attenzione","zona":"quotatura","detail":"Ø20 senza tolleranza specificata"}]\n` +
+    `[{"id":"p1","label":"Tolleranze geometriche","severity":"errore","zona":"tolleranze","detail":"Mancano GD&T sulle superfici funzionali"},{"id":"p2","label":"Rugosita superfici","severity":"attenzione","zona":"rugosita","detail":"Ra non specificato sulle sedi"}]\n` +
     `</PINS>\n` +
-    `severity: errore, attenzione, info.\n` +
-    `zona: usa SEMPRE il campo zona con uno di questi valori esatti (in base a dove hai trovato il problema nella tavola):\n` +
-    `cartiglio, cartiglio_materiale, cartiglio_scala, vista_principale, vista_destra, vista_alto, sezione_aa, sezione_bb, quotatura, tolleranze, rugosita, fori_filetti, note_generali\n` +
-    `Scegli la zona in base a dove hai REALMENTE visto il problema: se manca il materiale nel cartiglio usa zona:cartiglio_materiale, se le quote sono sbagliate usa zona:quotatura, ecc.\n` +
-    `Inserisci solo criticita' reali. Se la tavola e' corretta, inserisci un solo pin info con zona:cartiglio e giudizio positivo.\n` +
+    `severity: errore=critico, attenzione=da verificare, info=positivo.\n` +
+    `Se la tavola e' corretta, inserisci un solo pin info con zona:cartiglio.\n` +
     `Non omettere mai il blocco PINS.\n`
   );
 }
