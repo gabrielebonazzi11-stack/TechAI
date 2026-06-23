@@ -1836,6 +1836,51 @@ async function incrementGuestUsage(supabase: any, guestId: string, hasFile: bool
   };
 }
 
+// ── Detector: l'utente vuole generare un'immagine? ──
+function isImageGenerationRequest(message: string): boolean {
+  const lower = message.toLowerCase();
+  const triggers = [
+    "genera un'immagine", "genera immagine", "genera una foto",
+    "disegna", "crea un'immagine", "crea una foto", "crea un disegno",
+    "mostrami un'immagine", "mostrami una foto", "mostrami un disegno",
+    "genera un render", "crea un render", "visualizza",
+    "genera uno schema", "crea uno schema",
+    "image of", "draw me", "generate an image", "create an image",
+  ];
+  return triggers.some(t => lower.includes(t));
+}
+
+// ── Chiamata DALL-E 3 ──
+async function callDallE(prompt: string, apiKey: string): Promise<string> {
+  const model = process.env.OPENAI_IMAGE_MODEL || "dall-e-3";
+  const size = "1024x1024";
+
+  const res = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      prompt,
+      n: 1,
+      size,
+      response_format: "url",
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`DALL-E error ${res.status}: ${err}`);
+  }
+
+  const data = await res.json();
+  const url = data?.data?.[0]?.url;
+  if (!url) throw new Error("DALL-E non ha restituito un URL immagine.");
+  return url;
+}
+
 export default async function handler(req: Request) {
   if (req.method === "GET") {
     return jsonResponse({
@@ -1913,6 +1958,28 @@ export default async function handler(req: Request) {
         blockedByScope: true,
         scopeReason: scopeCheck.reason,
       });
+    }
+
+    // ── Genera immagine con DALL-E se richiesto ──
+    const imageApiKey =
+      process.env.OPENAI_IMAGE_API_KEY ||
+      process.env.OPENAI_TEXT_API_KEY ||
+      process.env.OPENAI_API_KEY;
+
+    if (isImageGenerationRequest(body.message) && imageApiKey) {
+      try {
+        const imageUrl = await callDallE(body.message, imageApiKey);
+        const imageAnswer = `IMAGE_RESULT:${imageUrl}`;
+        if (auth.mode === "user") {
+          await incrementUserUsage(auth.supabase, auth.userId);
+          return jsonResponse({ answer: imageAnswer, mode: auth.mode, usage: null });
+        } else {
+          const usage = await incrementGuestUsage(auth.supabase, auth.guestId, body.hasFile);
+          return jsonResponse({ answer: imageAnswer, mode: auth.mode, usage });
+        }
+      } catch (imgErr: any) {
+        return jsonResponse({ answer: `⚠️ Errore generazione immagine: ${imgErr?.message || 'errore sconosciuto'}` });
+      }
     }
 
     const hasVisionInput =
