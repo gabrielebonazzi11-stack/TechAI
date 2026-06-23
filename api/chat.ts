@@ -714,6 +714,10 @@ function buildFullTechAiSystemPrompt(params: {
   return (
     `Sei TechAI, copilot tecnico per ingegneria meccanica industriale. Utente: ${userName}. Focus: ${focus}.\n` +
     `Livello selezionato automaticamente: ${route.level}. Motivo scelta: ${route.reason}. Modalità: ${analysisMode}.\n` +
+    `REGOLA FONDAMENTALE - AMBITO: Rispondi SOLO a domande riguardanti ingegneria meccanica, progettazione, CAD, materiali tecnici, calcoli strutturali, tolleranze, rugosità, disegno tecnico, automazione industriale, oleodinamica, pneumatica, elettronica industriale, software tecnico (React, TypeScript, API), o supporto aziendale per aziende metalmeccaniche. ` +
+    `Se la domanda riguarda storia, cultura generale, politica, sport, intrattenimento, cucina, viaggi, personaggi storici, notizie o qualsiasi argomento non tecnico-industriale, rispondi ESATTAMENTE con: ` +
+    `"Non posso aiutarti su questo argomento. TechAI è specializzato in supporto tecnico per ingegneria meccanica e aziende metalmeccaniche. Hai domande su calcoli, materiali, disegno tecnico o progettazione?" ` +
+    `Non fare eccezioni a questa regola, anche se l'utente insiste o riformula la domanda.\n` +
     `Rispondi in italiano, tecnico, preciso e approfondito. Per le formule usa LaTeX: \\( formula \\) per inline, \\[ formula \\] per display. Esempio: \\( \\sigma_{id} = \\sqrt{\\sigma^2 + 3\\tau^2} \\). Non usare Markdown grezzo visibile per il resto. Cita sempre le unità. Se mancano dati, dichiarali e spiega quali servono.\n` +
     `Se la richiesta riguarda codice, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
     TECHNICAL_STANDARDS_RULES +
@@ -750,102 +754,19 @@ function normalizeForScope(value: string) {
     .replace(/[\u0300-\u036f]/g, " ");
 }
 
-async function isAllowedTechnicalScope(params: {
+function isAllowedTechnicalScope(params: {
   message: string;
   messages: ChatMessage[];
   hasFile: boolean;
   analysisMode: AnalysisMode;
-}): Promise<ScopeCheckResult> {
-  const message = normalizeForScope(params.message);
-
-  // File allegato o modalità tecnica specifica → sempre consentito
-  if (params.hasFile) {
-    return { allowed: true, reason: "file allegato" };
-  }
-  if (params.analysisMode !== "chat") {
-    return { allowed: true, reason: `modalità tecnica ${params.analysisMode}` };
-  }
-
-  // Messaggi di servizio molto brevi → consentiti senza classificazione
-  const servicePatterns = [
-    /\bciao\b/, /\bsalve\b/, /\bbuongiorno\b/, /\bbuonasera\b/,
-    /\bhelp\b/, /\baiuto\b/, /\bcosa sai fare\b/, /\bcome funziona\b/,
-    /\bfunzioni\b/, /\bspiegami il sito\b/, /\btechai\b/,
-  ];
-  if (servicePatterns.some(p => p.test(message))) {
-    return { allowed: true, reason: "messaggio di servizio" };
-  }
-
-  // Messaggi molto brevi di follow-up ("sì", "no", "ok", "dimmi", "parlami di lui" ecc.)
-  // → consentiti se la conversazione recente era tecnica
-  if (params.message.trim().split(/\s+/).length <= 6) {
-    const recentText = Array.isArray(params.messages)
-      ? params.messages.slice(-4).map(m => m?.text || "").join(" ").toLowerCase()
-      : "";
-    const technicalInContext = [
-      "albero", "perno", "acciaio", "tolleranza", "foro", "filetto", "cuscinetto",
-      "verifica", "calcolo", "materiale", "tavola", "disegno", "progetto",
-      "componente", "forza", "pressione", "tensione", "flessione", "torsione",
-    ].some(kw => recentText.includes(kw));
-    if (technicalInContext) {
-      return { allowed: true, reason: "follow-up in contesto tecnico" };
-    }
-  }
-
-  // Classificatore AI: gpt-4o-mini con max 5 token
-  // Chiede semplicemente "SI" o "NO" se la domanda riguarda ingegneria/meccanica/industria
-  try {
-    const apiKey = process.env.OPENAI_TEXT_API_KEY || process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      // Fallback senza API key: permetti tutto
-      return { allowed: true, reason: "classificatore non disponibile" };
-    }
-
-    const recentContext = Array.isArray(params.messages)
-      ? params.messages.slice(-3).map(m => `${m.role}: ${m.text}`).join("\n")
-      : "";
-
-    const classifierPrompt =
-      "Sei un classificatore di messaggi per TechAI, un assistente tecnico per aziende metalmeccaniche.\n" +
-      "Il tuo compito è decidere se il messaggio dell'utente riguarda ingegneria meccanica, automazione industriale, " +
-      "materiali tecnici, calcoli strutturali, disegno tecnico, oleodinamica, elettronica industriale, " +
-      "software tecnico, o supporto all'azienda metalmeccanica.\n" +
-      "Rispondi SOLO con la parola SI oppure NO. Nessun altro testo.\n\n" +
-      (recentContext ? `Contesto recente:\n${recentContext}\n\n` : "") +
-      `Messaggio utente: ${params.message}`;
-
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        max_tokens: 5,
-        temperature: 0,
-        messages: [{ role: "user", content: classifierPrompt }],
-      }),
-    });
-
-    if (!res.ok) {
-      // Se il classificatore fallisce, permetti la richiesta (fail-open)
-      return { allowed: true, reason: "classificatore non raggiungibile" };
-    }
-
-    const data = await res.json();
-    const answer = (data?.choices?.[0]?.message?.content || "SI").trim().toUpperCase();
-    const allowed = answer.startsWith("SI") || answer.startsWith("SÌ") || answer.startsWith("YES");
-
-    return {
-      allowed,
-      reason: allowed ? "classificatore AI: argomento tecnico" : "classificatore AI: argomento fuori ambito",
-    };
-  } catch {
-    // Fail-open: se il classificatore crasha, non blocchiamo l'utente
-    return { allowed: true, reason: "classificatore in errore, accesso consentito" };
-  }
+}): ScopeCheckResult {
+  // Il filtro principale è nel system prompt del modello.
+  // Qui blocchiamo solo casi palesemente fuori ambito per risparmiare token.
+  if (params.hasFile) return { allowed: true, reason: "file allegato" };
+  if (params.analysisMode !== "chat") return { allowed: true, reason: `modalità ${params.analysisMode}` };
+  return { allowed: true, reason: "valutazione delegata al modello" };
 }
+
 
 function cleanAiOutput(text: string) {
   const withoutMarkdown = String(text || "")
@@ -1791,7 +1712,7 @@ export default async function handler(req: Request) {
       return auth.response;
     }
 
-    const scopeCheck = await isAllowedTechnicalScope({
+    const scopeCheck = isAllowedTechnicalScope({
       message: body.message,
       messages: body.messages,
       hasFile: body.hasFile,
