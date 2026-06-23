@@ -2682,9 +2682,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                     </div>
 
                     <div style={{ fontSize: 15.5, lineHeight: 1.7 }}>
-                      {message.text.startsWith("IMAGE_RESULT:") ? (
-                        <img src={message.text.replace("IMAGE_RESULT:", "")} alt="Immagine generata" style={{ maxWidth: "100%", borderRadius: 10 }} />
-                      ) : renderFormattedText(message.text)}
+                      {renderFormattedText(message.text)}
                     </div>
 
                     {message.fileAttachment && (
@@ -3138,16 +3136,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                           boxShadow: isSelectedForProject ? `0 0 0 2px ${theme.primary}` : undefined,
                         }}
                       >
-                        {message.text.startsWith("IMAGE_RESULT:") ? (
-                          <div style={{ padding: "4px 0" }}>
-                            <img
-                              src={message.text.replace("IMAGE_RESULT:", "")}
-                              alt="Immagine generata da TechAI"
-                              style={{ maxWidth: "100%", borderRadius: 12, display: "block" }}
-                            />
-                            <div style={{ ...s.muted, marginTop: 6, fontSize: 12 }}>🎨 Immagine generata con DALL-E 3</div>
-                          </div>
-                        ) : renderFormattedText(message.text)}
+                        {renderFormattedText(message.text)}
                         {message.fileAttachment && <div style={s.attachmentBox}>📄 {message.fileAttachment.name} · {(message.fileAttachment.size / 1024).toFixed(1)} KB</div>}
                       </div>
                     </div>
