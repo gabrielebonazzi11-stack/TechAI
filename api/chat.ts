@@ -750,211 +750,102 @@ function normalizeForScope(value: string) {
     .replace(/[\u0300-\u036f]/g, " ");
 }
 
-function isAllowedTechnicalScope(params: {
+async function isAllowedTechnicalScope(params: {
   message: string;
   messages: ChatMessage[];
   hasFile: boolean;
   analysisMode: AnalysisMode;
-}): ScopeCheckResult {
+}): Promise<ScopeCheckResult> {
   const message = normalizeForScope(params.message);
-  const recentContext = Array.isArray(params.messages)
-    ? normalizeForScope(
-        params.messages
-          .slice(-5)
-          .map((m) => m?.text || "")
-          .join("\n")
-      )
-    : "";
 
-  const text = `${message}\n${recentContext}`.trim();
-  // messageOnly: solo il messaggio corrente, senza contesto storico
-  // Usato per blockedPatterns per evitare falsi positivi da nomi progetto
-  const messageOnly = message.trim();
-
-  // Se è stato caricato un file o l'utente è in una modalità tecnica specifica,
-  // la richiesta viene considerata interna allo scopo di TechAI.
+  // File allegato o modalità tecnica specifica → sempre consentito
   if (params.hasFile) {
     return { allowed: true, reason: "file allegato" };
   }
-
   if (params.analysisMode !== "chat") {
     return { allowed: true, reason: `modalità tecnica ${params.analysisMode}` };
   }
 
-  // Permette messaggi brevi di servizio senza obbligare l'utente a scrivere parole tecniche.
+  // Messaggi di servizio molto brevi → consentiti senza classificazione
   const servicePatterns = [
-    /\bciao\b/,
-    /\bsalve\b/,
-    /\bbuongiorno\b/,
-    /\bbuonasera\b/,
-    /\bhelp\b/,
-    /\baiuto\b/,
-    /\bcosa sai fare\b/,
-    /\bcome funziona\b/,
-    /\bfunzioni\b/,
-    /\bspiegami il sito\b/,
-    /\btechai\b/,
+    /\bciao\b/, /\bsalve\b/, /\bbuongiorno\b/, /\bbuonasera\b/,
+    /\bhelp\b/, /\baiuto\b/, /\bcosa sai fare\b/, /\bcome funziona\b/,
+    /\bfunzioni\b/, /\bspiegami il sito\b/, /\btechai\b/,
   ];
-
-  if (servicePatterns.some((pattern) => pattern.test(text))) {
-    return { allowed: true, reason: "messaggio di servizio o onboarding" };
+  if (servicePatterns.some(p => p.test(message))) {
+    return { allowed: true, reason: "messaggio di servizio" };
   }
 
-  // Blocchi espliciti: servono a evitare che il modello risponda a temi palesemente fuori scopo.
-  const blockedPatterns = [
-    /\bnapoleone\b/,
-    /\bimperatore\b/,
-    /\bstoria\b/,
-    /\bguerra mondiale\b/,
-    /\bcalcio\b/,
-    /\bserie a\b/,
-    /\bchampions\b/,
-    /\bfilm\b/,
-    /\bserie tv\b/,
-    /\bmusica\b/,
-    /\bcantante\b/,
-    /\battore\b/,
-    /\battrice\b/,
-    /\boroscopo\b/,
-    /\bpolitica\b/,
-    /\bpresidente\b/,
-    /\bricetta\b/,
-    /\bcucina\b/,
-    /\binstagram\b/,
-    /\btiktok\b/,
-    /\brelazione amorosa\b/,
-    /\bfidanzata\b/,
-    /\bvacanza\b/,
-    /\bviaggio\b/,
-  ];
-
-  if (blockedPatterns.some((pattern) => pattern.test(messageOnly))) {
-    return { allowed: false, reason: "tema esplicitamente fuori ambito" };
+  // Messaggi molto brevi di follow-up ("sì", "no", "ok", "dimmi", "parlami di lui" ecc.)
+  // → consentiti se la conversazione recente era tecnica
+  if (params.message.trim().split(/\s+/).length <= 6) {
+    const recentText = Array.isArray(params.messages)
+      ? params.messages.slice(-4).map(m => m?.text || "").join(" ").toLowerCase()
+      : "";
+    const technicalInContext = [
+      "albero", "perno", "acciaio", "tolleranza", "foro", "filetto", "cuscinetto",
+      "verifica", "calcolo", "materiale", "tavola", "disegno", "progetto",
+      "componente", "forza", "pressione", "tensione", "flessione", "torsione",
+    ].some(kw => recentText.includes(kw));
+    if (technicalInContext) {
+      return { allowed: true, reason: "follow-up in contesto tecnico" };
+    }
   }
 
-  const allowedPatterns = [
-    // Programmazione / informatica
-    /\bcodice\b/,
-    /\bprogramma\b/,
-    /\bprogrammazione\b/,
-    /\binformatica\b/,
-    /\bsoftware\b/,
-    /\btypescript\b/,
-    /\bjavascript\b/,
-    /\breact\b/,
-    /\btsx\b/,
-    /\bjsx\b/,
-    /\bapi\b/,
-    /\bbackend\b/,
-    /\bfrontend\b/,
-    /\bdebug\b/,
-    /\berrore\b/,
-    /\bbuild\b/,
-    /\bdeploy\b/,
-    /\bvercel\b/,
-    /\bsupabase\b/,
-    /\bopenai\b/,
-    /\bdatabase\b/,
-    /\bserver\b/,
-    /\bruntime\b/,
-    /\bfunzione\b/,
-    /\bscript\b/,
-    /\bjson\b/,
-    /\bcsv\b/,
+  // Classificatore AI: gpt-4o-mini con max 5 token
+  // Chiede semplicemente "SI" o "NO" se la domanda riguarda ingegneria/meccanica/industria
+  try {
+    const apiKey = process.env.OPENAI_TEXT_API_KEY || process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      // Fallback senza API key: permetti tutto
+      return { allowed: true, reason: "classificatore non disponibile" };
+    }
 
-    // Ingegneria / meccanica / CAD
-    /\bingegneria\b/,
-    /\bmeccanica\b/,
-    /\bprogettazione\b/,
-    /\btavola\b/,
-    /\bdisegno tecnico\b/,
-    /\bcad\b/,
-    /\binventor\b/,
-    /\bsolidworks\b/,
-    /\bstep\b/,
-    /\bstp\b/,
-    /\bassiem[ei]\b/,
-    /\bcomponente\b/,
-    /\bpezzo\b/,
-    /\bmateriale\b/,
-    /\bmateriali\b/,
-    /\bacciaio\b/,
-    /\balluminio\b/,
-    /\bbronzo\b/,
-    /\botton[ei]\b/,
-    /\bptfe\b/,
-    /\bteflon\b/,
-    /\bboccola\b/,
-    /\bbronzina\b/,
-    /\bcuscinetto\b/,
-    /\bvite\b/,
-    /\bbullone\b/,
-    /\bmolla\b/,
-    /\balbero\b/,
-    /\bingranaggio\b/,
-    /\blinguetta\b/,
-    /\bperno\b/,
-    /\bflangia\b/,
-    /\bquota\b/,
-    /\bquote\b/,
-    /\btolleranza\b/,
-    /\btolleranze\b/,
-    /\brugosita\b/,
-    /\br[a-z]?\s*[0-9]/,
-    /\bgd&t\b/,
-    /\bdatum\b/,
-    /\bcartiglio\b/,
-    /\bsezione\b/,
-    /\bforo\b/,
-    /\bfiletto\b/,
-    /\blamatura\b/,
-    /\bsvasatura\b/,
+    const recentContext = Array.isArray(params.messages)
+      ? params.messages.slice(-3).map(m => `${m.role}: ${m.text}`).join("\n")
+      : "";
 
-    // Calcoli tecnici / fisica applicata
-    /\bcalcolo\b/,
-    /\bcalcola\b/,
-    /\bdimensiona\b/,
-    /\bdimensionamento\b/,
-    /\bverifica\b/,
-    /\bforza\b/,
-    /\bmomento\b/,
-    /\bpressione\b/,
-    /\btensione\b/,
-    /\bresistenza\b/,
-    /\bfatica\b/,
-    /\bflessione\b/,
-    /\btorsione\b/,
-    /\btaglio\b/,
-    /\bvon mises\b/,
-    /\btresca\b/,
-    /\bgoodman\b/,
-    /\bsoderberg\b/,
-    /\bformula\b/,
-    /\bmatematica\b/,
-    /\bfisica\b/,
+    const classifierPrompt =
+      "Sei un classificatore di messaggi per TechAI, un assistente tecnico per aziende metalmeccaniche.\n" +
+      "Il tuo compito è decidere se il messaggio dell'utente riguarda ingegneria meccanica, automazione industriale, " +
+      "materiali tecnici, calcoli strutturali, disegno tecnico, oleodinamica, elettronica industriale, " +
+      "software tecnico, o supporto all'azienda metalmeccanica.\n" +
+      "Rispondi SOLO con la parola SI oppure NO. Nessun altro testo.\n\n" +
+      (recentContext ? `Contesto recente:\n${recentContext}\n\n` : "") +
+      `Messaggio utente: ${params.message}`;
 
-    // Automazione / elettronica
-    /\bautomazione\b/,
-    /\belettronica\b/,
-    /\boleodinamica\b/,
-    /\boleoidraulica\b/,
-    /\bpneumatica\b/,
-    /\bplc\b/,
-    /\btwincat\b/,
-    /\bfesto\b/,
-    /\bvalvola\b/,
-    /\bcilindro\b/,
-    /\bsensore\b/,
-    /\battuator[ei]\b/,
-  ];
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        max_tokens: 5,
+        temperature: 0,
+        messages: [{ role: "user", content: classifierPrompt }],
+      }),
+    });
 
-  if (allowedPatterns.some((pattern) => pattern.test(text))) {
-    return { allowed: true, reason: "keyword tecnica rilevata" };
+    if (!res.ok) {
+      // Se il classificatore fallisce, permetti la richiesta (fail-open)
+      return { allowed: true, reason: "classificatore non raggiungibile" };
+    }
+
+    const data = await res.json();
+    const answer = (data?.choices?.[0]?.message?.content || "SI").trim().toUpperCase();
+    const allowed = answer.startsWith("SI") || answer.startsWith("SÌ") || answer.startsWith("YES");
+
+    return {
+      allowed,
+      reason: allowed ? "classificatore AI: argomento tecnico" : "classificatore AI: argomento fuori ambito",
+    };
+  } catch {
+    // Fail-open: se il classificatore crasha, non blocchiamo l'utente
+    return { allowed: true, reason: "classificatore in errore, accesso consentito" };
   }
-
-  return { allowed: false, reason: "nessun riferimento tecnico rilevato" };
 }
-
 
 function cleanAiOutput(text: string) {
   const withoutMarkdown = String(text || "")
@@ -1900,7 +1791,7 @@ export default async function handler(req: Request) {
       return auth.response;
     }
 
-    const scopeCheck = isAllowedTechnicalScope({
+    const scopeCheck = await isAllowedTechnicalScope({
       message: body.message,
       messages: body.messages,
       hasFile: body.hasFile,
