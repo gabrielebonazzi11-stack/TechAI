@@ -621,7 +621,33 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
     `- Se non leggi la rugosità, scrivi: rugosità non rilevabile dall'immagine.\n` +
     `- Se non vedi tolleranze, non dire che sono sbagliate: scrivi tolleranze non rilevabili o non presenti nella porzione leggibile.\n` +
 
+    `KNOWLEDGE BASE TOLLERANZE E RUGOSITA' (usa per SUGGERIRE valori concreti, non solo segnalare mancanze):\n` +
+    `Accoppiamenti tipici ISO 286:\n` +
+    `- Sede cuscinetto a sfera/rulli (foro): H7 - esempio: Diametro30 H7\n` +
+    `- Albero per cuscinetto a sfera: k6 o js6 - esempio: Diametro30 k6\n` +
+    `- Albero per cuscinetto a rulli: m6 o n6\n` +
+    `- Accoppiamento scorrevole senza gioco: H7/g6 o H7/f7\n` +
+    `- Accoppiamento girevole libero: H7/e8\n` +
+    `- Accoppiamento fisso con interferenza leggera: H7/p6\n` +
+    `- Accoppiamento fisso con interferenza forte: H7/s6\n` +
+    `- Spine cilindriche: H7/n6 o H7/m6\n` +
+    `- Filetti standard: 6H (foro) / 6g (vite)\n` +
+    `Rugosita Ra raccomandata per tipo di superficie:\n` +
+    `- Sedi cuscinetti: Ra minore uguale 0.8 micrometri\n` +
+    `- Tenute O-ring e guarnizioni: Ra tra 0.4 e 0.8 micrometri\n` +
+    `- Superfici di scorrimento e guide: Ra minore uguale 1.6 micrometri\n` +
+    `- Superfici funzionali generali (appoggi, battute): Ra minore uguale 3.2 micrometri\n` +
+    `- Filetti, raccordi, superfici secondarie: Ra minore uguale 6.3 micrometri\n` +
+    `- Superfici non funzionali: Ra minore uguale 12.5 micrometri\n` +
+    `Tolleranze geometriche tipiche ISO 1101:\n` +
+    `- Pianezza appoggi: 0.05-0.1 mm su 100 mm\n` +
+    `- Perpendicolarita spalle: 0.02-0.05 mm\n` +
+    `- Coassialita sedi cuscinetto: 0.02-0.05 mm\n` +
+    `- Posizione fori su cerchio bulloni: +/-0.1 mm o simbolo posizione con datum\n` +
+    `ISTRUZIONE FONDAMENTALE: quando vedi un foro o sede senza tolleranza specificata, SUGGERISCI il valore ISO corretto in base alla funzione dedotta dalla geometria. Quando vedi superficie funzionale senza rugosita, SUGGERISCI Ra appropriato. Non limitarti a segnalare la mancanza: dai il valore concreto.\n` +
+
     `PINS_JSON (obbligatorio, sempre alla fine della risposta):\n` +
+
     `Dopo tutto il testo di analisi, scrivi un blocco JSON racchiuso esattamente tra i tag <PINS> e </PINS>.\n` +
     `Ogni pin rappresenta una criticita' o punto di interesse posizionato sulla tavola.\n` +
     `x e y sono coordinate percentuali (0-100) rispetto a larghezza e altezza dell'immagine della tavola.\n` +
