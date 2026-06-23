@@ -149,6 +149,7 @@ import type {
     roughness: "",
     assemblyFunction: "",
     productionQuantity: "",
+    sheetFormat: "",
   });
   const [drawingExtraNotes, setDrawingExtraNotes] = useState("");
   const [lastDrawingAnalysisText, setLastDrawingAnalysisText] = useState("");
@@ -591,6 +592,7 @@ import type {
       roughness: "",
       assemblyFunction: "",
       productionQuantity: "",
+      sheetFormat: "",
     });
 
     setDrawingExtraNotes("");
@@ -2082,6 +2084,17 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         setLastDrawingAnalysisText(String(answer));
         syncGuestUsageFromBackend(data);
 
+        // ── Lookup zone semantiche → coordinate per formato foglio ──
+        const ZONE_COORDS: Record<string, Record<string, {x: number, y: number}>> = {
+          A4:{ cartiglio:{x:82,y:90},vista_principale:{x:35,y:40},sezione_aa:{x:68,y:38},sezione_bb:{x:68,y:65},quotatura:{x:50,y:22},rugosita:{x:72,y:18},tolleranze:{x:45,y:30},fori_filetti:{x:38,y:55},note_generali:{x:20,y:85},cartiglio_materiale:{x:75,y:93},cartiglio_scala:{x:88,y:93},vista_destra:{x:65,y:42},vista_alto:{x:35,y:18} },
+          A3:{ cartiglio:{x:84,y:91},vista_principale:{x:32,y:42},sezione_aa:{x:65,y:36},sezione_bb:{x:65,y:62},quotatura:{x:50,y:20},rugosita:{x:75,y:16},tolleranze:{x:45,y:28},fori_filetti:{x:35,y:55},note_generali:{x:18,y:87},cartiglio_materiale:{x:77,y:94},cartiglio_scala:{x:89,y:94},vista_destra:{x:63,y:40},vista_alto:{x:32,y:16} },
+          A2:{ cartiglio:{x:85,y:92},vista_principale:{x:28,y:44},sezione_aa:{x:62,y:35},sezione_bb:{x:62,y:60},quotatura:{x:48,y:18},rugosita:{x:76,y:14},tolleranze:{x:42,y:26},fori_filetti:{x:32,y:55},note_generali:{x:15,y:88},cartiglio_materiale:{x:78,y:95},cartiglio_scala:{x:90,y:95},vista_destra:{x:60,y:38},vista_alto:{x:28,y:14} },
+          A1:{ cartiglio:{x:86,y:92},vista_principale:{x:25,y:45},sezione_aa:{x:58,y:34},sezione_bb:{x:58,y:60},quotatura:{x:45,y:16},rugosita:{x:78,y:12},tolleranze:{x:40,y:24},fori_filetti:{x:28,y:55},note_generali:{x:12,y:88},cartiglio_materiale:{x:80,y:95},cartiglio_scala:{x:91,y:95},vista_destra:{x:56,y:37},vista_alto:{x:25,y:12} },
+          A0:{ cartiglio:{x:87,y:93},vista_principale:{x:22,y:46},sezione_aa:{x:55,y:33},sezione_bb:{x:55,y:58},quotatura:{x:42,y:14},rugosita:{x:80,y:10},tolleranze:{x:38,y:22},fori_filetti:{x:25,y:55},note_generali:{x:10,y:89},cartiglio_materiale:{x:82,y:96},cartiglio_scala:{x:92,y:96},vista_destra:{x:52,y:36},vista_alto:{x:22,y:10} },
+        };
+        const sheetFmt = (drawingForm.sheetFormat || "A3").toUpperCase();
+        const zoneMap = ZONE_COORDS[sheetFmt] || ZONE_COORDS["A3"];
+
         // ── Parsa PINS_JSON dalla risposta AI ──
         const answerText = String(answer);
         const pinsMatch = answerText.match(/<PINS>\s*([\s\S]*?)\s*<\/PINS>/i);
@@ -2090,14 +2103,18 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           try {
             const pinsData = JSON.parse(pinsMatch[1].trim());
             if (Array.isArray(pinsData)) {
-              parsedIssues = pinsData.map((p: any, i: number) => ({
-                id: String(p.id || `pin-${i}`),
-                label: String(p.label || 'Criticità'),
-                severity: ['errore','attenzione','info'].includes(p.severity) ? p.severity : 'attenzione',
-                x: Math.min(100, Math.max(0, Number(p.x) || 50)),
-                y: Math.min(100, Math.max(0, Number(p.y) || 50)),
-                detail: String(p.detail || ''),
-              }));
+              parsedIssues = pinsData.map((p: any, i: number) => {
+                const zona = String(p.zona || "").toLowerCase().replace(/[\s\-]/g, "_");
+                const coords = zona && zoneMap[zona] ? zoneMap[zona] : { x: Number(p.x) || 50, y: Number(p.y) || 50 };
+                return {
+                  id: String(p.id || `pin-${i}`),
+                  label: String(p.label || 'Criticità'),
+                  severity: ['errore','attenzione','info'].includes(p.severity) ? p.severity : 'attenzione',
+                  x: Math.min(100, Math.max(0, coords.x)),
+                  y: Math.min(100, Math.max(0, coords.y)),
+                  detail: String(p.detail || ''),
+                };
+              });
             }
           } catch { parsedIssues = []; }
         }
@@ -3660,6 +3677,21 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                 <Field label="Tipo pezzo" value={drawingForm.partType} onChange={v => updateDrawingField("partType", v)} placeholder="Albero, perno, staffa..." theme={theme} isDark={isDark} />
                 <Field label="Materiale" value={drawingForm.material} onChange={v => updateDrawingField("material", v)} placeholder="C45, S235..." theme={theme} isDark={isDark} />
                 <Field label="Quantità / lotto" value={drawingForm.productionQuantity} onChange={v => updateDrawingField("productionQuantity", v)} placeholder="1 pezzo, 100 pezzi..." theme={theme} isDark={isDark} />
+                <div>
+                  <label style={s.label}>Formato foglio <span style={{ color: "#ef4444", fontWeight: 900 }}>*</span></label>
+                  <select
+                    style={{ ...s.input, background: isDark ? "#050505" : "#fff", color: theme.text, border: `1px solid ${!drawingForm.sheetFormat ? "#ef4444" : theme.border}` }}
+                    value={drawingForm.sheetFormat}
+                    onChange={e => updateDrawingField("sheetFormat", e.target.value)}
+                  >
+                    <option value="">— Seleziona formato —</option>
+                    <option value="A4">A4 (210×297 mm)</option>
+                    <option value="A3">A3 (297×420 mm)</option>
+                    <option value="A2">A2 (420×594 mm)</option>
+                    <option value="A1">A1 (594×841 mm)</option>
+                    <option value="A0">A0 (841×1189 mm)</option>
+                  </select>
+                </div>
               </div>
               <Field label="Lavorazione prevista" value={drawingForm.manufacturing} onChange={v => updateDrawingField("manufacturing", v)} placeholder="Tornitura, fresatura..." theme={theme} isDark={isDark} />
               <Field label="Geometrie principali" value={drawingForm.mainFeatures} onChange={v => updateDrawingField("mainFeatures", v)} placeholder="Fori, cave, asole..." theme={theme} isDark={isDark} />
