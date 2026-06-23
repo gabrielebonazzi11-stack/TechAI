@@ -1943,24 +1943,7 @@ export default async function handler(req: Request) {
       return auth.response;
     }
 
-    const scopeCheck = isAllowedTechnicalScope({
-      message: body.message,
-      messages: body.messages,
-      hasFile: body.hasFile,
-      analysisMode: body.analysisMode,
-    });
-
-    if (!scopeCheck.allowed) {
-      return jsonResponse({
-        answer: OUT_OF_SCOPE_MESSAGE,
-        mode: auth.mode,
-        usage: auth.mode === "guest" ? auth.usage : null,
-        blockedByScope: true,
-        scopeReason: scopeCheck.reason,
-      });
-    }
-
-    // ── Genera immagine con DALL-E se richiesto ──
+    // ── Genera immagine con DALL-E se richiesto (PRIMA dello scope check) ──
     const imageApiKey =
       process.env.OPENAI_IMAGE_API_KEY ||
       process.env.OPENAI_TEXT_API_KEY ||
@@ -1980,6 +1963,23 @@ export default async function handler(req: Request) {
       } catch (imgErr: any) {
         return jsonResponse({ answer: `⚠️ Errore generazione immagine: ${imgErr?.message || 'errore sconosciuto'}` });
       }
+    }
+
+    const scopeCheck = isAllowedTechnicalScope({
+      message: body.message,
+      messages: body.messages,
+      hasFile: body.hasFile,
+      analysisMode: body.analysisMode,
+    });
+
+    if (!scopeCheck.allowed) {
+      return jsonResponse({
+        answer: OUT_OF_SCOPE_MESSAGE,
+        mode: auth.mode,
+        usage: auth.mode === "guest" ? auth.usage : null,
+        blockedByScope: true,
+        scopeReason: scopeCheck.reason,
+      });
     }
 
     const hasVisionInput =
