@@ -654,10 +654,13 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
     `Posiziona i pin dove hai realmente rilevato il problema: cartiglio in basso a destra circa x:85 y:88, viste al centro, quote nella zona dove le hai lette.\n` +
     `Formato esatto obbligatorio (nessun testo fuori dai tag PINS):\n` +
     `<PINS>\n` +
-    `[{"id":"p1","label":"Cartiglio","severity":"errore","x":85,"y":88,"detail":"Materiale mancante"},{"id":"p2","label":"Quota critica","severity":"attenzione","x":42,"y":35,"detail":"Ø20 senza tolleranza"}]\n` +
+    `[{"id":"p1","label":"Cartiglio","severity":"errore","zona":"cartiglio","detail":"Materiale mancante nel cartiglio"},{"id":"p2","label":"Tolleranza H7","severity":"attenzione","zona":"quotatura","detail":"Ø20 senza tolleranza specificata"}]\n` +
     `</PINS>\n` +
-    `severity: errore (rosso), attenzione (arancione), info (blu).\n` +
-    `Inserisci solo criticita' reali trovate con evidenza. Se la tavola e' corretta, inserisci un solo pin info con il giudizio positivo.\n` +
+    `severity: errore, attenzione, info.\n` +
+    `zona: usa SEMPRE il campo zona con uno di questi valori esatti (in base a dove hai trovato il problema nella tavola):\n` +
+    `cartiglio, cartiglio_materiale, cartiglio_scala, vista_principale, vista_destra, vista_alto, sezione_aa, sezione_bb, quotatura, tolleranze, rugosita, fori_filetti, note_generali\n` +
+    `Scegli la zona in base a dove hai REALMENTE visto il problema: se manca il materiale nel cartiglio usa zona:cartiglio_materiale, se le quote sono sbagliate usa zona:quotatura, ecc.\n` +
+    `Inserisci solo criticita' reali. Se la tavola e' corretta, inserisci un solo pin info con zona:cartiglio e giudizio positivo.\n` +
     `Non omettere mai il blocco PINS.\n`
   );
 }
