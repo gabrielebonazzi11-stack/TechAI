@@ -647,19 +647,20 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
     `ISTRUZIONE FONDAMENTALE: quando vedi un foro o sede senza tolleranza specificata, SUGGERISCI il valore ISO corretto in base alla funzione dedotta dalla geometria. Quando vedi superficie funzionale senza rugosita, SUGGERISCI Ra appropriato. Non limitarti a segnalare la mancanza: dai il valore concreto.\n` +
 
     `PINS_JSON (obbligatorio, sempre alla fine della risposta):\n` +
-
-    `Dopo tutto il testo scrivi un blocco JSON tra i tag <PINS> e </PINS>.\n` +
-    `USA SOLO il campo zona. NON usare x o y.\n` +
-    `Metti un pin per ogni criticita' distinta trovata nella tavola.\n` +
-    `Valori zona disponibili:\n` +
-    `cartiglio=zona cartiglio generica, cartiglio_materiale=materiale errato/mancante, cartiglio_scala=scala errata, vista_principale=vista frontale, vista_destra=vista laterale destra, vista_alto=vista dall'alto, sezione_aa=sezione A-A, sezione_bb=altre sezioni, quotatura=quote errate/mancanti, tolleranze=tolleranze dimensionali errate/mancanti, rugosita=rugosita errata/mancante, fori_filetti=problemi su fori o filetti, note_generali=note tecniche.\n` +
-    `Formato esatto (usa zona, NON usare x o y):\n` +
+    `Alla fine della risposta scrivi un blocco JSON tra i tag <PINS> e </PINS>.\n` +
+    `REGOLA FONDAMENTALE: inserisci UN PIN SEPARATO per OGNI criticita trovata. Se hai trovato 4 problemi, inserisci 4 pin. Non raggruppare tutto in un solo pin.\n` +
+    `Ogni pin ha questi campi:\n` +
+    `- id: stringa univoca (p1, p2, p3...)\n` +
+    `- label: nome breve del problema\n` +
+    `- severity: errore (critico), attenzione (da verificare), info (nota positiva)\n` +
+    `- zona: OBBLIGATORIO, scegli tra: cartiglio, cartiglio_materiale, cartiglio_scala, vista_principale, vista_destra, vista_alto, sezione_aa, sezione_bb, quotatura, tolleranze, rugosita, fori_filetti, note_generali\n` +
+    `- detail: descrizione breve del problema (max 120 caratteri)\n` +
+    `Esempio con 3 errori trovati:\n` +
     `<PINS>\n` +
-    `[{"id":"p1","label":"Tolleranze geometriche","severity":"errore","zona":"tolleranze","detail":"Mancano GD&T sulle superfici funzionali"},{"id":"p2","label":"Rugosita superfici","severity":"attenzione","zona":"rugosita","detail":"Ra non specificato sulle sedi"}]\n` +
+    `[{"id":"p1","label":"Materiale mancante","severity":"errore","zona":"cartiglio_materiale","detail":"Materiale non indicato nel cartiglio"},{"id":"p2","label":"Tolleranze geometriche","severity":"errore","zona":"tolleranze","detail":"Assenza GD&T su superfici funzionali"},{"id":"p3","label":"Rugosita mancante","severity":"attenzione","zona":"rugosita","detail":"Ra non specificato"}]\n` +
     `</PINS>\n` +
-    `severity: errore=critico, attenzione=da verificare, info=positivo.\n` +
-    `Se la tavola e' corretta, inserisci un solo pin info con zona:cartiglio.\n` +
-    `Non omettere mai il blocco PINS.\n`
+    `Se la tavola e corretta: [{"id":"p1","label":"Tavola approvata","severity":"info","zona":"cartiglio","detail":"Nessuna criticita rilevata"}]\n` +
+    `Non omettere mai il blocco PINS. Non mettere testo fuori dai tag PINS.\n`
   );
 }
 
