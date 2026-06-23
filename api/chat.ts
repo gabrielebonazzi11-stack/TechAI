@@ -1835,14 +1835,6 @@ async function incrementGuestUsage(supabase: any, guestId: string, hasFile: bool
     windowStartedAt,
   };
 }
-
-
-  const data = await res.json();
-  const url = data?.data?.[0]?.url;
-  if (!url) throw new Error("DALL-E non ha restituito un URL immagine.");
-  return url;
-}
-
 export default async function handler(req: Request) {
   if (req.method === "GET") {
     return jsonResponse({
