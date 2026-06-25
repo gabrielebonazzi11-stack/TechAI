@@ -3026,6 +3026,13 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
   return (
     <div style={{ ...s.app, background: theme.bg, color: theme.text }}>
       <style>{globalCss}</style>
+      <style>{`
+        textarea::-webkit-scrollbar { display: none; }
+        textarea { scrollbar-width: none; -ms-overflow-style: none; }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+      `}</style>
 
       {!isLoggedIn && !showLoginPanel && !loginDismissed && <div style={s.loginScreen}>{renderLoginCard()}</div>}
 
