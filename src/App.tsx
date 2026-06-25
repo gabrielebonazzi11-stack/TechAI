@@ -1403,9 +1403,15 @@ import type {
       lines.push("Materiali salvati:");
       p.materials.slice(0, 5).forEach(m => lines.push(`  • ${m.title}${m.summary ? ": " + m.summary : ""}`));
     }
-    if (p.verifications?.length) {
+    const verifiche = (p.verifications || []).filter(v => !["calculation","solidworks","advanced"].includes(v.type));
+    const calcoli = (p.verifications || []).filter(v => ["calculation","solidworks","advanced"].includes(v.type));
+    if (verifiche.length) {
       lines.push("Verifiche salvate:");
-      p.verifications.slice(0, 5).forEach(v => lines.push(`  • ${v.title}${v.summary ? ": " + v.summary : ""}`));
+      verifiche.slice(0, 5).forEach(v => lines.push(`  • ${v.title}${v.summary ? ": " + v.summary : ""}`));
+    }
+    if (calcoli.length) {
+      lines.push("Calcoli salvati:");
+      calcoli.slice(0, 5).forEach(v => lines.push(`  • ${v.title}${v.summary ? ": " + v.summary : ""}`));
     }
     if (p.drawings?.length) {
       lines.push("Tavole analizzate:");
@@ -2556,6 +2562,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
     "Tavole",
     "Materiali",
     "Verifiche",
+    "Calcoli",
     "Decisioni",
     "Revisioni",
     "Note",
@@ -2564,12 +2571,14 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
   const getProjectMemorySections = (project: ProjectRecord | null) => {
     const p = project ? normalizeProjectRecord(project) : null;
 
+    const allVerifications = p?.verifications || [];
     return {
       chat: p?.chats || [],
       documenti: p?.documents || [],
       tavole: p?.drawings || [],
       materiali: p?.materials || [],
-      verifiche: p?.verifications || [],
+      verifiche: allVerifications.filter(v => !["calculation", "solidworks", "advanced"].includes(v.type)),
+      calcoli: allVerifications.filter(v => ["calculation", "solidworks", "advanced"].includes(v.type)),
       decisioni: p?.decisions || [],
       revisioni: p?.revisions || [],
       note: p?.notes || [],
@@ -2585,6 +2594,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
     if (tab === "Tavole") return sections.tavole;
     if (tab === "Materiali") return sections.materiali;
     if (tab === "Verifiche") return sections.verifiche;
+    if (tab === "Calcoli") return sections.calcoli;
     if (tab === "Decisioni") return sections.decisioni;
     if (tab === "Revisioni") return sections.revisioni;
     if (tab === "Note") return sections.note;
@@ -2776,6 +2786,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
       { label: "Tavole", value: sections.tavole.length },
       { label: "Materiali", value: sections.materiali.length },
       { label: "Verifiche", value: sections.verifiche.length },
+      { label: "Calcoli", value: sections.calcoli.length },
       { label: "Decisioni", value: sections.decisioni.length },
       { label: "Revisioni", value: sections.revisioni.length },
     ];
@@ -3609,7 +3620,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           projects={projects}
           activeProject={activeProject}
           addProjectItem={addProjectItem}
-          setProjectMemoryTab={setProjectMemoryTab}
+          setProjectMemoryTab={(tab: any) => setProjectMemoryTab(tab === "Verifiche" ? "Calcoli" : tab)}
         />
       )}
 
