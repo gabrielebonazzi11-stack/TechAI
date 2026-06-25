@@ -2592,6 +2592,56 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
     return sections.tutti;
   };
 
+  const openItemInTool = (item: ProjectSavedItem) => {
+    setShowProjects(false);
+
+    if (item.type === "chat") {
+      // Apre la chat salvata come nuova chat
+      const messages: Message[] = Array.isArray(item.payload?.messages) ? item.payload.messages : [];
+      const newChat = {
+        id: createId(),
+        title: item.title.slice(0, 40),
+        messages,
+        createdAt: new Date().toISOString(),
+      };
+      setChats(prev => [newChat, ...prev]);
+      setActiveChatId(newChat.id);
+      return;
+    }
+
+    if (item.type === "checklist" && item.payload?.checklistForm) {
+      setChecklistForm(item.payload.checklistForm);
+      setChecklistResults(item.payload.checklistResults || []);
+      setShowChecklist(true);
+      return;
+    }
+
+    if ((item.type === "quickcalc" || item.type === "verification") && item.payload?.quickCalcForm) {
+      setQuickCalcForm(item.payload.quickCalcForm);
+      if (item.payload.quickCalcResult) setQuickCalcResult(item.payload.quickCalcResult);
+      setShowQuickCalc(true);
+      return;
+    }
+
+    if (item.type === "drawing" && item.payload?.drawingForm) {
+      setDrawingForm(item.payload.drawingForm);
+      if (item.payload.drawingResults) setDrawingResults(item.payload.drawingResults);
+      if (item.payload.drawingIssues) setDrawingIssues(item.payload.drawingIssues);
+      if (item.payload.lastDrawingAnalysisText) setLastDrawingAnalysisText(item.payload.lastDrawingAnalysisText);
+      setShowDrawingGenerator(true);
+      return;
+    }
+
+    if (item.type === "material" && item.payload?.material) {
+      setShowMaterials(true);
+      return;
+    }
+
+    // Fallback: apre comunque il pannello più adatto
+    if (item.type === "bom") { setShowProjects(true); return; }
+    setShowProjects(true);
+  };
+
   const renderProjectItemCard = (item: ProjectSavedItem) => {
     const typeLabels: Record<string, string> = {
       chat: "Chat",
@@ -2629,6 +2679,28 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <span>{typeLabels[item.type] || item.type}</span>
+
+            {["chat", "checklist", "quickcalc", "verification", "drawing", "material"].includes(item.type) && (
+              <button
+                type="button"
+                onClick={() => openItemInTool(item)}
+                style={{
+                  border: `1px solid ${theme.primary}`,
+                  background: "transparent",
+                  color: theme.primary,
+                  borderRadius: 999,
+                  padding: "5px 10px",
+                  fontSize: 12,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                {item.type === "chat" ? "Apri in chat" :
+                 item.type === "drawing" ? "Apri in tavole" :
+                 item.type === "material" ? "Apri in materiali" :
+                 "Apri in verifica"}
+              </button>
+            )}
 
             <button
               type="button"
@@ -4122,4 +4194,3 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
     </div>
   );
 }
-    
