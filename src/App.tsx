@@ -1393,6 +1393,50 @@ import type {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const buildActiveProjectContext = (project: ProjectRecord | null): string => {
+    if (!project) return "";
+    const p = normalizeProjectRecord(project);
+    const lines: string[] = [];
+    lines.push(`[PROGETTO ATTIVO: ${p.name}${p.description ? " — " + p.description : ""}]`);
+
+    if (p.materials?.length) {
+      lines.push("Materiali salvati:");
+      p.materials.slice(0, 5).forEach(m => lines.push(`  • ${m.title}${m.summary ? ": " + m.summary : ""}`));
+    }
+    if (p.verifications?.length) {
+      lines.push("Verifiche salvate:");
+      p.verifications.slice(0, 5).forEach(v => lines.push(`  • ${v.title}${v.summary ? ": " + v.summary : ""}`));
+    }
+    if (p.drawings?.length) {
+      lines.push("Tavole analizzate:");
+      p.drawings.slice(0, 3).forEach(d => lines.push(`  • ${d.title}${d.summary ? ": " + d.summary : ""}`));
+    }
+    if (p.decisions?.length) {
+      lines.push("Decisioni di progetto:");
+      p.decisions.slice(0, 3).forEach(d => lines.push(`  • ${d.title}${d.summary ? ": " + d.summary : ""}`));
+    }
+    if (p.notes?.length) {
+      lines.push("Note:");
+      p.notes.slice(0, 3).forEach(n => lines.push(`  • ${n.title}${n.summary ? ": " + n.summary : ""}`));
+    }
+    if (p.documents?.length) {
+      lines.push("Documenti:");
+      p.documents.slice(0, 3).forEach(d => lines.push(`  • ${d.title}`));
+    }
+
+    return lines.length > 1
+      ? "
+
+[CONTESTO PROGETTO ATTIVO — usa queste informazioni per rispondere in modo contestualizzato]
+" +
+        lines.join("
+") +
+        "
+[FINE CONTESTO PROGETTO]
+"
+      : "";
+  };
+
   const callAI = async () => {
     if ((!query.trim() && !pendingFile) || loading) return;
 
@@ -1444,7 +1488,8 @@ import type {
           "\n[FINE ULTIMA ANALISI TAVOLA]\n"
         : "";
 
-      formData.append("message", text + techAiSoftwareContext + lastDrawingAnalysisContext);
+      const activeProjectContext = buildActiveProjectContext(activeProject);
+      formData.append("message", text + techAiSoftwareContext + activeProjectContext + lastDrawingAnalysisContext);
       formData.append("messages", JSON.stringify(updatedMessages.map(m => ({ role: m.role, text: m.text }))));
       formData.append("profile", JSON.stringify({ userName: user.name, focus: interest }));
       formData.append("analysisMode", "chat");
