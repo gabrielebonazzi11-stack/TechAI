@@ -91,38 +91,38 @@ import type {
   const [checklistResults, setChecklistResults] = useState<ChecklistResult[]>([]);
 
   const [quickCalcForm, setQuickCalcForm] = useState<QuickCalcForm>({
-    componentType: "albero",
-    verificationType: "flessione_torsione",
+    componentType: "",
+    verificationType: "",
     sectionType: "circolare_piena",
-    material: "C45",
+    material: "",
 
-    axialLoad: "0",
-    shearLoad: "2500",
+    axialLoad: "",
+    shearLoad: "",
     bendingMoment: "",
-    torque: "80000",
-    distance: "120",
+    torque: "",
+    distance: "",
 
-    diameter: "25",
-    outerDiameter: "40",
-    innerDiameter: "25",
+    diameter: "",
+    outerDiameter: "",
+    innerDiameter: "",
 
-    base: "30",
-    height: "50",
-    outerBase: "60",
-    outerHeight: "80",
-    innerBase: "40",
-    innerHeight: "60",
+    base: "",
+    height: "",
+    outerBase: "",
+    outerHeight: "",
+    innerBase: "",
+    innerHeight: "",
 
-    pressure: "30",
-    radius: "150",
-    thickness: "4",
+    pressure: "",
+    radius: "",
+    thickness: "",
 
-    sigmaX: "80",
-    sigmaY: "20",
-    tauXY: "30",
+    sigmaX: "",
+    sigmaY: "",
+    tauXY: "",
 
-    sigmaMax: "180",
-    sigmaMin: "20",
+    sigmaMax: "",
+    sigmaMin: "",
     fatigueLimit: "",
 
     safetyFactorRequired: "2",
@@ -130,7 +130,7 @@ import type {
   const [quickCalcResult, setQuickCalcResult] = useState<QuickCalcResult | null>(null);
   const [quickCalcSaveTitle, setQuickCalcSaveTitle] = useState("");
   const [quickCalcTargetProjectId, setQuickCalcTargetProjectId] = useState("");
-  const [quickCalcVerificationSearch, setQuickCalcVerificationSearch] = useState("Flessione + torsione");
+  const [quickCalcVerificationSearch, setQuickCalcVerificationSearch] = useState("");
 
   const [drawingReviewFile, setDrawingReviewFile] = useState<DrawingUpload | null>(null);
   const [drawingAiLoading, setDrawingAiLoading] = useState(false);
