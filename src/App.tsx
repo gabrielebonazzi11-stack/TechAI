@@ -2118,8 +2118,8 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
             }
           } catch { parsedIssues = []; }
         }
-        if (parsedIssues.length === 0) {
-          parsedIssues = [{ id: 'ai-ok', label: 'Analisi completata', severity: 'info', x: 50, y: 50, detail: 'Nessuna criticità rilevata con evidenza chiara.' }];
+        //if (parsedIssues.length === 0) {
+          //parsedIssues = [{ id: 'ai-ok', label: 'Analisi completata', severity: 'info', x: 50, y: 50, detail: 'Nessuna criticità rilevata con evidenza chiara.' }];
         }
         // Rimuovi il blocco PINS dal testo mostrato all'utente
         const cleanAnswer = answerText.replace(/<PINS>[\s\S]*?<\/PINS>/gi, '').trim();
