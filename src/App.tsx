@@ -1425,15 +1425,9 @@ import type {
     }
 
     return lines.length > 1
-      ? "
-
-[CONTESTO PROGETTO ATTIVO — usa queste informazioni per rispondere in modo contestualizzato]
-" +
-        lines.join("
-") +
-        "
-[FINE CONTESTO PROGETTO]
-"
+      ? "\n\n[CONTESTO PROGETTO ATTIVO — usa queste informazioni per rispondere in modo contestualizzato]\n" +
+        lines.join("\n") +
+        "\n[FINE CONTESTO PROGETTO]\n"
       : "";
   };
 
@@ -4128,3 +4122,4 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
     </div>
   );
 }
+    
