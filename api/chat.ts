@@ -646,8 +646,8 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
     `- Posizione fori su cerchio bulloni: +/-0.1 mm o simbolo posizione con datum\n` +
     `ISTRUZIONE FONDAMENTALE: quando vedi un foro o sede senza tolleranza specificata, SUGGERISCI il valore ISO corretto in base alla funzione dedotta dalla geometria. Quando vedi superficie funzionale senza rugosita, SUGGERISCI Ra appropriato. Non limitarti a segnalare la mancanza: dai il valore concreto.\n` +
 
-    `PINS_JSON (obbligatorio, sempre alla fine della risposta):\n` +
-    `Alla fine della risposta scrivi un blocco JSON tra i tag <PINS> e </PINS>.\n` +
+    `PINS_JSON (obbligatorio, SEMPRE ALL'INIZIO della risposta - PRIMA di qualsiasi testo):\n` +
+    `PRIMA di scrivere qualsiasi analisi, scrivi subito il blocco JSON tra i tag <PINS> e </PINS>.\n` +
     `REGOLA FONDAMENTALE: inserisci UN PIN SEPARATO per OGNI criticita trovata. Se hai trovato 4 problemi, inserisci 4 pin. Non raggruppare tutto in un solo pin.\n` +
     `Ogni pin ha questi campi:\n` +
     `- id: stringa univoca (p1, p2, p3...)\n` +
@@ -1274,7 +1274,7 @@ ${extractedPdfText.slice(0, 26000)}
             },
           ],
           temperature: 0.15,
-          max_tokens: 5500,
+          max_tokens: 8000,
         }),
       },
       openAiTimeoutMs
