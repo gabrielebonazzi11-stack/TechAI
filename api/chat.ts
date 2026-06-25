@@ -1313,7 +1313,12 @@ ${extractedPdfText.slice(0, 26000)}
     data?.choices?.[0]?.message?.content ||
     "Ho ricevuto l'immagine, ma OpenAI non ha restituito una risposta valida.";
 
-  return cleanAiOutput(visionAnswer);
+  // Estrai PINS prima di cleanAiOutput (che corromperebbe il JSON interno)
+  const pinsMatchV = visionAnswer.match(/<PINS>[\s\S]*?<\/PINS>/i);
+  const pinsBlockV = pinsMatchV ? pinsMatchV[0] : "";
+  const textWithoutPinsV = visionAnswer.replace(/<PINS>[\s\S]*?<\/PINS>/gi, "").trim();
+  const cleanTextV = cleanAiOutput(textWithoutPinsV);
+  return pinsBlockV ? `${pinsBlockV}\n\n${cleanTextV}` : cleanTextV;
 }
 
 async function checkAuthAndRateLimit(
@@ -1756,8 +1761,10 @@ export default async function handler(req: Request) {
         });
 
     // Ultima pulizia obbligatoria prima di mandare il testo al frontend.
+    // Per le risposte vision il rawAnswer è già pulito (cleanAiOutput è chiamato dentro callOpenAIVision
+    // con il blocco PINS protetto). Evitiamo di riprocessarlo per non corrompere i tag PINS.
     // Serve anche se il modello ignora il prompt e produce ancora ** o tabelle Markdown.
-    const answer = cleanAiOutput(rawAnswer);
+    const answer = hasVisionInput ? rawAnswer : cleanAiOutput(rawAnswer);
 
     let usage: any = null;
 
