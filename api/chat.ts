@@ -244,6 +244,7 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
     const file = formData.get("file");
     const preExtractedText = formData.get("fileText");
     const drawingImagesRaw = String(formData.get("drawingImages") || "[]");
+    const projectContextRaw = String(formData.get("projectContext") || "");
     const analysisMode = normalizeAnalysisMode(String(formData.get("analysisMode") || "chat"));
     const preExtractedTextClean =
       typeof preExtractedText === "string" ? preExtractedText.trim() : "";
@@ -333,6 +334,7 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
       fileMeta,
       hasFile,
       analysisMode,
+      projectContext: projectContextRaw,
     };
   }
 
@@ -675,6 +677,45 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
   return "";
 }
 
+
+function buildProjectContextSection(projectContextRaw: string): string {
+  try {
+    const p = JSON.parse(projectContextRaw);
+    if (!p?.name) return "";
+    const lines: string[] = [];
+    lines.push(`[PROGETTO ATTIVO: ${p.name}${p.description ? " — " + p.description : ""}]`);
+    if (p.materials?.length) {
+      lines.push("Materiali:");
+      p.materials.forEach((v: any) => lines.push(`  • ${v.title}${v.summary ? ": " + v.summary : ""}`));
+    }
+    if (p.verifications?.length) {
+      lines.push("Verifiche:");
+      p.verifications.forEach((v: any) => lines.push(`  • ${v.title}${v.summary ? ": " + v.summary : ""}`));
+    }
+    if (p.calcoli?.length) {
+      lines.push("Calcoli:");
+      p.calcoli.forEach((v: any) => lines.push(`  • ${v.title}${v.summary ? ": " + v.summary : ""}`));
+    }
+    if (p.drawings?.length) {
+      lines.push("Tavole:");
+      p.drawings.forEach((v: any) => lines.push(`  • ${v.title}${v.summary ? ": " + v.summary : ""}`));
+    }
+    if (p.decisions?.length) {
+      lines.push("Decisioni:");
+      p.decisions.forEach((v: any) => lines.push(`  • ${v.title}${v.summary ? ": " + v.summary : ""}`));
+    }
+    if (p.notes?.length) {
+      lines.push("Note:");
+      p.notes.forEach((v: any) => lines.push(`  • ${v.title}${v.summary ? ": " + v.summary : ""}`));
+    }
+    return lines.length > 1
+      ? "\n\n[CONTESTO PROGETTO ATTIVO]\n" + lines.join("\n") + "\n[FINE CONTESTO PROGETTO]"
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 function buildCompactTechAiSystemPrompt(params: {
   userName: string;
   focus: string;
@@ -849,6 +890,7 @@ async function callOpenAIText(params: {
   fileText: string;
   fileMeta: string;
   analysisMode: AnalysisMode;
+  projectContext?: string;
 }): Promise<string> {
   const openAiApiKey =
     process.env.OPENAI_TEXT_API_KEY ||
@@ -929,7 +971,8 @@ ${params.fileMeta}` : ""}` +
 
 ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
 
-    const systemPrompt = isFallback
+    const projectSection = params.projectContext ? buildProjectContextSection(params.projectContext) : "";
+    const systemPrompt = (isFallback
       ? buildLightSystemPrompt({
           userName,
           focus,
@@ -948,7 +991,7 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
             focus,
             route: currentRoute,
             analysisMode: params.analysisMode,
-          });
+          })) + projectSection;
 
     let response: Response;
 
@@ -1758,6 +1801,7 @@ export default async function handler(req: Request) {
           fileText: body.fileText,
           fileMeta: body.fileMeta,
           analysisMode: body.analysisMode,
+          projectContext: body.projectContext,
         });
 
     // Ultima pulizia obbligatoria prima di mandare il testo al frontend.
