@@ -481,7 +481,7 @@ export function DrawingPreview({ issues, previewUrl, fileName, theme, isDark }: 
               left: `${issue.x}%`,
               top: `${issue.y}%`,
               transform: "translate(-50%, -50%)",
-              fontSize: 22,
+              fontSize: 14,
               lineHeight: 1,
               cursor: "pointer",
               filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.7))",
@@ -517,7 +517,7 @@ const s: Record<string, React.CSSProperties> = {
   logoWrap: { display: "flex", alignItems: "center", gap: 10, minWidth: 0 },
   logoMark: { width: 34, height: 34, borderRadius: 12, color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900 },
   logoText: { fontSize: 21, fontWeight: 900, letterSpacing: -1, whiteSpace: "nowrap" },
-  collapseBtn: { width: 44, height: 44, borderRadius: 14, cursor: "pointer", fontSize: 22, background: "transparent" },
+  collapseBtn: { width: 44, height: 44, borderRadius: 14, cursor: "pointer", fontSize: 14, background: "transparent" },
   iconNav: { display: "flex", flexDirection: "column", gap: 10 },
   iconBtn: { minHeight: 44, borderRadius: 14, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, fontSize: 14, fontWeight: 800, background: "transparent", border: "1px solid transparent" },
   icon: { width: 22, textAlign: "center" },
@@ -840,7 +840,7 @@ quickMetricLabel: {
 },
 
 quickMetricValue: {
-  fontSize: 22,
+  fontSize: 14,
   lineHeight: 1.05,
   fontWeight: 950,
   letterSpacing: -0.6,
