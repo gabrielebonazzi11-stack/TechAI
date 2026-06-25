@@ -152,6 +152,7 @@ import type {
     sheetFormat: "",
   });
   const [drawingExtraNotes, setDrawingExtraNotes] = useState("");
+  const [drawingCustomQuery, setDrawingCustomQuery] = useState("");
   const [lastDrawingAnalysisText, setLastDrawingAnalysisText] = useState("");
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -3789,25 +3790,31 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
               {drawingResults.length === 0 ? <div style={{ ...s.emptyChecklist, border: `1px dashed ${theme.border}` }}>Carica una tavola e premi il pulsante di analisi, oppure compila i dati per il controllo base.</div> : drawingResults.map((item, index) => <DrawingResultCard key={index} item={item} theme={theme} isDark={isDark} renderFormattedText={renderFormattedText} />)}
 
               {drawingResults.length > 0 && (
-                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>Vuoi approfondire con TechAI?</p>
+                <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 12, background: isDark ? "#111" : "#f1f5f9", border: `1px solid ${theme.border}` }}>
+                  <p style={{ fontSize: 12, color: isDark ? "#94a3b8" : "#64748b", margin: "0 0 10px 0", fontWeight: 600, letterSpacing: "0.03em" }}>CHIEDI A TECHAI</p>
                   <button
-                    style={{ ...s.primaryBtn, background: theme.primary, color: "#fff", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}
+                    style={{ width: "100%", padding: "10px 16px", borderRadius: 8, background: theme.primary, color: "#fff", border: "none", cursor: "pointer", fontWeight: 600, fontSize: 14, marginBottom: 8 }}
                     onClick={() => askTechAIFromDrawing()}
                     type="button"
                   >
-                    💬 Chiedi a TechAI
+                    💬 Approfondisci le criticità
                   </button>
-                  <button
-                    style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}
-                    onClick={() => {
-                      const msg = window.prompt("Scrivi la tua domanda per TechAI:", "Come posso correggere le criticità trovate nella tavola?");
-                      if (msg?.trim()) askTechAIFromDrawing(msg.trim());
-                    }}
-                    type="button"
-                  >
-                    ✏️ Chiedi qualcosa di specifico...
-                  </button>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", overflow: "hidden" }}>
+                    <input
+                      style={{ flex: 1, minWidth: 0, padding: "9px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: isDark ? "#1a1a1a" : "#fff", color: isDark ? "#f1f5f9" : "#1e293b", fontSize: 13, outline: "none" }}
+                      placeholder="Scrivi una domanda specifica..."
+                      value={drawingCustomQuery}
+                      onChange={e => setDrawingCustomQuery(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && drawingCustomQuery.trim()) { askTechAIFromDrawing(drawingCustomQuery.trim()); setDrawingCustomQuery(""); } }}
+                    />
+                    <button
+                      style={{ flexShrink: 0, padding: "9px 14px", borderRadius: 8, background: drawingCustomQuery.trim() ? theme.primary : (isDark ? "#222" : "#e2e8f0"), color: drawingCustomQuery.trim() ? "#fff" : (isDark ? "#555" : "#94a3b8"), border: "none", cursor: drawingCustomQuery.trim() ? "pointer" : "default", fontWeight: 700, fontSize: 14, transition: "all 0.15s" }}
+                      onClick={() => { if (drawingCustomQuery.trim()) { askTechAIFromDrawing(drawingCustomQuery.trim()); setDrawingCustomQuery(""); } }}
+                      type="button"
+                    >
+                      ➤
+                    </button>
+                  </div>
                 </div>
               )}
 
