@@ -467,13 +467,12 @@ export function DrawingPreview({ issues, previewUrl, fileName, theme, isDark }: 
         <span style={{ ...s.previewBadge, background: badgeColor, display: "flex", gap: 6, alignItems: "center" }}>
           {issues.filter(i => i.severity === "errore").length > 0 && <span>❌ {issues.filter(i => i.severity === "errore").length}</span>}
           {issues.filter(i => i.severity === "attenzione").length > 0 && <span>⚠️ {issues.filter(i => i.severity === "attenzione").length}</span>}
-          {issues.filter(i => i.severity === "info").length > 0 && <span>✅ {issues.filter(i => i.severity === "info").length}</span>}
         </span>
       </div>
 
       <div style={{ ...s.realDrawingPreviewBox, background: isDark ? "#0b0b0b" : "#ffffff", border: `1px solid ${theme.border}` }}>
         {previewUrl ? <img src={previewUrl} alt={fileName || "Anteprima tavola"} style={s.realDrawingPreviewImage} /> : <div style={s.noIssuesOverlay}>Nessuna anteprima immagine disponibile</div>}
-        {previewUrl && issues.map(issue => (
+        {previewUrl && issues.filter(i => i.severity !== "info").map(issue => (
           <div
             key={issue.id}
             title={`${issue.label}: ${issue.detail}`}
