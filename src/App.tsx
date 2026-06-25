@@ -2637,6 +2637,11 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
       return;
     }
 
+    if (item.type === "calculation" || item.type === "solidworks" || item.type === "advanced") {
+      setShowComponentCalculator(true);
+      return;
+    }
+
     // Fallback: apre comunque il pannello più adatto
     if (item.type === "bom") { setShowProjects(true); return; }
     setShowProjects(true);
@@ -2680,7 +2685,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
             <span>{typeLabels[item.type] || item.type}</span>
 
-            {["chat", "checklist", "quickcalc", "verification", "drawing", "material"].includes(item.type) && (
+            {["chat", "checklist", "quickcalc", "verification", "drawing", "material", "calculation", "solidworks", "advanced"].includes(item.type) && (
               <button
                 type="button"
                 onClick={() => openItemInTool(item)}
@@ -2698,6 +2703,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                 {item.type === "chat" ? "Apri in chat" :
                  item.type === "drawing" ? "Apri in tavole" :
                  item.type === "material" ? "Apri in materiali" :
+                 item.type === "calculation" || item.type === "solidworks" || item.type === "advanced" ? "Apri in calcoli" :
                  "Apri in verifica"}
               </button>
             )}
