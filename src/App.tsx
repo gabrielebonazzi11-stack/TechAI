@@ -1973,6 +1973,16 @@ import type {
     if (drawingReviewInputRef.current) drawingReviewInputRef.current.value = "";
   };
 
+  const askTechAIFromDrawing = (customMessage?: string) => {
+    const analysisContext = lastDrawingAnalysisText.trim();
+    const message = customMessage ||
+      (analysisContext
+        ? "Sulla base dell'analisi della tavola appena eseguita, puoi spiegarmi le criticità trovate e come correggerle?"
+        : "Ho una domanda sulla tavola tecnica che sto analizzando.");
+    setQuery(message);
+    setShowDrawingGenerator(false);
+  };
+
   const runDrawingGenerator = async () => {
     const f = drawingForm;
 
@@ -3777,6 +3787,29 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
             <div style={s.checklistResultsArea}>
               <DrawingPreview issues={drawingIssues} previewUrl={drawingReviewFile?.previewUrl} fileName={drawingReviewFile?.fileAttachment.name} theme={theme} isDark={isDark} />
               {drawingResults.length === 0 ? <div style={{ ...s.emptyChecklist, border: `1px dashed ${theme.border}` }}>Carica una tavola e premi il pulsante di analisi, oppure compila i dati per il controllo base.</div> : drawingResults.map((item, index) => <DrawingResultCard key={index} item={item} theme={theme} isDark={isDark} renderFormattedText={renderFormattedText} />)}
+
+              {drawingResults.length > 0 && (
+                <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>Vuoi approfondire con TechAI?</p>
+                  <button
+                    style={{ ...s.primaryBtn, background: theme.primary, color: "#fff", display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}
+                    onClick={() => askTechAIFromDrawing()}
+                    type="button"
+                  >
+                    💬 Chiedi a TechAI
+                  </button>
+                  <button
+                    style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}`, display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}
+                    onClick={() => {
+                      const msg = window.prompt("Scrivi la tua domanda per TechAI:", "Come posso correggere le criticità trovate nella tavola?");
+                      if (msg?.trim()) askTechAIFromDrawing(msg.trim());
+                    }}
+                    type="button"
+                  >
+                    ✏️ Chiedi qualcosa di specifico...
+                  </button>
+                </div>
+              )}
 
               </div>
           </div>
