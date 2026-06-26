@@ -139,40 +139,16 @@ function RevisionComparator({ revisions, theme, isDark }: {
     display: "block",
   };
 
-  const fieldDiff = (a: string = "", b: string = "", highlight = false) => {
-    if (!highlight || a === b) {
-      return (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <div style={{ padding: "8px 10px", borderRadius: 8, background: isDark ? "#0b0b0b" : "#f8fafc", border: `1px solid ${theme.border}`, fontSize: 13, minHeight: 36 }}>
-            {a || <span style={{ opacity: 0.4 }}>—</span>}
-          </div>
-          <div style={{ padding: "8px 10px", borderRadius: 8, background: isDark ? "#0b0b0b" : "#f8fafc", border: `1px solid ${a !== b ? theme.primary : theme.border}`, fontSize: 13, minHeight: 36, color: a !== b ? theme.primary : undefined, fontWeight: a !== b ? 700 : undefined }}>
-            {b || <span style={{ opacity: 0.4 }}>—</span>}
-          </div>
-        </div>
-      );
-    }
-
-    // Word diff
-    const diff = wordDiff(a, b);
-    const renderA = diff.filter(d => d.type !== "add");
-    const renderB = diff.filter(d => d.type !== "remove");
-
-    const renderSide = (tokens: typeof diff, added: boolean) => (
-      <div style={{ padding: "8px 10px", borderRadius: 8, background: isDark ? "#0b0b0b" : "#f8fafc", border: `1px solid ${theme.border}`, fontSize: 13, lineHeight: 1.6, minHeight: 36 }}>
-        {tokens.map((t, i) => {
-          if (t.type === "same") return <span key={i}>{t.text}</span>;
-          const bg = added ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)";
-          const color = added ? "#16a34a" : "#dc2626";
-          return <span key={i} style={{ background: bg, color, borderRadius: 3, padding: "1px 2px", fontWeight: 700 }}>{t.text}</span>;
-        })}
-      </div>
-    );
-
+  const fieldDiff = (a: string = "", b: string = "") => {
+    const changed = a.trim() !== b.trim();
     return (
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-        {renderSide(renderA, false)}
-        {renderSide(renderB, true)}
+        <div style={{ padding: "8px 10px", borderRadius: 8, background: isDark ? "#0b0b0b" : "#f8fafc", border: `1px solid ${changed ? "rgba(239,68,68,0.5)" : theme.border}`, fontSize: 13, lineHeight: 1.6, minHeight: 36, whiteSpace: "pre-wrap" }}>
+          {a || <span style={{ opacity: 0.4 }}>—</span>}
+        </div>
+        <div style={{ padding: "8px 10px", borderRadius: 8, background: isDark ? "#0b0b0b" : "#f8fafc", border: `1px solid ${changed ? "rgba(34,197,94,0.5)" : theme.border}`, fontSize: 13, lineHeight: 1.6, minHeight: 36, whiteSpace: "pre-wrap" }}>
+          {b || <span style={{ opacity: 0.4 }}>—</span>}
+        </div>
       </div>
     );
   };
@@ -221,31 +197,28 @@ function RevisionComparator({ revisions, theme, isDark }: {
             {/* Autore */}
             <div>
               <span style={labelStyle}>AUTORE</span>
-              {fieldDiff(revA.author, revB.author, false)}
+              {fieldDiff(revA.author, revB.author)}
             </div>
 
             {/* Modifiche — con diff */}
             <div>
               <span style={labelStyle}>MODIFICHE EFFETTUATE</span>
-              {fieldDiff(revA.changes, revB.changes, true)}
+              {fieldDiff(revA.changes, revB.changes)}
             </div>
 
             {/* Note */}
             <div>
               <span style={labelStyle}>NOTE</span>
-              {fieldDiff(revA.notes, revB.notes, true)}
+              {fieldDiff(revA.notes, revB.notes)}
             </div>
 
             {/* Badge identiche/diverse */}
-            {revA.changes === revB.changes && revA.notes === revB.notes ? (
-              <div style={{ textAlign: "center", fontSize: 12, color: "#22c55e", padding: 8, background: "rgba(34,197,94,0.1)", borderRadius: 8 }}>
-                ✓ Le due revisioni hanno modifiche e note identiche
-              </div>
-            ) : (
-              <div style={{ textAlign: "center", fontSize: 12, color: theme.primary, padding: 8, background: `${theme.primary}15`, borderRadius: 8 }}>
-                Le revisioni presentano differenze evidenziate in rosso (rimosso) e verde (aggiunto)
-              </div>
-            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+              {revA.changes !== revB.changes && <span style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}>Modifiche differenti</span>}
+              {revA.notes !== revB.notes && <span style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}>Note differenti</span>}
+              {revA.author !== revB.author && <span style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}>Autore diverso</span>}
+              {revA.changes === revB.changes && revA.notes === revB.notes && revA.author === revB.author && <span style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: "rgba(34,197,94,0.1)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.3)" }}>✓ Revisioni identiche</span>}
+            </div>
           </div>
         )}
       </div>
