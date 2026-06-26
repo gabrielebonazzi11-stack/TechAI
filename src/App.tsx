@@ -757,7 +757,7 @@ import type {
     });
 
     setProjectMemoryTab("Chat");
-  };
+   };
 
   const saveFullCurrentChatToProject = () => {
     if (!activeChat || activeChat.messages.length === 0) {
