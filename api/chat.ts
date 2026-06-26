@@ -105,6 +105,164 @@ IN SINTESI
 
 
 
+
+const MECHANICAL_KNOWLEDGE_BASE =
+  `
+KNOWLEDGE BASE TECNICA MECCANICA (dati di riferimento — cita sempre la fonte/norma quando usi questi dati):
+
+═══ PROPRIETÀ MECCANICHE ACCIAI COMUNI ═══
+Acciai da costruzione (UNI EN 10025):
+- S235JR: Re=235 MPa, Rm=360-510 MPa, A%=26, uso: carpenteria leggera, telai, staffature
+- S275JR: Re=275 MPa, Rm=410-560 MPa, A%=23, uso: strutture, piastre, supporti
+- S355JR: Re=355 MPa, Rm=470-630 MPa, A%=22, uso: strutture sollecitate, bracci, traverse
+
+Acciai da bonifica (UNI EN 10083):
+- C40 (1.0511): Re=460 MPa, Rm=650-800 MPa, HRC 20-30, uso: alberi, perni, boccole
+- C45 (1.0503): Re=490 MPa, Rm=700-850 MPa, HRC 22-32, uso: alberi, ingranaggi, assi
+- 42CrMo4 (1.7225): Re=650 MPa, Rm=900-1100 MPa, HRC 28-36, uso: alberi sollecitati, ingranaggi, bielle
+- 39NiCrMo3 (1.6510): Re=735 MPa, Rm=930-1130 MPa, HRC 28-36, uso: alberi elevate prestazioni, mozzi
+- 34CrNiMo6 (1.6582): Re=800 MPa, Rm=1000-1200 MPa, HRC 30-38, uso: alberi critici, riduttori pesanti
+
+Acciai da cementazione (UNI EN 10084):
+- 16MnCr5 (1.7131): Re=590 MPa (cuore), HRC 58-62 (superficie), uso: ingranaggi, perni, camme
+- 20MnCr5 (1.7147): Re=640 MPa (cuore), HRC 58-62 (superficie), uso: ingranaggi carichi elevati
+- 18CrNiMo7-6 (1.6587): Re=685 MPa (cuore), HRC 58-62 (superficie), uso: ingranaggi riduttori pesanti
+
+Acciai inossidabili (UNI EN 10088):
+- AISI 304 (1.4301): Re=210 MPa, Rm=520-720 MPa, amagnetico, uso: alimentare, chimico, estetico
+- AISI 316 (1.4401): Re=220 MPa, Rm=520-680 MPa, resistenza cloruri, uso: marino, farmaceutico
+- AISI 420 (1.4021): Re=600 MPa, Rm=750-950 MPa, temperabile, uso: stampi, coltelli, punzoni
+- AISI 440C (1.4125): Re=450 MPa (bonificato), Rm=760 MPa, HRC 56-58, uso: cuscinetti speciali, utensili
+
+Ghise:
+- EN-GJL-250 (grigia lamellare): Rm=250 MPa, Re~165 MPa, uso: basamenti, carter, flange
+- EN-GJS-500-7 (sferoidale): Re=320 MPa, Rm=500 MPa, A%=7, uso: mozzi, bielle, leve
+- EN-GJS-700-2 (sferoidale perlitica): Re=420 MPa, Rm=700 MPa, A%=2, uso: ingranaggi, camme
+
+Alluminio (UNI EN 573/755):
+- 6060 T6: Re=150 MPa, Rm=195 MPa, densita 2.70 g/cm3, uso: profili estrusi, telai leggeri
+- 6082 T6: Re=260 MPa, Rm=310 MPa, densita 2.71 g/cm3, uso: strutture, piastre, mozzi
+- 7075 T6: Re=505 MPa, Rm=570 MPa, densita 2.81 g/cm3, uso: aeronautica, parti sollecitate
+
+═══ FILETTATURE METRICHE ISO (ISO 261/262) ═══
+Passo grosso:
+M3 p=0.5, M4 p=0.7, M5 p=0.8, M6 p=1.0, M8 p=1.25, M10 p=1.5, M12 p=1.75, M14 p=2.0, M16 p=2.0, M20 p=2.5, M24 p=3.0, M30 p=3.5, M36 p=4.0
+Passo fine:
+M8x1, M10x1, M10x1.25, M12x1.25, M12x1.5, M14x1.5, M16x1.5, M20x1.5, M20x2, M24x2, M30x2, M36x3
+Area resistente As (mm2):
+M3=5.03, M4=8.78, M5=14.2, M6=20.1, M8=36.6, M10=58.0, M12=84.3, M14=115, M16=157, M20=245, M24=353, M30=561, M36=817
+
+═══ CLASSI DI RESISTENZA BULLONERIA (ISO 898-1) ═══
+Classe 4.6: Re=240 MPa, Rm=400 MPa — uso generico non sollecitato
+Classe 5.6: Re=300 MPa, Rm=500 MPa — medio carico
+Classe 8.8: Re=640 MPa, Rm=800 MPa — uso strutturale/meccanico (la piu comune)
+Classe 10.9: Re=940 MPa, Rm=1040 MPa — alte prestazioni, precarico elevato
+Classe 12.9: Re=1100 MPa, Rm=1220 MPa — massime prestazioni, critico
+
+Precarico consigliato Fi = 0.9 * Re * As (per serraggio controllato)
+Coppia: T = K * d * Fi (K = 0.20 secco, 0.16 oliato, 0.12 lubrificante MoS2)
+
+═══ CUSCINETTI VOLVENTI (ISO 281 — formule base) ═══
+Durata nominale: L10 = (C/P)^p * 10^6 giri (p=3 sfere, p=10/3 rulli)
+Durata in ore: L10h = L10 / (60 * n) dove n = giri/min
+Carico equivalente: P = X*Fr + Y*Fa (valori X,Y da catalogo)
+Criteri di scelta:
+- Carico radiale puro: cuscinetti rigidi a sfere (6xxx), rulli cilindrici (NUxxx)
+- Carico combinato: cuscinetti a contatto obliquo (72xx), conici (3xxxx)
+- Carichi assiali puri: reggispinta a sfere (51xx), rullini assiali (AXK)
+- Disallineamento: cuscinetti orientabili a sfere (12xx/22xx), rulli (23xxx)
+Interferenze montaggio:
+- Anello rotante rispetto al carico: interferenza (k5/k6/m5/m6)
+- Anello fisso rispetto al carico: gioco (H7/js6/h6)
+
+═══ LINGUETTE PARALLELE (UNI 6604 / DIN 6885) ═══
+Dimensioni in funzione del diametro albero d:
+d 6-8: b=2, h=2 | d 8-10: b=3, h=3 | d 10-12: b=4, h=4 | d 12-17: b=5, h=5
+d 17-22: b=6, h=6 | d 22-30: b=8, h=7 | d 30-38: b=10, h=8 | d 38-44: b=12, h=8
+d 44-50: b=14, h=9 | d 50-58: b=16, h=10 | d 58-65: b=18, h=11 | d 65-75: b=20, h=12
+d 75-85: b=22, h=14 | d 85-95: b=25, h=14 | d 95-110: b=28, h=16
+
+Verifica a rifollamento: sigma_rif = 2*Mt / (d * h_eff * L_eff) <= sigma_amm
+Verifica a taglio: tau = 2*Mt / (d * b * L_eff) <= tau_amm
+
+═══ SEEGER / ANELLI ELASTICI (DIN 471 albero, DIN 472 foro) ═══
+Esempio dimensioni gola:
+d=10: gola 9.3, spessore 1.0 | d=15: gola 14.0, spessore 1.0 | d=20: gola 19.0, spessore 1.2
+d=25: gola 23.9, spessore 1.2 | d=30: gola 28.6, spessore 1.5 | d=35: gola 33.2, spessore 1.5
+d=40: gola 37.5, spessore 1.75 | d=50: gola 47.0, spessore 2.0 | d=60: gola 57.0, spessore 2.5
+
+═══ CRITERI DI RESISTENZA ═══
+Von Mises: sigma_eq = sqrt(sigma^2 + 3*tau^2) — stati piani
+Von Mises generalizzato: sigma_eq = sqrt(sigma_x^2 + sigma_y^2 - sigma_x*sigma_y + 3*tau_xy^2)
+Tresca: tau_max = 0.5*sqrt(sigma^2 + 4*tau^2) oppure sigma_eq_Tresca = 2*tau_max
+Goodman modificato: 1/n = sigma_a/Sn + sigma_m/Rm (fatica con carico medio non nullo)
+Soderberg: 1/n = sigma_a/Sn + sigma_m/Re (piu conservativo di Goodman)
+Limite a fatica stimato: Sn' circa 0.5*Rm per acciai (Rm < 1400 MPa), poi fattori correttivi:
+  Sn = Sn' * ka * kb * kc * kd * ke
+  ka = fattore finitura, kb = fattore dimensione, kc = fattore affidabilita, kd = fattore temperatura, ke = fattore vari
+
+═══ FORMULE SEZIONI RESISTENTI ═══
+Circolare piena (d):
+  A = pi*d^2/4, Jf = pi*d^4/64, Wf = pi*d^3/32, Wt = pi*d^3/16
+Circolare cava (D esterno, d interno):
+  A = pi*(D^2-d^2)/4, Jf = pi*(D^4-d^4)/64, Wf = pi*(D^4-d^4)/(32*D), Wt = pi*(D^4-d^4)/(16*D)
+Rettangolare piena (b x h):
+  A = b*h, Jf = b*h^3/12 (attorno asse h), Wf = b*h^2/6
+Rettangolare cava (B x H esterno, b x h interno):
+  A = B*H - b*h, Jf = (B*H^3 - b*h^3)/12
+Tubo sottile (D medio, s spessore):
+  A circa pi*D*s, Jf circa pi*D^3*s/8, Wt circa pi*D^2*s/2
+
+═══ SALDATURE (ISO 2553 + ISO 5817) ═══
+Cordone a angolo — gola utile: a = 0.7 * cateto minore
+Tensione ammissibile saldatura: circa 0.65-0.85 * sigma_amm materiale base (dipende da livello qualita ISO 5817: B, C, D)
+Verifica: sigma_sald = F / (a * L_eff) <= sigma_amm_sald
+Per saldature a T sollecitate a flessione: Wf_sald = a * L^2 / 6
+Simboli ISO 2553: freccia lato cordone, linea continua = lato freccia, linea tratteggiata = lato opposto
+
+═══ RECIPIENTI IN PRESSIONE (EN 13445 / PED) ═══
+Cilindro parete sottile: sigma_circ = p*D/(2*s), sigma_ass = p*D/(4*s)
+Cilindro parete spessa (Lame): sigma_r e sigma_circ con formule di Lame
+Condizione parete sottile: s/D < 1/10
+Spessore minimo: s_min = p*D / (2*sigma_amm*eta - p) + c (c = sovraspessore corrosione, eta = efficienza giunto)
+
+═══ INGRANAGGI (base Lewis + cenni AGMA) ═══
+Tensione al piede dente (Lewis semplificato): sigma_f = Ft / (b * m * Y)
+  Ft = forza tangenziale = 2*Mt/d, b = larghezza dente, m = modulo, Y = fattore di Lewis
+Moduli standard: 0.5, 0.8, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 16, 20
+Rapporto di trasmissione: i = z2/z1 = n1/n2
+Interasse: a = m*(z1+z2)/2
+Pressione specifica Hertz (contatto): sigma_H = ZE * sqrt(Ft * KA * Kv / (b * d1) * (i+1)/i)
+
+═══ MOLLE ELICOIDALI (EN 13906) ═══
+Tensione torsionale: tau = 8*F*D / (pi*d^3) * K (K = fattore Wahl)
+Rigidezza: k = G*d^4 / (8*D^3*n) (n = spire attive)
+Freccia: f = F/k = 8*F*D^3*n / (G*d^4)
+Fattore Wahl: K = (4C-1)/(4C-4) + 0.615/C dove C = D/d (indice della molla)
+G acciaio armonico = 81500 MPa, G inox = 70000 MPa
+
+═══ CONTATTO HERTZIANO ═══
+Sfere su piano: sigma_max = 0.388 * (F*E^2 / R^2)^(1/3)
+Cilindri paralleli: sigma_max = 0.418 * sqrt(F*E / (L*R))
+Dove R = raggio equivalente = R1*R2/(R1+R2), E = modulo elastico equivalente
+
+═══ OLEODINAMICA (cenni) ═══
+Forza cilindro: F = p * A (A = area pistone, p = pressione)
+Portata pompa: Q = V * n / eta_vol (V = cilindrata, n = giri/min, eta_vol circa 0.9-0.95)
+Velocita cilindro: v = Q / A
+Potenza: P = p * Q / eta_tot (eta_tot circa 0.75-0.85)
+Diametro tubo: d = sqrt(4*Q / (pi*v_max)) — v_max: aspirazione 1-1.5 m/s, mandata 3-6 m/s, ritorno 2-4 m/s
+
+═══ TOLLERANZE GENERALI ISO 2768 ═══
+Classe f (fine):
+  0.5-6mm: +/-0.05 | 6-30mm: +/-0.1 | 30-120mm: +/-0.15 | 120-400mm: +/-0.2 | 400-1000mm: +/-0.3
+Classe m (media):
+  0.5-6mm: +/-0.1 | 6-30mm: +/-0.2 | 30-120mm: +/-0.3 | 120-400mm: +/-0.5 | 400-1000mm: +/-0.8
+Classe c (grossolana):
+  0.5-6mm: +/-0.2 | 6-30mm: +/-0.5 | 30-120mm: +/-0.8 | 120-400mm: +/-1.2 | 400-1000mm: +/-2.0
+`;
+
+
 const TECHNICAL_STANDARDS_RULES =
   `
 
@@ -125,6 +283,7 @@ REGOLE OBBLIGATORIE SUI RIFERIMENTI NORMATIVI:
 `;
 
 const TECHNICAL_DEPTH_RULES =
+    MECHANICAL_KNOWLEDGE_BASE +
   `
 
 REGOLE DI APPROFONDIMENTO TECNICO:
@@ -503,6 +662,7 @@ function buildLightSystemPrompt(params: {
     `Per codice, dai modifiche complete e copiabili. Per problemi tecnici, includi motivazione, riferimenti normativi quando pertinenti e controlli consigliati.` +
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES +
+    MECHANICAL_KNOWLEDGE_BASE +
     TECHAI_FORMATTING_RULES
   );
 }
@@ -739,6 +899,7 @@ function buildCompactTechAiSystemPrompt(params: {
     `- Se si parla di componenti, disegni tecnici, materiali, tolleranze o verifiche, indica norme ISO, UNI, EN, DIN o riferimenti tecnici applicabili quando pertinenti.\n` +
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES +
+    MECHANICAL_KNOWLEDGE_BASE +
     TECHAI_FORMATTING_RULES +
     `\nPROMEMORIA TECNICO COMPATTO:\n` +
     `Meccanica: equilibrio ΣF=0, ΣM=0; F=ma; P=Fv=Mω; Mt[Nm]=9550P[kW]/n[rpm]. Trazione σ=F/A; flessione σ=Mf/Wf; torsione τ=Mt/Wt. Von Mises σid=√(σ²+3τ²). Fatica: Goodman/Soderberg. Bulloni: precarico, taglio, trazione, classe 8.8/10.9. Tolleranze: H7, k6, m6, H7/f7. Rugosità: Ra 3,2÷6,3 generica; Ra 0,8÷1,6 sedi/tenute.\n` +
@@ -765,6 +926,7 @@ function buildFullTechAiSystemPrompt(params: {
     `Se la richiesta riguarda codice, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES +
+    MECHANICAL_KNOWLEDGE_BASE +
     TECHAI_FORMATTING_RULES +
     buildModeInstructions(analysisMode) +
     `\n\n` +
@@ -1156,6 +1318,7 @@ ${extractedPdfText.slice(0, 26000)}
     `Rispondi in italiano, in modo tecnico ma naturale. Usa titoli, elenchi e grassetto Markdown leggero quando utile. ` +
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES;
+    MECHANICAL_KNOWLEDGE_BASE +
 
   const drawingVisionSystemPrompt =
     `Sei TechAI Vision, un ingegnere meccanico senior specializzato in disegno tecnico secondo norme ISO 128, ISO 1101, ISO 286 e ISO 1302. ` +
@@ -1168,6 +1331,7 @@ ${extractedPdfText.slice(0, 26000)}
     "Rispondi in italiano tecnico preciso, completo e motivato. " +
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES +
+    MECHANICAL_KNOWLEDGE_BASE +
     "\n\nREGOLE DI FORMATTAZIONE OBBLIGATORIE:\n" +
     "Usa sempre uno di questi stati per ogni controllo tecnico:\n" +
     "✅ OK = elemento presente, leggibile, coerente o apparentemente conforme.\n" +
