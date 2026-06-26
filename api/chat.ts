@@ -36,6 +36,7 @@ type RequestBodyData = {
   fileMeta: string;
   hasFile: boolean;
   analysisMode: AnalysisMode;
+  projectContext?: string;
 };
 
 type GuestUsageInfo = {
@@ -1317,8 +1318,8 @@ ${extractedPdfText.slice(0, 26000)}
     `Non inventare dati non visibili. Se qualcosa non è leggibile, scrivi che non è leggibile. ` +
     `Rispondi in italiano, in modo tecnico ma naturale. Usa titoli, elenchi e grassetto Markdown leggero quando utile. ` +
     TECHNICAL_STANDARDS_RULES +
-    TECHNICAL_DEPTH_RULES;
-    MECHANICAL_KNOWLEDGE_BASE +
+    TECHNICAL_DEPTH_RULES +
+    MECHANICAL_KNOWLEDGE_BASE;
 
   const drawingVisionSystemPrompt =
     `Sei TechAI Vision, un ingegnere meccanico senior specializzato in disegno tecnico secondo norme ISO 128, ISO 1101, ISO 286 e ISO 1302. ` +
