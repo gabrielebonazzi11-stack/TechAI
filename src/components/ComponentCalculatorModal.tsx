@@ -342,7 +342,11 @@ function SearchableModeSelect({
         }}
       />
 
-      <span style={localStyles.comboArrow}>⌄</span>
+      <span style={localStyles.comboArrow}>
+        <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1 1L6 7L11 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </span>
 
       {open && (
         <div
