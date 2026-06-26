@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 
 type ProjectToolView = "memory" | "revisions" | "bom";
 
@@ -74,6 +74,181 @@ function ProjectField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
       />
+    </div>
+  );
+}
+
+
+// ── Diff word-level ──────────────────────────────────────────────────────
+function wordDiff(a: string, b: string): { text: string; type: "same" | "add" | "remove" }[] {
+  const wordsA = a.split(/(\s+)/);
+  const wordsB = b.split(/(\s+)/);
+  const result: { text: string; type: "same" | "add" | "remove" }[] = [];
+
+  // LCS semplice
+  const m = wordsA.length, n = wordsB.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = wordsA[i-1] === wordsB[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+
+  const path: [number, number][] = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && wordsA[i-1] === wordsB[j-1]) { path.unshift([i-1, j-1]); i--; j--; }
+    else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) { path.unshift([-1, j-1]); j--; }
+    else { path.unshift([i-1, -1]); i--; }
+  }
+
+  for (const [ai, bi] of path) {
+    if (ai >= 0 && bi >= 0) result.push({ text: wordsA[ai], type: "same" });
+    else if (ai >= 0) result.push({ text: wordsA[ai], type: "remove" });
+    else result.push({ text: wordsB[bi], type: "add" });
+  }
+  return result;
+}
+
+// ── Componente comparatore ────────────────────────────────────────────────
+function RevisionComparator({ revisions, theme, isDark }: {
+  revisions: any[];
+  theme: any;
+  isDark: boolean;
+}) {
+  const [idxA, setIdxA] = useState(0);
+  const [idxB, setIdxB] = useState(Math.min(1, revisions.length - 1));
+
+  const revA = revisions[idxA]?.payload;
+  const revB = revisions[idxB]?.payload;
+
+  const inputStyle: React.CSSProperties = {
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: `1px solid ${theme.border}`,
+    background: isDark ? "#0b0b0b" : "#fff",
+    color: isDark ? "#f1f5f9" : "#1e293b",
+    fontSize: 13,
+    flex: 1,
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: "0.05em",
+    color: isDark ? "#64748b" : "#94a3b8",
+    marginBottom: 6,
+    display: "block",
+  };
+
+  const fieldDiff = (a: string = "", b: string = "", highlight = false) => {
+    if (!highlight || a === b) {
+      return (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div style={{ padding: "8px 10px", borderRadius: 8, background: isDark ? "#0b0b0b" : "#f8fafc", border: `1px solid ${theme.border}`, fontSize: 13, minHeight: 36 }}>
+            {a || <span style={{ opacity: 0.4 }}>—</span>}
+          </div>
+          <div style={{ padding: "8px 10px", borderRadius: 8, background: isDark ? "#0b0b0b" : "#f8fafc", border: `1px solid ${a !== b ? theme.primary : theme.border}`, fontSize: 13, minHeight: 36, color: a !== b ? theme.primary : undefined, fontWeight: a !== b ? 700 : undefined }}>
+            {b || <span style={{ opacity: 0.4 }}>—</span>}
+          </div>
+        </div>
+      );
+    }
+
+    // Word diff
+    const diff = wordDiff(a, b);
+    const renderA = diff.filter(d => d.type !== "add");
+    const renderB = diff.filter(d => d.type !== "remove");
+
+    const renderSide = (tokens: typeof diff, added: boolean) => (
+      <div style={{ padding: "8px 10px", borderRadius: 8, background: isDark ? "#0b0b0b" : "#f8fafc", border: `1px solid ${theme.border}`, fontSize: 13, lineHeight: 1.6, minHeight: 36 }}>
+        {tokens.map((t, i) => {
+          if (t.type === "same") return <span key={i}>{t.text}</span>;
+          const bg = added ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.25)";
+          const color = added ? "#16a34a" : "#dc2626";
+          return <span key={i} style={{ background: bg, color, borderRadius: 3, padding: "1px 2px", fontWeight: 700 }}>{t.text}</span>;
+        })}
+      </div>
+    );
+
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {renderSide(renderA, false)}
+        {renderSide(renderB, true)}
+      </div>
+    );
+  };
+
+  if (revisions.length < 2) {
+    return (
+      <div style={{ padding: 16, textAlign: "center", color: isDark ? "#64748b" : "#94a3b8", fontSize: 13 }}>
+        Servono almeno 2 revisioni per effettuare un confronto.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ padding: "14px 16px", borderRadius: 12, background: isDark ? "#0b0b0b" : "#f8fafc", border: `1px solid ${theme.border}` }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: theme.primary, marginBottom: 12, letterSpacing: "0.05em" }}>COMPARAZIONE REVISIONI</div>
+
+        {/* Selezione revisioni */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+          <div>
+            <span style={labelStyle}>REVISIONE A</span>
+            <select value={idxA} onChange={e => setIdxA(Number(e.target.value))} style={inputStyle}>
+              {revisions.map((r, i) => <option key={i} value={i}>{r.payload?.code || `Rev ${i+1}`} — {r.payload?.date || ""}</option>)}
+            </select>
+          </div>
+          <div>
+            <span style={labelStyle}>REVISIONE B</span>
+            <select value={idxB} onChange={e => setIdxB(Number(e.target.value))} style={inputStyle}>
+              {revisions.map((r, i) => <option key={i} value={i}>{r.payload?.code || `Rev ${i+1}`} — {r.payload?.date || ""}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {revA && revB && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Header colonne */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div style={{ textAlign: "center", fontWeight: 800, fontSize: 13, color: "#ef4444", padding: "6px 10px", borderRadius: 8, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)" }}>
+                Rev. {revA.code} — {revA.date}
+              </div>
+              <div style={{ textAlign: "center", fontWeight: 800, fontSize: 13, color: "#22c55e", padding: "6px 10px", borderRadius: 8, background: "rgba(34,197,94,0.1)", border: "1px solid rgba(34,197,94,0.3)" }}>
+                Rev. {revB.code} — {revB.date}
+              </div>
+            </div>
+
+            {/* Autore */}
+            <div>
+              <span style={labelStyle}>AUTORE</span>
+              {fieldDiff(revA.author, revB.author, false)}
+            </div>
+
+            {/* Modifiche — con diff */}
+            <div>
+              <span style={labelStyle}>MODIFICHE EFFETTUATE</span>
+              {fieldDiff(revA.changes, revB.changes, true)}
+            </div>
+
+            {/* Note */}
+            <div>
+              <span style={labelStyle}>NOTE</span>
+              {fieldDiff(revA.notes, revB.notes, true)}
+            </div>
+
+            {/* Badge identiche/diverse */}
+            {revA.changes === revB.changes && revA.notes === revB.notes ? (
+              <div style={{ textAlign: "center", fontSize: 12, color: "#22c55e", padding: 8, background: "rgba(34,197,94,0.1)", borderRadius: 8 }}>
+                ✓ Le due revisioni hanno modifiche e note identiche
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", fontSize: 12, color: theme.primary, padding: 8, background: `${theme.primary}15`, borderRadius: 8 }}>
+                Le revisioni presentano differenze evidenziate in rosso (rimosso) e verde (aggiunto)
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -445,6 +620,11 @@ export default function ProjectsModal({
             >
               <h3 style={s.projectTitle}>Storico revisioni</h3>
               {renderProjectMemory()}
+              <RevisionComparator
+                revisions={(activeProject?.revisions || activeProject?.items?.filter((i: any) => i.type === "revision") || []).filter((r: any) => r.payload?.code)}
+                theme={theme}
+                isDark={isDark}
+              />
             </div>
 
             <div
