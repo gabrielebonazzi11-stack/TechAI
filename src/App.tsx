@@ -243,7 +243,7 @@ import type {
       {
         value: "generale",
         label: "Flessione + torsione + taglio + assiale",
-        description: "Verifica completa quando hai più sollecitazioni insieme.",
+        description: "Verifica completa quando hai pi\'f9 sollecitazioni insieme.",
         keywords: "generale completa assiale flessione torsione taglio albero staffa braccio bullone vite perno",
       },
       {
@@ -260,7 +260,7 @@ import type {
       },
       {
         value: "fatica",
-        label: "Fatica con σmax e σmin",
+        label: "Fatica con \uc0\u963 max e \u963 min",
         description: "Verifica semplificata a fatica tipo Goodman.",
         keywords: "fatica goodman alternata media ciclica sigma max min durata",
       },
@@ -308,6 +308,34 @@ import type {
   }, [projects, projectSearch]);
 
 
+  // ── Supabase persistence ─────────────────────────────────────────────────
+  const syncToSupabase = async (userId: string, data: object) => {
+    if (!supabase || !isSupabaseConfigured) return;
+    try {
+      await supabase.from("user_workspace").upsert(
+        { user_id: userId, ...data, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" }
+      );
+    } catch (e) {
+      console.warn("Supabase sync error:", e);
+    }
+  };
+
+  const loadFromSupabase = async (userId: string): Promise<any | null> => {
+    if (!supabase || !isSupabaseConfigured) return null;
+    try {
+      const { data, error } = await supabase
+        .from("user_workspace")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+      if (error || !data) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  };
+
   const resetWorkspace = () => {
     setChats([]);
     setActiveChatId(null);
@@ -327,12 +355,49 @@ import type {
     setBomFileName("");
   };
 
-  const loadWorkspaceFromStorage = (storageKey: string) => {
+  const applyWorkspaceData = (data: any) => {
+    setTheme(THEMES.find(t => t.name === (data.themeName || data.theme_name)) || THEMES[1]);
+    setInterest(data.interest || "Ingegneria Meccanica");
+    setChats(Array.isArray(data.chats) ? data.chats : []);
+    setActiveChatId(data.activeChatId || data.active_chat_id || null);
+    setSidebarOpen(data.sidebarOpen ?? true);
+    setCustomMaterials(Array.isArray(data.customMaterials || data.custom_materials) ? (data.customMaterials || data.custom_materials) : []);
+    setProjects(normalizeProjectRecords(data.projects));
+    setActiveProjectId(data.activeProjectId || data.active_project_id || null);
+    setLastDrawingAnalysisText(String(data.lastDrawingAnalysisText || ""));
+    setPendingFile(null);
+    setQuery("");
+    setStorageReady(true);
+  };
+
+  const loadWorkspaceFromStorage = (storageKey: string, userId?: string) => {
     setStorageReady(false);
     setActiveStorageKey(storageKey);
 
-  const saved = localStorage.getItem(storageKey);
+    if (userId && supabase && isSupabaseConfigured) {
+      loadFromSupabase(userId).then(remoteData => {
+        if (remoteData) {
+          applyWorkspaceData(remoteData);
+          localStorage.setItem(storageKey, JSON.stringify({
+            themeName: remoteData.themeName || remoteData.theme_name,
+            chats: remoteData.chats || [],
+            activeChatId: remoteData.activeChatId || remoteData.active_chat_id,
+            customMaterials: remoteData.customMaterials || remoteData.custom_materials || [],
+            projects: remoteData.projects || [],
+            activeProjectId: remoteData.activeProjectId || remoteData.active_project_id,
+            interest: remoteData.interest,
+            lastDrawingAnalysisText: remoteData.lastDrawingAnalysisText || "",
+          }));
+          return;
+        }
+        const saved = localStorage.getItem(storageKey);
+        const data = saved ? safeParseJson<any>(saved, null) : null;
+        if (data) { applyWorkspaceData(data); } else { resetWorkspace(); setStorageReady(true); }
+      });
+      return;
+    }
 
+    const saved = localStorage.getItem(storageKey);
     if (!saved) {
       resetWorkspace();
       setTheme(THEMES[1]);
@@ -344,27 +409,9 @@ import type {
       setStorageReady(true);
       return;
     }
-
     const data = safeParseJson<any>(saved, null);
-
-    if (!data) {
-      resetWorkspace();
-      setStorageReady(true);
-      return;
-    }
-
-    setTheme(THEMES.find(t => t.name === data.themeName) || THEMES[1]);
-    setInterest(data.interest || "Ingegneria Meccanica");
-    setChats(Array.isArray(data.chats) ? data.chats : []);
-    setActiveChatId(data.activeChatId || null);
-    setSidebarOpen(data.sidebarOpen ?? true);
-    setCustomMaterials(Array.isArray(data.customMaterials) ? data.customMaterials : []);
-    setProjects(normalizeProjectRecords(data.projects));
-    setActiveProjectId(data.activeProjectId || null);
-    setLastDrawingAnalysisText(String(data.lastDrawingAnalysisText || ""));
-    setPendingFile(null);
-    setQuery("");
-    setStorageReady(true);
+    if (!data) { resetWorkspace(); setStorageReady(true); return; }
+    applyWorkspaceData(data);
   };
 
   useEffect(() => {
@@ -385,7 +432,7 @@ import type {
         setLoginDismissed(false);
         setLoginError("");
 
-        loadWorkspaceFromStorage(makeUserStorageKey(email));
+        loadWorkspaceFromStorage(makeUserStorageKey(email), session.user.id);
       } else {
         setUser(DEFAULT_USER);
         setIsLoggedIn(false);
@@ -426,23 +473,39 @@ import type {
       })),
     }));
 
-    localStorage.setItem(
-      activeStorageKey,
-      JSON.stringify({
-        themeName: theme.name,
-        user,
-        interest,
-        chats: safeChats,
-        activeChatId,
-        sidebarOpen,
-        isLoggedIn,
-        isGuest,
-        customMaterials,
-        projects,
-        activeProjectId,
-        lastDrawingAnalysisText,
-      })
-    );
+    const workspaceData = {
+      themeName: theme.name,
+      user,
+      interest,
+      chats: safeChats,
+      activeChatId,
+      sidebarOpen,
+      isLoggedIn,
+      isGuest,
+      customMaterials,
+      projects,
+      activeProjectId,
+      lastDrawingAnalysisText,
+    };
+
+    localStorage.setItem(activeStorageKey, JSON.stringify(workspaceData));
+
+    if (isLoggedIn && !isGuest && supabase && isSupabaseConfigured) {
+      supabase.auth.getUser().then(({ data: { user: authUser } }) => {
+        if (authUser?.id) {
+          syncToSupabase(authUser.id, {
+            themeName: theme.name,
+            interest,
+            chats: safeChats,
+            activeChatId,
+            customMaterials,
+            projects,
+            activeProjectId,
+            lastDrawingAnalysisText,
+          });
+        }
+      });
+    }
   }, [theme, user, interest, chats, activeChatId, sidebarOpen, isLoggedIn, isGuest, customMaterials, projects, activeProjectId, lastDrawingAnalysisText, storageReady, activeStorageKey]);
 
   useEffect(() => {
@@ -881,7 +944,7 @@ import type {
     addProjectItem({
       type: "revision",
       title: `Rev. ${code}`,
-      summary: `${date} · ${author} · ${changes}`,
+      summary: `${date} \'b7 ${author} \'b7 ${changes}`,
       payload: {
         code,
         date,
@@ -927,7 +990,7 @@ import type {
       {
         type: "quickcalc",
         title: savedTitle,
-        summary: `Esito ${quickCalcResult.outcome}. σeq = ${quickCalcResult.equivalentStress.toFixed(2)} MPa, n = ${quickCalcResult.safetyFactor.toFixed(2)}.`,
+        summary: `Esito ${quickCalcResult.outcome}. \uc0\u963 eq = ${quickCalcResult.equivalentStress.toFixed(2)} MPa, n = ${quickCalcResult.safetyFactor.toFixed(2)}.`,
         payload: {
           quickCalcForm,
           quickCalcResult,
@@ -967,7 +1030,7 @@ import type {
       return array.map((row: any, index: number) => ({ index: index + 1, data: row }));
     }
 
-    const lines = trimmed.split(/\r?\n/).filter(Boolean);
+    const lines = trimmed.split(/\\r?\\n/).filter(Boolean);
     const separator = lines[0].includes(";") ? ";" : ",";
     const headers = lines[0].split(separator).map(h => h.trim().toLowerCase());
     return lines.slice(1).map((line, index) => {
@@ -996,7 +1059,7 @@ import type {
         const code = getBomValue(data, ["codice", "code", "partnumber", "part number", "codiceparticolare"]);
         const description = getBomValue(data, ["descrizione", "description", "desc", "nome"]);
         const material = getBomValue(data, ["materiale", "material", "mat"]);
-        const qtyRaw = getBomValue(data, ["quantita", "quantità", "qty", "qta", "quantity"]);
+        const qtyRaw = getBomValue(data, ["quantita", "quantit\'e0", "qty", "qta", "quantity"]);
         const standard = getBomValue(data, ["norma", "standard", "normativa", "uni", "iso", "din"]);
         const joined = `${code} ${description} ${material} ${standard}`.toLowerCase();
         const qty = Number(qtyRaw.replace(",", "."));
@@ -1004,16 +1067,16 @@ import type {
         if (code) codes.set(code, [...(codes.get(code) || []), index]);
         if (!code) issues.push({ row: index, severity: "errore", message: "Codice mancante", suggestion: "Aggiungere un codice univoco componente." });
         if (!description) issues.push({ row: index, severity: "errore", message: "Descrizione incompleta", suggestion: "Inserire descrizione tecnica chiara del componente." });
-        if (!qtyRaw || !Number.isFinite(qty) || qty <= 0) issues.push({ row: index, severity: "errore", message: "Quantità mancante o incoerente", suggestion: "Inserire quantità numerica maggiore di zero." });
-        if (!material && !/(vite|bullone|dado|rondella|cuscinetto|oring|o-ring|commerciale|motore|valvola)/i.test(joined)) issues.push({ row: index, severity: "attenzione", message: "Materiale mancante", suggestion: "Inserire materiale o indicare che il componente è commerciale." });
-        if (/(vite|bullone)/i.test(joined) && !/(4\.6|5\.8|8\.8|10\.9|12\.9|a2|a4)/i.test(joined)) issues.push({ row: index, severity: "errore", message: "Vite/bullone senza classe di resistenza", suggestion: "Aggiungere classe, esempio 8.8 / 10.9 / A2-70." });
-        if (/cuscinetto|bearing/i.test(joined) && !/(6|7|2|3|nu|nj|nup|na|hk)\d{2,}[a-z0-9-]*/i.test(joined)) issues.push({ row: index, severity: "attenzione", message: "Cuscinetto senza sigla completa", suggestion: "Inserire sigla completa, gioco, schermatura e marca se richiesto." });
+        if (!qtyRaw || !Number.isFinite(qty) || qty <= 0) issues.push({ row: index, severity: "errore", message: "Quantit\'e0 mancante o incoerente", suggestion: "Inserire quantit\'e0 numerica maggiore di zero." });
+        if (!material && !/(vite|bullone|dado|rondella|cuscinetto|oring|o-ring|commerciale|motore|valvola)/i.test(joined)) issues.push({ row: index, severity: "attenzione", message: "Materiale mancante", suggestion: "Inserire materiale o indicare che il componente \'e8 commerciale." });
+        if (/(vite|bullone)/i.test(joined) && !/(4\\.6|5\\.8|8\\.8|10\\.9|12\\.9|a2|a4)/i.test(joined)) issues.push({ row: index, severity: "errore", message: "Vite/bullone senza classe di resistenza", suggestion: "Aggiungere classe, esempio 8.8 / 10.9 / A2-70." });
+        if (/cuscinetto|bearing/i.test(joined) && !/(6|7|2|3|nu|nj|nup|na|hk)\\d{2,}[a-z0-9-]*/i.test(joined)) issues.push({ row: index, severity: "attenzione", message: "Cuscinetto senza sigla completa", suggestion: "Inserire sigla completa, gioco, schermatura e marca se richiesto." });
         if (/(vite|bullone|dado|rondella|cuscinetto|oring|o-ring|seeger|spina)/i.test(joined) && !standard) issues.push({ row: index, severity: "attenzione", message: "Componente commerciale senza norma", suggestion: "Aggiungere norma UNI/ISO/DIN o codice fornitore." });
       });
 
       codes.forEach((indexes, code) => {
         if (indexes.length > 1) {
-          indexes.forEach(index => issues.push({ row: index, severity: "errore", message: `Codice duplicato: ${code}`, suggestion: "Usare codici univoci oppure verificare se è davvero lo stesso componente." }));
+          indexes.forEach(index => issues.push({ row: index, severity: "errore", message: `Codice duplicato: ${code}`, suggestion: "Usare codici univoci oppure verificare se \'e8 davvero lo stesso componente." }));
         }
       });
 
@@ -1044,9 +1107,9 @@ import type {
       category === "STEP 3D"
         ? "Metadata STEP acquisiti. Per ora non viene ricostruita la geometria, ma il file viene salvato nel progetto come riferimento."
         : category === "PDF"
-          ? "PDF acquisito. Se contiene testo, può essere analizzato dalla chat/tavole."
+          ? "PDF acquisito. Se contiene testo, pu\'f2 essere analizzato dalla chat/tavole."
           : category === "Immagine"
-            ? "Immagine acquisita. In futuro potrà ricevere annotazioni tecniche."
+            ? "Immagine acquisita. In futuro potr\'e0 ricevere annotazioni tecniche."
             : "File acquisito come riferimento progetto.";
 
     const meta: ProjectFileMeta = {
@@ -1059,8 +1122,8 @@ import type {
     };
 
     setProjectSmartFile(meta);
-    const projectId = activeProject?.id || createProject(file.name.replace(/\.[^.]+$/, ""), "Creato automaticamente da upload file tecnico.");
-    addProjectItem({ type: "file", title: `File caricato - ${file.name}`, summary: `${category} · ${meta.sizeKb} KB. ${note}`, payload: meta }, projectId);
+    const projectId = activeProject?.id || createProject(file.name.replace(/\\.[^.]+$/, ""), "Creato automaticamente da upload file tecnico.");
+    addProjectItem({ type: "file", title: `File caricato - ${file.name}`, summary: `${category} \'b7 ${meta.sizeKb} KB. ${note}`, payload: meta }, projectId);
     event.target.value = "";
   };
 
@@ -1105,7 +1168,7 @@ import type {
       const Wt = Math.PI * d ** 3 / 16;
 
       return {
-        name: `Circolare piena Ø${d} mm`,
+        name: `Circolare piena \'d8${d} mm`,
         A,
         Jf,
         Wf,
@@ -1115,11 +1178,11 @@ import type {
         values: [
           `Sezione: circolare piena`,
           `Diametro: d = ${d.toFixed(2)} mm`,
-          `Area: A = ${A.toFixed(2)} mm²`,
-          `Momento d'inerzia flessionale: Jf = ${Jf.toFixed(2)} mm⁴`,
-          `Modulo resistente a flessione: Wf = ${Wf.toFixed(2)} mm³`,
-          `Momento polare: Jp = ${Jp.toFixed(2)} mm⁴`,
-          `Modulo resistente a torsione: Wt = ${Wt.toFixed(2)} mm³`,
+          `Area: A = ${A.toFixed(2)} mm\'b2`,
+          `Momento d'inerzia flessionale: Jf = ${Jf.toFixed(2)} mm\uc0\u8308 `,
+          `Modulo resistente a flessione: Wf = ${Wf.toFixed(2)} mm\'b3`,
+          `Momento polare: Jp = ${Jp.toFixed(2)} mm\uc0\u8308 `,
+          `Modulo resistente a torsione: Wt = ${Wt.toFixed(2)} mm\'b3`,
         ],
         notes: [],
       };
@@ -1137,7 +1200,7 @@ import type {
       const Wt = Jp / (D / 2);
 
       return {
-        name: `Circolare cava Ø${D}/${di} mm`,
+        name: `Circolare cava \'d8${D}/${di} mm`,
         A,
         Jf,
         Wf,
@@ -1148,13 +1211,13 @@ import type {
           `Sezione: circolare cava`,
           `Diametro esterno: D = ${D.toFixed(2)} mm`,
           `Diametro interno: d = ${di.toFixed(2)} mm`,
-          `Area: A = ${A.toFixed(2)} mm²`,
-          `Momento d'inerzia flessionale: Jf = ${Jf.toFixed(2)} mm⁴`,
-          `Modulo resistente a flessione: Wf = ${Wf.toFixed(2)} mm³`,
-          `Momento polare: Jp = ${Jp.toFixed(2)} mm⁴`,
-          `Modulo resistente a torsione: Wt = ${Wt.toFixed(2)} mm³`,
+          `Area: A = ${A.toFixed(2)} mm\'b2`,
+          `Momento d'inerzia flessionale: Jf = ${Jf.toFixed(2)} mm\uc0\u8308 `,
+          `Modulo resistente a flessione: Wf = ${Wf.toFixed(2)} mm\'b3`,
+          `Momento polare: Jp = ${Jp.toFixed(2)} mm\uc0\u8308 `,
+          `Modulo resistente a torsione: Wt = ${Wt.toFixed(2)} mm\'b3`,
         ],
-        notes: ["Per il taglio su sezione cava il coefficiente è indicativo."],
+        notes: ["Per il taglio su sezione cava il coefficiente \'e8 indicativo."],
       };
     }
 
@@ -1173,7 +1236,7 @@ import type {
       const Wt = Jt / (shortSide / 2);
 
       return {
-        name: `Rettangolare piena ${b}×${h} mm`,
+        name: `Rettangolare piena ${b}\'d7${h} mm`,
         A,
         Jf,
         Wf,
@@ -1184,12 +1247,12 @@ import type {
           `Sezione: rettangolare piena`,
           `Base: b = ${b.toFixed(2)} mm`,
           `Altezza: h = ${h.toFixed(2)} mm`,
-          `Area: A = ${A.toFixed(2)} mm²`,
-          `Momento d'inerzia flessionale: Jf = ${Jf.toFixed(2)} mm⁴`,
-          `Modulo resistente a flessione: Wf = ${Wf.toFixed(2)} mm³`,
-          `Modulo resistente torsionale indicativo: Wt ≈ ${Wt.toFixed(2)} mm³`,
+          `Area: A = ${A.toFixed(2)} mm\'b2`,
+          `Momento d'inerzia flessionale: Jf = ${Jf.toFixed(2)} mm\uc0\u8308 `,
+          `Modulo resistente a flessione: Wf = ${Wf.toFixed(2)} mm\'b3`,
+          `Modulo resistente torsionale indicativo: Wt \uc0\u8776  ${Wt.toFixed(2)} mm\'b3`,
         ],
-        notes: ["La torsione su sezione rettangolare è una stima preliminare."],
+        notes: ["La torsione su sezione rettangolare \'e8 una stima preliminare."],
       };
     }
 
@@ -1206,7 +1269,7 @@ import type {
       const Wt = JpIndicativo / (Math.min(B, H) / 2);
 
       return {
-        name: `Rettangolare cava ${B}×${H} / ${bi}×${hi} mm`,
+        name: `Rettangolare cava ${B}\'d7${H} / ${bi}\'d7${hi} mm`,
         A,
         Jf,
         Wf,
@@ -1219,12 +1282,12 @@ import type {
           `Altezza esterna: H = ${H.toFixed(2)} mm`,
           `Base interna: b = ${bi.toFixed(2)} mm`,
           `Altezza interna: h = ${hi.toFixed(2)} mm`,
-          `Area: A = ${A.toFixed(2)} mm²`,
-          `Momento d'inerzia flessionale: Jf = ${Jf.toFixed(2)} mm⁴`,
-          `Modulo resistente a flessione: Wf = ${Wf.toFixed(2)} mm³`,
-          `Modulo torsionale indicativo: Wt ≈ ${Wt.toFixed(2)} mm³`,
+          `Area: A = ${A.toFixed(2)} mm\'b2`,
+          `Momento d'inerzia flessionale: Jf = ${Jf.toFixed(2)} mm\uc0\u8308 `,
+          `Modulo resistente a flessione: Wf = ${Wf.toFixed(2)} mm\'b3`,
+          `Modulo torsionale indicativo: Wt \uc0\u8776  ${Wt.toFixed(2)} mm\'b3`,
         ],
-        notes: ["La torsione su sezione rettangolare cava è molto semplificata: per progetto reale usare formule da manuale o FEM."],
+        notes: ["La torsione su sezione rettangolare cava \'e8 molto semplificata: per progetto reale usare formule da manuale o FEM."],
       };
     }
 
@@ -1421,27 +1484,27 @@ import type {
         .join("; ");
 
       const techAiSoftwareContext =
-        "\n\n[CONTESTO INTERNO SOFTWARE TECHAI - NON MOSTRARE COME BLOCCO SEPARATO]\n" +
+        "\\n\\n[CONTESTO INTERNO SOFTWARE TECHAI - NON MOSTRARE COME BLOCCO SEPARATO]\\n" +
         "Stai rispondendo dentro TechAI, un software tecnico per aziende metalmeccaniche. " +
-        "Quando l'utente dice 'questo software', 'qui', 'nella tua app', 'le tue funzioni', 'strumenti tecnici' o frasi simili, devi riferirti a TechAI e alle sue funzioni interne, non a un software generico.\n\n" +
-        "Funzioni principali visibili in TechAI:\n" +
-        "- Checklist: controllo preliminare di componente, materiale, carichi, ambiente, tolleranze, rugosità e note tecniche.\n" +
-        "- Verifica: calcoli meccanici rapidi su trazione/compressione, taglio, flessione, torsione, sollecitazioni combinate, pressione interna, stato piano e fatica.\n" +
-        "- Calcoli: calcolatore tecnico geometrico/dimensionale per sezioni, aree, inerzie, massa, perni, linguette, viti, saldature e recipienti in pressione.\n" +
-        "- Materiali: libreria materiali interna con acciai, inox, allumini, ottoni, ghise, polimeri, elastomeri, compositi, ceramici e materiali speciali.\n" +
-        "- Tavole: analisi di tavole tecniche PDF/immagine con controllo di cartiglio, viste, quote, tolleranze dimensionali/geometriche, rugosità, filetti, fori, materiale e trattamenti.\n" +
-        "- Progetti: memoria progetto con chat, documenti, tavole, materiali, verifiche, decisioni, revisioni e note.\n\n" +
+        "Quando l'utente dice 'questo software', 'qui', 'nella tua app', 'le tue funzioni', 'strumenti tecnici' o frasi simili, devi riferirti a TechAI e alle sue funzioni interne, non a un software generico.\\n\\n" +
+        "Funzioni principali visibili in TechAI:\\n" +
+        "- Checklist: controllo preliminare di componente, materiale, carichi, ambiente, tolleranze, rugosit\'e0 e note tecniche.\\n" +
+        "- Verifica: calcoli meccanici rapidi su trazione/compressione, taglio, flessione, torsione, sollecitazioni combinate, pressione interna, stato piano e fatica.\\n" +
+        "- Calcoli: calcolatore tecnico geometrico/dimensionale per sezioni, aree, inerzie, massa, perni, linguette, viti, saldature e recipienti in pressione.\\n" +
+        "- Materiali: libreria materiali interna con acciai, inox, allumini, ottoni, ghise, polimeri, elastomeri, compositi, ceramici e materiali speciali.\\n" +
+        "- Tavole: analisi di tavole tecniche PDF/immagine con controllo di cartiglio, viste, quote, tolleranze dimensionali/geometriche, rugosit\'e0, filetti, fori, materiale e trattamenti.\\n" +
+        "- Progetti: memoria progetto con chat, documenti, tavole, materiali, verifiche, decisioni, revisioni e note.\\n\\n" +
         "Materiali presenti o previsti nella libreria interna, elenco sintetico: " +
         materialNamesForContext +
-        "\n\nRegola importante: se l'utente chiede quali materiali o funzioni sono disponibili nel software, rispondi usando questo contesto interno. Se non hai l'elenco completo, dillo, ma non rispondere come se non sapessi nulla del software.\n" +
-        "[FINE CONTESTO INTERNO]\n";
+        "\\n\\nRegola importante: se l'utente chiede quali materiali o funzioni sono disponibili nel software, rispondi usando questo contesto interno. Se non hai l'elenco completo, dillo, ma non rispondere come se non sapessi nulla del software.\\n" +
+        "[FINE CONTESTO INTERNO]\\n";
 
       const lastDrawingAnalysisContext = lastDrawingAnalysisText.trim()
-        ? "\n\n[ULTIMA ANALISI TAVOLA DISPONIBILE - USARE SE L'UTENTE CHIEDE COSA È STATO SCRITTO, RILEVATO O RISPOSTO NELLA FUNZIONE TAVOLE]\n" +
-          "Questa è la risposta reale generata dall'ultima analisi della funzione Tavole. " +
-          "Se l'utente chiede di ripetere, riassumere, spiegare o confrontare il contenuto della funzione Tavole, devi usare questo testo e non descrivere genericamente la funzione.\n\n" +
+        ? "\\n\\n[ULTIMA ANALISI TAVOLA DISPONIBILE - USARE SE L'UTENTE CHIEDE COSA \'c8 STATO SCRITTO, RILEVATO O RISPOSTO NELLA FUNZIONE TAVOLE]\\n" +
+          "Questa \'e8 la risposta reale generata dall'ultima analisi della funzione Tavole. " +
+          "Se l'utente chiede di ripetere, riassumere, spiegare o confrontare il contenuto della funzione Tavole, devi usare questo testo e non descrivere genericamente la funzione.\\n\\n" +
           lastDrawingAnalysisText.slice(0, 12000) +
-          "\n[FINE ULTIMA ANALISI TAVOLA]\n"
+          "\\n[FINE ULTIMA ANALISI TAVOLA]\\n"
         : "";
 
       formData.append("message", text + techAiSoftwareContext + lastDrawingAnalysisContext);
@@ -1479,7 +1542,7 @@ import type {
       const headers = await buildApiHeaders();
 
       if (!headers) {
-        replaceMessagesInChat(chatId, [...updatedMessages, { role: "AI", text: "⚠️ Sessione scaduta. Effettua di nuovo il login oppure entra come ospite." }]);
+        replaceMessagesInChat(chatId, [...updatedMessages, { role: "AI", text: "\uc0\u9888 \u65039  Sessione scaduta. Effettua di nuovo il login oppure entra come ospite." }]);
         return;
       }
 
@@ -1496,8 +1559,8 @@ import type {
             {
               role: "AI",
               text:
-                `⚠️ **Limite caricamento file raggiunto** (${data.fileUsed}/${data.fileLimit} file usati).\n\n` +
-                `Come ospite puoi caricare massimo **${data.fileLimit || GUEST_FILE_LIMIT} file ogni 24 ore**.\n\n` +
+                `\uc0\u9888 \u65039  **Limite caricamento file raggiunto** (${data.fileUsed}/${data.fileLimit} file usati).\\n\\n` +
+                `Come ospite puoi caricare massimo **${data.fileLimit || GUEST_FILE_LIMIT} file ogni 24 ore**.\\n\\n` +
                 `Puoi comunque continuare con domande testuali se hai ancora richieste disponibili.`,
             },
           ]);
@@ -1507,7 +1570,7 @@ import type {
         if (res.status === 403 && data?.error === "Limite AI raggiunto") {
           replaceMessagesInChat(chatId, [
             ...updatedMessages,
-            { role: "AI", text: `⚠️ **Limite AI raggiunto** (${data.used}/${data.limit} richieste usate).\n\nUpgrada al piano Pro per continuare a usare l'assistente.` },
+            { role: "AI", text: `\uc0\u9888 \u65039  **Limite AI raggiunto** (${data.used}/${data.limit} richieste usate).\\n\\nUpgrada al piano Pro per continuare a usare l'assistente.` },
           ]);
           return;
         }
@@ -1518,8 +1581,8 @@ import type {
             {
               role: "AI",
               text:
-                `⚠️ **Limite ospite raggiunto** (${data.used}/${data.limit} richieste usate).\n\n` +
-                `Come ospite puoi fare massimo **10 richieste ogni 24 ore**.\n\n` +
+                `\uc0\u9888 \u65039  **Limite ospite raggiunto** (${data.used}/${data.limit} richieste usate).\\n\\n` +
+                `Come ospite puoi fare massimo **10 richieste ogni 24 ore**.\\n\\n` +
                 `Accedi o registrati per continuare a usare TechAI.`,
             },
           ]);
@@ -1527,7 +1590,7 @@ import type {
         }
 
         if (res.status === 401) {
-          replaceMessagesInChat(chatId, [...updatedMessages, { role: "AI", text: `⚠️ **Sessione scaduta.** Effettua di nuovo il login oppure entra come ospite.` }]);
+          replaceMessagesInChat(chatId, [...updatedMessages, { role: "AI", text: `\uc0\u9888 \u65039  **Sessione scaduta.** Effettua di nuovo il login oppure entra come ospite.` }]);
           return;
         }
 
@@ -1545,8 +1608,8 @@ import type {
         {
           role: "AI",
           text:
-            `⚠️ Backend non collegato correttamente.\n\n` +
-            `Controlla che la rotta \`/api/chat\` esista su Vercel e che le variabili ambiente siano configurate.\n\n` +
+            `\uc0\u9888 \u65039  Backend non collegato correttamente.\\n\\n` +
+            `Controlla che la rotta \\`/api/chat\\` esista su Vercel e che le variabili ambiente siano configurate.\\n\\n` +
             `Dettaglio tecnico: ${error?.message || "errore sconosciuto"}`,
         },
       ]);
@@ -1569,42 +1632,42 @@ import type {
 
     results.push({
       area: "Materiale selezionato",
-      status: material ? "⚠️ Da verificare" : "❌ Errore critico",
-      detail: material ? `Materiale indicato: ${f.material}. Va confrontato con carico, ambiente e lavorazione.` : "Materiale non indicato: non è possibile valutare resistenza, trattamenti e lavorabilità.",
-      suggestion: material ? "Controlla Rm, Re/Rp0.2, durezza, saldabilità e disponibilità commerciale." : "Inserisci una sigla materiale, ad esempio C45, S235JR, 42CrMo4, AISI 304.",
+      status: material ? "\uc0\u9888 \u65039  Da verificare" : "\u10060  Errore critico",
+      detail: material ? `Materiale indicato: ${f.material}. Va confrontato con carico, ambiente e lavorazione.` : "Materiale non indicato: non \'e8 possibile valutare resistenza, trattamenti e lavorabilit\'e0.",
+      suggestion: material ? "Controlla Rm, Re/Rp0.2, durezza, saldabilit\'e0 e disponibilit\'e0 commerciale." : "Inserisci una sigla materiale, ad esempio C45, S235JR, 42CrMo4, AISI 304.",
     });
 
     results.push({
       area: "Coerenza carico/materiale",
-      status: !f.load.trim() || Number.isNaN(loadValue) || loadValue <= 0 ? "❌ Errore critico" : material ? "⚠️ Da verificare" : "❌ Errore critico",
+      status: !f.load.trim() || Number.isNaN(loadValue) || loadValue <= 0 ? "\uc0\u10060  Errore critico" : material ? "\u9888 \u65039  Da verificare" : "\u10060  Errore critico",
       detail: !f.load.trim() || Number.isNaN(loadValue) || loadValue <= 0 ? "Carico non indicato o non numerico." : `Carico indicativo inserito: ${f.load} N. La sola checklist non sostituisce la verifica tensionale.`,
       suggestion: "Esegui almeno una verifica rapida a trazione/flessione/taglio/torsione in base al componente.",
     });
 
     results.push({
       area: "Ambiente d'uso",
-      status: "⚠️ Da verificare",
-      detail: environment ? `Ambiente indicato: ${f.environment}.` : "Ambiente non specificato: corrosione, temperatura, umidità e polveri possono cambiare la scelta del materiale.",
+      status: "\uc0\u9888 \u65039  Da verificare",
+      detail: environment ? `Ambiente indicato: ${f.environment}.` : "Ambiente non specificato: corrosione, temperatura, umidit\'e0 e polveri possono cambiare la scelta del materiale.",
       suggestion: environment.includes("corros") || environment.includes("umid") || environment.includes("esterno") ? "Valuta inox, zincatura, verniciatura o altro trattamento superficiale." : "Specifica se il pezzo lavora a secco, in esterno, in olio, in ambiente corrosivo o ad alta temperatura.",
     });
 
     results.push({
       area: "Trattamenti termici/superficiali",
-      status: material ? "⚠️ Da verificare" : "❌ Errore critico",
-      detail: material ? "La necessità di trattamenti dipende da usura, fatica, durezza superficiale e accoppiamenti." : "Senza materiale non si possono proporre trattamenti compatibili.",
+      status: material ? "\uc0\u9888 \u65039  Da verificare" : "\u10060  Errore critico",
+      detail: material ? "La necessit\'e0 di trattamenti dipende da usura, fatica, durezza superficiale e accoppiamenti." : "Senza materiale non si possono proporre trattamenti compatibili.",
       suggestion: material.includes("c45") ? "Per C45 valuta bonifica o tempra superficiale se servono resistenza e durezza." : material.includes("42crmo4") ? "Per 42CrMo4 valuta bonifica se servono alte prestazioni meccaniche." : "Aggiungi una nota se sono richiesti bonifica, cementazione, nitrurazione, tempra, zincatura o anodizzazione.",
     });
 
     results.push({
       area: "Coefficiente di sicurezza",
-      status: !f.safetyFactor.trim() || Number.isNaN(safetyValue) ? "❌ Errore critico" : safetyValue < 1.5 ? "❌ Errore critico" : safetyValue < 2 ? "⚠️ Da verificare" : "✅ Conforme",
+      status: !f.safetyFactor.trim() || Number.isNaN(safetyValue) ? "\uc0\u10060  Errore critico" : safetyValue < 1.5 ? "\u10060  Errore critico" : safetyValue < 2 ? "\u9888 \u65039  Da verificare" : "\u9989  Conforme",
       detail: !f.safetyFactor.trim() || Number.isNaN(safetyValue) ? "Coefficiente di sicurezza non indicato." : `Coefficiente di sicurezza indicato: n = ${f.safetyFactor}.`,
-      suggestion: !f.safetyFactor.trim() || Number.isNaN(safetyValue) ? "Inserisci n. Per componenti statici spesso si parte da valori indicativi ≥ 2." : safetyValue < 1.5 ? "Valore molto basso: giustificalo con norma, prove o calcolo accurato." : "Verifica che il coefficiente sia coerente con incertezza del carico e conseguenze del cedimento.",
+      suggestion: !f.safetyFactor.trim() || Number.isNaN(safetyValue) ? "Inserisci n. Per componenti statici spesso si parte da valori indicativi \uc0\u8805  2." : safetyValue < 1.5 ? "Valore molto basso: giustificalo con norma, prove o calcolo accurato." : "Verifica che il coefficiente sia coerente con incertezza del carico e conseguenze del cedimento.",
     });
 
-    results.push({ area: "Tolleranze dimensionali", status: tolerances ? "✅ Conforme" : "⚠️ Da verificare", detail: tolerances ? `Tolleranze indicate: ${f.tolerances}.` : "Non risultano tolleranze o accoppiamenti indicati.", suggestion: tolerances ? "Controlla che siano presenti sulle quote funzionali." : "Aggiungi tolleranze sulle quote funzionali. Esempi: Ø10 H7, Ø20 h6, posizione fori, planarità appoggi." });
-    results.push({ area: "Rugosità", status: roughness ? "✅ Conforme" : "⚠️ Da verificare", detail: roughness ? `Rugosità indicata: ${f.roughness}.` : "Rugosità non indicata.", suggestion: roughness ? "Verifica che la rugosità sia assegnata alle superfici funzionali e non solo come valore generale." : "Aggiungi rugosità generale e rugosità specifiche per sedi, scorrimenti, appoggi, tenute e accoppiamenti." });
-    results.push({ area: "Note di lavorazione", status: machining || f.notes.trim() ? "⚠️ Da verificare" : "⚠️ Da verificare", detail: machining ? `Lavorazione indicata: ${f.machining}.` : "Lavorazione non specificata.", suggestion: "Indica se il pezzo è tornito, fresato, saldato, piegato, tagliato laser, rettificato o trattato. Aggiungi note per sbavatura e protezione superficiale." });
+    results.push({ area: "Tolleranze dimensionali", status: tolerances ? "\uc0\u9989  Conforme" : "\u9888 \u65039  Da verificare", detail: tolerances ? `Tolleranze indicate: ${f.tolerances}.` : "Non risultano tolleranze o accoppiamenti indicati.", suggestion: tolerances ? "Controlla che siano presenti sulle quote funzionali." : "Aggiungi tolleranze sulle quote funzionali. Esempi: \'d810 H7, \'d820 h6, posizione fori, planarit\'e0 appoggi." });
+    results.push({ area: "Rugosit\'e0", status: roughness ? "\uc0\u9989  Conforme" : "\u9888 \u65039  Da verificare", detail: roughness ? `Rugosit\'e0 indicata: ${f.roughness}.` : "Rugosit\'e0 non indicata.", suggestion: roughness ? "Verifica che la rugosit\'e0 sia assegnata alle superfici funzionali e non solo come valore generale." : "Aggiungi rugosit\'e0 generale e rugosit\'e0 specifiche per sedi, scorrimenti, appoggi, tenute e accoppiamenti." });
+    results.push({ area: "Note di lavorazione", status: machining || f.notes.trim() ? "\uc0\u9888 \u65039  Da verificare" : "\u9888 \u65039  Da verificare", detail: machining ? `Lavorazione indicata: ${f.machining}.` : "Lavorazione non specificata.", suggestion: "Indica se il pezzo \'e8 tornito, fresato, saldato, piegato, tagliato laser, rettificato o trattato. Aggiungi note per sbavatura e protezione superficiale." });
 
     setChecklistResults(results);
   };
@@ -1650,13 +1713,13 @@ import type {
         safetyFactor = Re / sigmaVM;
         title = "Verifica a trazione / compressione";
         scheme = "Barra o componente con carico assiale centrato.";
-        formulas = ["A = area sezione", "σ = N / A", "n = Re / |σ|"];
+        formulas = ["A = area sezione", "\uc0\u963  = N / A", "n = Re / |\u963 |"];
         values = [
           `Carico assiale: N = ${N.toFixed(2)} N`,
-          `Tensione normale: σ = ${sigmaN.toFixed(2)} MPa`,
+          `Tensione normale: \uc0\u963  = ${sigmaN.toFixed(2)} MPa`,
           `Modulo elastico indicativo: E = ${E.toFixed(0)} MPa`,
         ];
-        notes.push("Se il carico è di compressione e il pezzo è snello, controllare anche l'instabilità di punta.");
+        notes.push("Se il carico \'e8 di compressione e il pezzo \'e8 snello, controllare anche l'instabilit\'e0 di punta.");
       }
 
       if (type === "taglio") {
@@ -1666,14 +1729,14 @@ import type {
         safetyFactor = Re / sigmaVM;
         title = "Verifica a taglio";
         scheme = "Sezione sollecitata da forza tagliante.";
-        formulas = ["τmedio = T / A", "τmax = k · T / A", "σVM = √3 · τmax", "n = Re / σVM"];
+        formulas = ["\uc0\u964 medio = T / A", "\u964 max = k \'b7 T / A", "\u963 VM = \u8730 3 \'b7 \u964 max", "n = Re / \u963 VM"];
         values = [
           `Forza tagliante: T = ${T.toFixed(2)} N`,
           `Coefficiente forma taglio: k = ${section.shearFactor.toFixed(2)}`,
-          `Tensione tangenziale massima indicativa: τ = ${tauV.toFixed(2)} MPa`,
-          `Tensione equivalente Von Mises: σVM = ${sigmaVM.toFixed(2)} MPa`,
+          `Tensione tangenziale massima indicativa: \uc0\u964  = ${tauV.toFixed(2)} MPa`,
+          `Tensione equivalente Von Mises: \uc0\u963 VM = ${sigmaVM.toFixed(2)} MPa`,
         ];
-        notes.push("Per spine/perni controllare se il taglio è singolo o doppio.");
+        notes.push("Per spine/perni controllare se il taglio \'e8 singolo o doppio.");
       }
 
       if (type === "flessione") {
@@ -1682,13 +1745,13 @@ import type {
         sigmaTresca = Math.abs(sigmaF);
         safetyFactor = Re / sigmaVM;
         title = "Verifica a flessione";
-        scheme = MfInput > 0 ? "Momento flettente inserito direttamente." : "Momento flettente calcolato da forza tagliante e braccio: Mf = T · L.";
-        formulas = ["Mf = T · L oppure valore inserito", "Wf = modulo resistente a flessione", "σf = Mf / Wf", "n = Re / |σf|"];
+        scheme = MfInput > 0 ? "Momento flettente inserito direttamente." : "Momento flettente calcolato da forza tagliante e braccio: Mf = T \'b7 L.";
+        formulas = ["Mf = T \'b7 L oppure valore inserito", "Wf = modulo resistente a flessione", "\uc0\u963 f = Mf / Wf", "n = Re / |\u963 f|"];
         values = [
           `Forza tagliante: T = ${T.toFixed(2)} N`,
           `Braccio: L = ${L.toFixed(2)} mm`,
           `Momento flettente: Mf = ${Mf.toFixed(2)} Nmm`,
-          `Tensione di flessione: σf = ${sigmaF.toFixed(2)} MPa`,
+          `Tensione di flessione: \uc0\u963 f = ${sigmaF.toFixed(2)} MPa`,
         ];
       }
 
@@ -1699,11 +1762,11 @@ import type {
         safetyFactor = Re / sigmaVM;
         title = "Verifica a torsione";
         scheme = "Sezione sollecitata da momento torcente.";
-        formulas = ["Wt = modulo resistente a torsione", "τt = Mt / Wt", "σVM = √3 · τt", "n = Re / σVM"];
+        formulas = ["Wt = modulo resistente a torsione", "\uc0\u964 t = Mt / Wt", "\u963 VM = \u8730 3 \'b7 \u964 t", "n = Re / \u963 VM"];
         values = [
           `Momento torcente: Mt = ${Mt.toFixed(2)} Nmm`,
-          `Tensione tangenziale di torsione: τt = ${tauT.toFixed(2)} MPa`,
-          `Tensione equivalente Von Mises: σVM = ${sigmaVM.toFixed(2)} MPa`,
+          `Tensione tangenziale di torsione: \uc0\u964 t = ${tauT.toFixed(2)} MPa`,
+          `Tensione equivalente Von Mises: \uc0\u963 VM = ${sigmaVM.toFixed(2)} MPa`,
         ];
         notes.push("Per alberi con cave linguetta o spallamenti applicare coefficienti di intaglio.");
       }
@@ -1743,15 +1806,15 @@ import type {
         title = titles[type];
         scheme = "Sollecitazioni combinate sulla stessa sezione. Verifica equivalente con Von Mises e confronto indicativo con Tresca.";
         formulas = [
-          "σN = N / A",
-          "σf = Mf / Wf",
-          "τt = Mt / Wt",
-          "τV = k · T / A",
-          "σtot = σN + σf",
-          "τtot = √(τt² + τV²)",
-          "σVM = √(σtot² + 3τtot²)",
-          "σTresca ≈ √(σtot² + 4τtot²)",
-          "n = Re / σVM",
+          "\uc0\u963 N = N / A",
+          "\uc0\u963 f = Mf / Wf",
+          "\uc0\u964 t = Mt / Wt",
+          "\uc0\u964 V = k \'b7 T / A",
+          "\uc0\u963 tot = \u963 N + \u963 f",
+          "\uc0\u964 tot = \u8730 (\u964 t\'b2 + \u964 V\'b2)",
+          "\uc0\u963 VM = \u8730 (\u963 tot\'b2 + 3\u964 tot\'b2)",
+          "\uc0\u963 Tresca \u8776  \u8730 (\u963 tot\'b2 + 4\u964 tot\'b2)",
+          "n = Re / \uc0\u963 VM",
         ];
         values = [
           `Carico assiale: N = ${N.toFixed(2)} N`,
@@ -1759,14 +1822,14 @@ import type {
           `Braccio: L = ${L.toFixed(2)} mm`,
           `Momento flettente usato: Mf = ${Mf.toFixed(2)} Nmm`,
           `Momento torcente: Mt = ${Mt.toFixed(2)} Nmm`,
-          `σN = ${sigmaN.toFixed(2)} MPa`,
-          `σf = ${sigmaF.toFixed(2)} MPa`,
-          `τt = ${tauT.toFixed(2)} MPa`,
-          `τV = ${tauV.toFixed(2)} MPa`,
-          `σtot usata = ${sigmaTot.toFixed(2)} MPa`,
-          `τtot usata = ${tauTot.toFixed(2)} MPa`,
-          `Von Mises: σVM = ${sigmaVM.toFixed(2)} MPa`,
-          `Tresca indicativo: σTresca = ${sigmaTresca.toFixed(2)} MPa`,
+          `\uc0\u963 N = ${sigmaN.toFixed(2)} MPa`,
+          `\uc0\u963 f = ${sigmaF.toFixed(2)} MPa`,
+          `\uc0\u964 t = ${tauT.toFixed(2)} MPa`,
+          `\uc0\u964 V = ${tauV.toFixed(2)} MPa`,
+          `\uc0\u963 tot usata = ${sigmaTot.toFixed(2)} MPa`,
+          `\uc0\u964 tot usata = ${tauTot.toFixed(2)} MPa`,
+          `Von Mises: \uc0\u963 VM = ${sigmaVM.toFixed(2)} MPa`,
+          `Tresca indicativo: \uc0\u963 Tresca = ${sigmaTresca.toFixed(2)} MPa`,
         ];
         notes.push("Per alberi reali considera anche intagli, cava linguetta, fatica e diametri normalizzati.");
       }
@@ -1791,20 +1854,20 @@ import type {
         title = "Verifica recipiente cilindrico in pressione";
         scheme = "Guscio cilindrico sottile con pressione interna. Formula valida come stima se s << r.";
         formulas = [
-          "p[MPa] = p[bar] · 0,1",
-          "σcirconferenziale = p · r / s",
-          "σlongitudinale = p · r / (2s)",
-          "σVM = √(σc² - σcσl + σl²)",
-          "n = Re / σVM",
+          "p[MPa] = p[bar] \'b7 0,1",
+          "\uc0\u963 circonferenziale = p \'b7 r / s",
+          "\uc0\u963 longitudinale = p \'b7 r / (2s)",
+          "\uc0\u963 VM = \u8730 (\u963 c\'b2 - \u963 c\u963 l + \u963 l\'b2)",
+          "n = Re / \uc0\u963 VM",
         ];
         values = [
           `Pressione: p = ${pBar.toFixed(2)} bar = ${p.toFixed(2)} MPa`,
           `Raggio medio: r = ${r.toFixed(2)} mm`,
           `Spessore: s = ${sp.toFixed(2)} mm`,
-          `σ circonferenziale = ${sigmaCirc.toFixed(2)} MPa`,
-          `σ longitudinale = ${sigmaLong.toFixed(2)} MPa`,
-          `Von Mises: σVM = ${sigmaVM.toFixed(2)} MPa`,
-          `Tresca indicativo: σTresca = ${sigmaTresca.toFixed(2)} MPa`,
+          `\uc0\u963  circonferenziale = ${sigmaCirc.toFixed(2)} MPa`,
+          `\uc0\u963  longitudinale = ${sigmaLong.toFixed(2)} MPa`,
+          `Von Mises: \uc0\u963 VM = ${sigmaVM.toFixed(2)} MPa`,
+          `Tresca indicativo: \uc0\u963 Tresca = ${sigmaTresca.toFixed(2)} MPa`,
         ];
         notes.push("Per recipienti reali considera saldature, fondi, aperture, normative e coefficienti di sicurezza specifici.");
       }
@@ -1825,23 +1888,23 @@ import type {
         safetyFactor = Re / sigmaVM;
 
         title = "Stato piano di tensione";
-        scheme = "Calcolo tensioni principali, taglio massimo, Von Mises e Tresca da σx, σy, τxy.";
+        scheme = "Calcolo tensioni principali, taglio massimo, Von Mises e Tresca da \uc0\u963 x, \u963 y, \u964 xy.";
         formulas = [
-          "σ1,2 = (σx+σy)/2 ± √[((σx-σy)/2)² + τxy²]",
-          "τmax = √[((σx-σy)/2)² + τxy²]",
-          "σVM = √(σx² - σxσy + σy² + 3τxy²)",
-          "σTresca = max(|σ1-σ2|, |σ1|, |σ2|)",
-          "n = Re / σVM",
+          "\uc0\u963 1,2 = (\u963 x+\u963 y)/2 \'b1 \u8730 [((\u963 x-\u963 y)/2)\'b2 + \u964 xy\'b2]",
+          "\uc0\u964 max = \u8730 [((\u963 x-\u963 y)/2)\'b2 + \u964 xy\'b2]",
+          "\uc0\u963 VM = \u8730 (\u963 x\'b2 - \u963 x\u963 y + \u963 y\'b2 + 3\u964 xy\'b2)",
+          "\uc0\u963 Tresca = max(|\u963 1-\u963 2|, |\u963 1|, |\u963 2|)",
+          "n = Re / \uc0\u963 VM",
         ];
         values = [
-          `σx = ${sx.toFixed(2)} MPa`,
-          `σy = ${sy.toFixed(2)} MPa`,
-          `τxy = ${txy.toFixed(2)} MPa`,
-          `σ1 = ${s1.toFixed(2)} MPa`,
-          `σ2 = ${s2.toFixed(2)} MPa`,
-          `τmax = ${radius.toFixed(2)} MPa`,
-          `Von Mises: σVM = ${sigmaVM.toFixed(2)} MPa`,
-          `Tresca: σTresca = ${sigmaTresca.toFixed(2)} MPa`,
+          `\uc0\u963 x = ${sx.toFixed(2)} MPa`,
+          `\uc0\u963 y = ${sy.toFixed(2)} MPa`,
+          `\uc0\u964 xy = ${txy.toFixed(2)} MPa`,
+          `\uc0\u963 1 = ${s1.toFixed(2)} MPa`,
+          `\uc0\u963 2 = ${s2.toFixed(2)} MPa`,
+          `\uc0\u964 max = ${radius.toFixed(2)} MPa`,
+          `Von Mises: \uc0\u963 VM = ${sigmaVM.toFixed(2)} MPa`,
+          `Tresca: \uc0\u963 Tresca = ${sigmaTresca.toFixed(2)} MPa`,
         ];
       }
 
@@ -1862,25 +1925,25 @@ import type {
         title = "Verifica a fatica semplificata";
         scheme = "Verifica tipo Goodman con tensione media e alternata. Valida come controllo preliminare.";
         formulas = [
-          "σm = (σmax + σmin) / 2",
-          "σa = |σmax - σmin| / 2",
-          "Sn ≈ 0,5 · Rm se non inserito",
-          "1/n = σa/Sn + σm/Rm",
+          "\uc0\u963 m = (\u963 max + \u963 min) / 2",
+          "\uc0\u963 a = |\u963 max - \u963 min| / 2",
+          "Sn \uc0\u8776  0,5 \'b7 Rm se non inserito",
+          "1/n = \uc0\u963 a/Sn + \u963 m/Rm",
         ];
         values = [
-          `σmax = ${sMax.toFixed(2)} MPa`,
-          `σmin = ${sMin.toFixed(2)} MPa`,
-          `σm = ${sm.toFixed(2)} MPa`,
-          `σa = ${sa.toFixed(2)} MPa`,
+          `\uc0\u963 max = ${sMax.toFixed(2)} MPa`,
+          `\uc0\u963 min = ${sMin.toFixed(2)} MPa`,
+          `\uc0\u963 m = ${sm.toFixed(2)} MPa`,
+          `\uc0\u963 a = ${sa.toFixed(2)} MPa`,
           `Rm = ${Rm.toFixed(2)} MPa`,
           `Sn usato = ${Sn.toFixed(2)} MPa`,
           `Coefficiente a fatica: n = ${safetyFactor.toFixed(2)}`,
         ];
-        notes.push("Per fatica reale correggere Sn con rugosità, dimensione, affidabilità, tipo di sollecitazione e intaglio.");
+        notes.push("Per fatica reale correggere Sn con rugosit\'e0, dimensione, affidabilit\'e0, tipo di sollecitazione e intaglio.");
       }
 
       if (!Number.isFinite(sigmaVM) || sigmaVM <= 0) {
-        throw new Error("La tensione calcolata è nulla o non valida. Inserisci carichi/momenti coerenti con il tipo di verifica scelto.");
+        throw new Error("La tensione calcolata \'e8 nulla o non valida. Inserisci carichi/momenti coerenti con il tipo di verifica scelto.");
       }
 
       const outcome = safetyFactor >= nRequired ? "OK" : "NON OK";
@@ -1915,7 +1978,7 @@ import type {
     } catch (error: any) {
       setQuickCalcResult({
         title: "Errore nei dati inseriti",
-        scheme: "Il modulo non riesce a completare la verifica perché uno o più dati non sono coerenti.",
+        scheme: "Il modulo non riesce a completare la verifica perch\'e9 uno o pi\'f9 dati non sono coerenti.",
         section: "Non calcolata",
         formulas: [],
         sectionValues: [],
@@ -1992,7 +2055,7 @@ import type {
     const analysisContext = lastDrawingAnalysisText.trim();
     const message = customMessage ||
       (analysisContext
-        ? "Sulla base dell'analisi della tavola appena eseguita, puoi spiegarmi le criticità trovate e come correggerle?"
+        ? "Sulla base dell'analisi della tavola appena eseguita, puoi spiegarmi le criticit\'e0 trovate e come correggerle?"
         : "Ho una domanda sulla tavola tecnica che sto analizzando.");
     setQuery(message);
     setShowDrawingGenerator(false);
@@ -2017,25 +2080,25 @@ import type {
         formData.append(
           "message",
           `Sei un esperto di disegno tecnico meccanico secondo le norme ISO 128, ISO 1101 e ISO 286.
-Analizza con MASSIMA PRECISIONE questa tavola tecnica. Le immagini inviate sono crop automatici dinamici preparati da src/utils/technicalDrawingUtils.ts: alcuni vengono da parole chiave del PDF, altri da aree grafiche dense, più alcuni crop di sicurezza. Sono tutte porzioni della stessa tavola, non tavole diverse. Leggi ogni quota, simbolo e annotazione visibile.
+Analizza con MASSIMA PRECISIONE questa tavola tecnica. Le immagini inviate sono crop automatici dinamici preparati da src/utils/technicalDrawingUtils.ts: alcuni vengono da parole chiave del PDF, altri da aree grafiche dense, pi\'f9 alcuni crop di sicurezza. Sono tutte porzioni della stessa tavola, non tavole diverse. Leggi ogni quota, simbolo e annotazione visibile.
 
 DATI DEL PEZZO FORNITI DALL'UTENTE:
 - Nome pezzo: ${f.partName || "non indicato"}
 - Tipo pezzo: ${f.partType || "non indicato"}
 - Materiale: ${f.material || "non indicato"}
-- Quantità/lotto: ${f.productionQuantity || "non indicato"}
+- Quantit\'e0/lotto: ${f.productionQuantity || "non indicato"}
 - Lavorazione prevista: ${f.manufacturing || "non indicata"}
 - Geometrie principali: ${f.mainFeatures || "non indicate"}
 - Funzione nell'assieme: ${f.assemblyFunction || "non indicata"}
 - Superfici funzionali: ${f.functionalSurfaces || "non indicate"}
 - Fori/filetti/lamature: ${f.holesThreads || "non indicati"}
 - Accoppiamenti/tolleranze: ${f.fits || f.tolerances || "non indicati"}
-- Rugosità: ${f.roughness || "non indicate"}
+- Rugosit\'e0: ${f.roughness || "non indicate"}
 - Indicazioni aggiuntive / ALTRO: ${drawingExtraNotes.trim() || "nessuna indicazione aggiuntiva"}
 
 SEZIONE ALTRO / INDICAZIONI AGGIUNTIVE:
-Se l'utente ha compilato il campo ALTRO, usa quelle indicazioni come priorità dell'analisi.
-Esempi: se chiede quote funzionali, crea una sezione dedicata alle quote funzionali e critiche; se chiede rugosità, concentrati sulle superfici funzionali; se chiede cartiglio, controlla soprattutto dati cartiglio.
+Se l'utente ha compilato il campo ALTRO, usa quelle indicazioni come priorit\'e0 dell'analisi.
+Esempi: se chiede quote funzionali, crea una sezione dedicata alle quote funzionali e critiche; se chiede rugosit\'e0, concentrati sulle superfici funzionali; se chiede cartiglio, controlla soprattutto dati cartiglio.
 Non ignorare il campo ALTRO, ma non inventare dati non leggibili dalla tavola.
 
 COSA DEVI CONTROLLARE:
@@ -2044,13 +2107,13 @@ COSA DEVI CONTROLLARE:
 3. QUOTATURA: cita quote leggibili, quote mancanti, duplicate o in conflitto.
 4. TOLLERANZE DIMENSIONALI: ISO visibili, coerenza con funzione.
 5. TOLLERANZE GEOMETRICHE: simboli GD&T e datum.
-6. RUGOSITÀ: simboli Ra/Rz visibili.
-7. FILETTI E FORI: designazioni, profondità, lamature.
+6. RUGOSIT\'c0: simboli Ra/Rz visibili.
+7. FILETTI E FORI: designazioni, profondit\'e0, lamature.
 8. TRATTAMENTI E MATERIALE.
 9. ERRORI CRITICI.
-10. VERIFICHE SPIEGABILI: per ogni criticità o quota funzionale indica motivazione tecnica, confidenza, riferimento tecnico ISO/UNI o principio tecnico e suggerimento correttivo.
+10. VERIFICHE SPIEGABILI: per ogni criticit\'e0 o quota funzionale indica motivazione tecnica, confidenza, riferimento tecnico ISO/UNI o principio tecnico e suggerimento correttivo.
 
-Rispondi SOLO con quanto vedi realmente. Se non è leggibile, dillo.
+Rispondi SOLO con quanto vedi realmente. Se non \'e8 leggibile, dillo.
 Se nel testo estratto dal PDF trovi un dato ma non riesci a collegarlo chiaramente alla zona della tavola, scrivilo come dato da confermare e non usarlo per conclusioni definitive.
 
 Struttura:
@@ -2059,12 +2122,12 @@ Struttura:
 ## 3. Quotatura
 ## 4. Tolleranze dimensionali
 ## 5. Tolleranze geometriche
-## 6. Rugosità
+## 6. Rugosit\'e0
 ## 7. Filetti e fori
 ## 8. Materiale e trattamenti
 ## 9. Errori critici e correzioni prioritarie
 ## 10. Verifiche spiegabili
-Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Riferimento tecnico, Suggerimento correttivo.
+Per ogni criticit\'e0 usa sempre: Descrizione, Motivazione tecnica, Confidenza, Riferimento tecnico, Suggerimento correttivo.
 ## 11. Giudizio finale (Approvata / Da correggere / Non producibile)`
         );
         formData.append("file", fileToSend);
@@ -2109,7 +2172,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         setLastDrawingAnalysisText(String(answer));
         syncGuestUsageFromBackend(data);
 
-        // ── Lookup zone semantiche → coordinate per formato foglio ──
+        // \uc0\u9472 \u9472  Lookup zone semantiche \u8594  coordinate per formato foglio \u9472 \u9472 
         const ZONE_COORDS: Record<string, Record<string, {x: number, y: number}>> = {
           A4:{ cartiglio:{x:82,y:90},vista_principale:{x:35,y:40},sezione_aa:{x:68,y:38},sezione_bb:{x:68,y:65},quotatura:{x:50,y:22},rugosita:{x:72,y:18},tolleranze:{x:45,y:30},fori_filetti:{x:38,y:55},note_generali:{x:20,y:85},cartiglio_materiale:{x:75,y:93},cartiglio_scala:{x:88,y:93},vista_destra:{x:65,y:42},vista_alto:{x:35,y:18} },
           A3:{ cartiglio:{x:84,y:91},vista_principale:{x:32,y:42},sezione_aa:{x:65,y:36},sezione_bb:{x:65,y:62},quotatura:{x:50,y:20},rugosita:{x:75,y:16},tolleranze:{x:45,y:28},fori_filetti:{x:35,y:55},note_generali:{x:18,y:87},cartiglio_materiale:{x:77,y:94},cartiglio_scala:{x:89,y:94},vista_destra:{x:63,y:40},vista_alto:{x:32,y:16} },
@@ -2120,20 +2183,20 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         const sheetFmt = (drawingForm.sheetFormat || "A3").toUpperCase();
         const zoneMap = ZONE_COORDS[sheetFmt] || ZONE_COORDS["A3"];
 
-        // ── Parsa PINS_JSON dalla risposta AI ──
+        // \uc0\u9472 \u9472  Parsa PINS_JSON dalla risposta AI \u9472 \u9472 
         const answerText = String(answer);
-        const pinsMatch = answerText.match(/<PINS>\s*([\s\S]*?)\s*<\/PINS>/i);
+        const pinsMatch = answerText.match(/<PINS>\\s*([\\s\\S]*?)\\s*<\\/PINS>/i);
         let parsedIssues: DrawingIssue[] = [];
         if (pinsMatch) {
           try {
             const pinsData = JSON.parse(pinsMatch[1].trim());
             if (Array.isArray(pinsData)) {
               parsedIssues = pinsData.map((p: any, i: number) => {
-                const zona = String(p.zona || "").toLowerCase().replace(/[\s\-]/g, "_");
+                const zona = String(p.zona || "").toLowerCase().replace(/[\\s\\-]/g, "_");
                 const coords = zona && zoneMap[zona] ? zoneMap[zona] : { x: Number(p.x) || 50, y: Number(p.y) || 50 };
                 return {
                   id: String(p.id || `pin-${i}`),
-                  label: String(p.label || 'Criticità'),
+                  label: String(p.label || 'Criticit\'e0'),
                   severity: ['errore','attenzione','info'].includes(p.severity) ? p.severity : 'attenzione',
                   x: Math.min(100, Math.max(0, coords.x)),
                   y: Math.min(100, Math.max(0, coords.y)),
@@ -2144,26 +2207,26 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           } catch { parsedIssues = []; }
         }
         //if (parsedIssues.length === 0) {
-          //parsedIssues = [{ id: 'ai-ok', label: 'Analisi completata', severity: 'info', x: 50, y: 50, detail: 'Nessuna criticità rilevata con evidenza chiara.' }];
+          //parsedIssues = [{ id: 'ai-ok', label: 'Analisi completata', severity: 'info', x: 50, y: 50, detail: 'Nessuna criticit\'e0 rilevata con evidenza chiara.' }];
         
         // Rimuovi il blocco PINS dal testo mostrato all'utente
-        const cleanAnswer = answerText.replace(/<PINS>[\s\S]*?<\/PINS>/gi, '').trim();
+        const cleanAnswer = answerText.replace(/<PINS>[\\s\\S]*?<\\/PINS>/gi, '').trim();
 
-        // ── Allinea status card al giudizio finale nel testo ──
-        // NON forziamo pin singolo: l'AI mette già tutti i pin necessari con le zone corrette
+        // \uc0\u9472 \u9472  Allinea status card al giudizio finale nel testo \u9472 \u9472 
+        // NON forziamo pin singolo: l'AI mette gi\'e0 tutti i pin necessari con le zone corrette
         const isNotApproved = /non approvata|da correggere|non producibile/i.test(cleanAnswer);
-        const isApproved = /approvata(?! con riserva)|giudizio finale[^\n]*approvata/i.test(cleanAnswer);
+        const isApproved = /approvata(?! con riserva)|giudizio finale[^\\n]*approvata/i.test(cleanAnswer);
 
-        // Se l'AI ha messo solo pin info ma il giudizio è NON APPROVATA,
+        // Se l'AI ha messo solo pin info ma il giudizio \'e8 NON APPROVATA,
         // aggiunge un pin errore AGGIUNTIVO (non sostituisce gli altri)
         if (isNotApproved && parsedIssues.every(p => p.severity === 'info')) {
-          const motivoMatch = cleanAnswer.match(/(?:motivo principale|motivo)[^:]*:\s*([^\n.]+)/i);
+          const motivoMatch = cleanAnswer.match(/(?:motivo principale|motivo)[^:]*:\\s*([^\\n.]+)/i);
           const motivo = motivoMatch ? motivoMatch[1].trim() : 'Tavola non approvata: vedere analisi completa.';
           parsedIssues.push({ id: 'ai-notapproved', label: 'Non approvata', severity: 'errore', x: 50, y: 88, detail: motivo });
         }
 
         // Status card allineato al giudizio
-        const cardStatus = isNotApproved ? '❌ Non approvata' : isApproved ? '✅ Approvata' : '⚠️ Da verificare';
+        const cardStatus = isNotApproved ? '\uc0\u10060  Non approvata' : isApproved ? '\u9989  Approvata' : '\u9888 \u65039  Da verificare';
 
         setDrawingIssues(parsedIssues);
         setDrawingResults([
@@ -2181,7 +2244,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         setDrawingResults([
           {
             category: "Errore analisi immagine",
-            status: "❌ Errore",
+            status: "\uc0\u10060  Errore",
             item: drawingReviewFile?.fileAttachment.name || "immagine",
             reason: error?.message || "Non sono riuscito ad analizzare l'immagine.",
             suggestion: "Controlla OPENAI_DRAWING_READER_API_KEY, OPENAI_DRAWING_READER_MODEL e fai redeploy su Vercel.",
@@ -2200,37 +2263,37 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
 
     if (!f.functionalSurfaces.trim()) issues.push({ id: "funzionali", label: "Superfici funzionali", severity: "errore", x: 24, y: 28, detail: "Mancano superfici funzionali: indica sedi, appoggi, scorrimenti, battute o riferimenti." });
     if (!f.tolerances.trim() && !f.fits.trim()) issues.push({ id: "tolleranze", label: "Tolleranze", severity: "errore", x: 66, y: 35, detail: "Mancano tolleranze o accoppiamenti sulle quote importanti." });
-    if (!f.roughness.trim()) issues.push({ id: "rugosita", label: "Rugosità", severity: "attenzione", x: 44, y: 62, detail: "Manca rugosità generale o specifica sulle superfici funzionali." });
-    if (!f.material.trim() || !f.manufacturing.trim()) issues.push({ id: "cartiglio", label: "Cartiglio", severity: "attenzione", x: 78, y: 78, detail: "Controlla materiale, lavorazione, trattamento, scala, unità e note generali nel cartiglio." });
-    if (text.includes("foro") || text.includes("filett") || text.includes("lamatura")) issues.push({ id: "fori", label: "Fori/filetti", severity: "info", x: 58, y: 22, detail: "Verifica diametri, profondità, posizioni, lamature/svasature e tolleranze dei fori." });
+    if (!f.roughness.trim()) issues.push({ id: "rugosita", label: "Rugosit\'e0", severity: "attenzione", x: 44, y: 62, detail: "Manca rugosit\'e0 generale o specifica sulle superfici funzionali." });
+    if (!f.material.trim() || !f.manufacturing.trim()) issues.push({ id: "cartiglio", label: "Cartiglio", severity: "attenzione", x: 78, y: 78, detail: "Controlla materiale, lavorazione, trattamento, scala, unit\'e0 e note generali nel cartiglio." });
+    if (text.includes("foro") || text.includes("filett") || text.includes("lamatura")) issues.push({ id: "fori", label: "Fori/filetti", severity: "info", x: 58, y: 22, detail: "Verifica diametri, profondit\'e0, posizioni, lamature/svasature e tolleranze dei fori." });
     if (issues.length === 0) issues.push({ id: "ok", label: "Controllo base OK", severity: "info", x: 50, y: 50, detail: "Non emergono mancanze principali dai dati inseriti." });
 
     results.push(
-      { category: "Viste", status: "✅ Necessaria", item: "Vista principale", reason: "Serve per mostrare la forma più riconoscibile e le quote principali.", suggestion: "Scegli la vista più rappresentativa del pezzo." },
-      { category: "Sezioni", status: "🟦 Consigliata", item: "Sezione A-A", reason: "Utile se ci sono fori, cave, lamature o geometrie interne.", suggestion: "Aggiungi sezioni solo dove chiariscono dettagli nascosti." },
-      { category: "Quote", status: "⚠️ Da verificare", item: "Quote funzionali", reason: "Le quote devono descrivere funzione e producibilità, non solo ingombri.", suggestion: "Evita catene chiuse e quota da riferimenti funzionali." },
-      { category: "Cartiglio", status: f.material.trim() ? "⚠️ Da verificare" : "❌ Mancante", item: "Materiale/note", reason: f.material.trim() ? `Materiale indicato: ${f.material}.` : "Materiale non indicato.", suggestion: "Riporta materiale, trattamento, scala, unità, tolleranze generali e note." }
+      { category: "Viste", status: "\uc0\u9989  Necessaria", item: "Vista principale", reason: "Serve per mostrare la forma pi\'f9 riconoscibile e le quote principali.", suggestion: "Scegli la vista pi\'f9 rappresentativa del pezzo." },
+      { category: "Sezioni", status: "\uc0\u55357 \u57318  Consigliata", item: "Sezione A-A", reason: "Utile se ci sono fori, cave, lamature o geometrie interne.", suggestion: "Aggiungi sezioni solo dove chiariscono dettagli nascosti." },
+      { category: "Quote", status: "\uc0\u9888 \u65039  Da verificare", item: "Quote funzionali", reason: "Le quote devono descrivere funzione e producibilit\'e0, non solo ingombri.", suggestion: "Evita catene chiuse e quota da riferimenti funzionali." },
+      { category: "Cartiglio", status: f.material.trim() ? "\uc0\u9888 \u65039  Da verificare" : "\u10060  Mancante", item: "Materiale/note", reason: f.material.trim() ? `Materiale indicato: ${f.material}.` : "Materiale non indicato.", suggestion: "Riporta materiale, trattamento, scala, unit\'e0, tolleranze generali e note." }
     );
 
     setDrawingIssues(issues);
     setDrawingResults(results);
   };
 
-  // ── KaTeX: renderizza LaTeX \[...\] e \(...\) ──
+  // \uc0\u9472 \u9472  KaTeX: renderizza LaTeX \\[...\\] e \\(...\\) \u9472 \u9472 
   const renderLatex = (text: string): React.ReactNode[] => {
     const parts: React.ReactNode[] = [];
-    const regex = /\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$[^\$\n]+?\$/g;
+    const regex = /\\\\\\[[\\s\\S]*?\\\\\\]|\\\\\\([\\s\\S]*?\\\\\\)|\\$\\$[\\s\\S]*?\\$\\$|\\$[^\\$\\n]+?\\$/g;
     let lastIndex = 0;
     let match;
     while ((match = regex.exec(text)) !== null) {
       if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
       const raw = match[0];
-      const isDisplay = raw.startsWith("\\[") || raw.startsWith("$$");
+      const isDisplay = raw.startsWith("\\\\[") || raw.startsWith("$$");
       const inner = raw
-        .replace(/^\\\[/, "").replace(/\\\]$/, "")
-        .replace(/^\\\(/, "").replace(/\\\)$/, "")
-        .replace(/^\$\$/, "").replace(/\$\$$/, "")
-        .replace(/^\$/, "").replace(/\$$/, "");
+        .replace(/^\\\\\\[/, "").replace(/\\\\\\]$/, "")
+        .replace(/^\\\\\\(/, "").replace(/\\\\\\)$/, "")
+        .replace(/^\\$\\$/, "").replace(/\\$\\$$/, "")
+        .replace(/^\\$/, "").replace(/\\$$/, "");
       try {
         const html = katex.renderToString(inner.trim(), {
           displayMode: isDisplay,
@@ -2256,7 +2319,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
   };
 
   const renderFormattedText = (text: string) => {
-    const blocks = text.split(/(```[\s\S]*?```)/g);
+    const blocks = text.split(/(```[\\s\\S]*?```)/g);
 
     return blocks.map((block, index) => {
       if (!block) return null;
@@ -2264,45 +2327,45 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
       if (block.startsWith("```") && block.endsWith("```")) {
         return (
           <pre key={index} style={s.codeBlock}>
-            <code>{block.replace(/^```[a-zA-Z]*\n?/, "").replace(/```$/, "").replace(/\*\*/g, "")}</code>
+            <code>{block.replace(/^```[a-zA-Z]*\\n?/, "").replace(/```$/, "").replace(/\\*\\*/g, "")}</code>
           </pre>
         );
       }
 
-      // Collassa blocchi \[...\] e \(...\) spezzati su più righe
+      // Collassa blocchi \\[...\\] e \\(...\\) spezzati su pi\'f9 righe
       const collapseLatexBlocks = (s: string): string => {
         const result: string[] = [];
-        const rawLines = s.split("\n");
+        const rawLines = s.split("\\n");
         let i = 0;
         while (i < rawLines.length) {
           const trimmed = rawLines[i].trim();
-          if (trimmed === "\\[") {
+          if (trimmed === "\\\\[") {
             const collected: string[] = [];
             i++;
-            while (i < rawLines.length && rawLines[i].trim() !== "\\]") {
+            while (i < rawLines.length && rawLines[i].trim() !== "\\\\]") {
               collected.push(rawLines[i]);
               i++;
             }
-            result.push("\\[" + collected.join(" ").trim() + "\\]");
-            i++; // skip the \]
-          } else if (trimmed === "\\(") {
+            result.push("\\\\[" + collected.join(" ").trim() + "\\\\]");
+            i++; // skip the \\]
+          } else if (trimmed === "\\\\(") {
             const collected: string[] = [];
             i++;
-            while (i < rawLines.length && rawLines[i].trim() !== "\\)") {
+            while (i < rawLines.length && rawLines[i].trim() !== "\\\\)") {
               collected.push(rawLines[i]);
               i++;
             }
-            result.push("\\(" + collected.join(" ").trim() + "\\)");
+            result.push("\\\\(" + collected.join(" ").trim() + "\\\\)");
             i++;
           } else {
             result.push(rawLines[i]);
             i++;
           }
         }
-        return result.join("\n");
+        return result.join("\\n");
       };
       const collapsedBlock = collapseLatexBlocks(block);
-      return collapsedBlock.split("\n").map((line, lineIndex) => {
+      return collapsedBlock.split("\\n").map((line, lineIndex) => {
         const trimmed = line.trim();
         const key = `${index}-${lineIndex}`;
 
@@ -2316,7 +2379,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           return <h2 key={key} style={{ color: theme.primary }}>{renderLatex(trimmed.slice(3))}</h2>;
         }
 
-        const numberedMatch = trimmed.match(/^(\d+\.\s+)(.*)$/);
+        const numberedMatch = trimmed.match(/^(\\d+\\.\\s+)(.*)$/);
         if (numberedMatch) {
           return (
             <div key={key} style={s.numberedLine}>
@@ -2327,11 +2390,11 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         }
 
         if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-          return <div key={key} style={s.bulletLine}>• {renderLatex(trimmed.slice(2))}</div>;
+          return <div key={key} style={s.bulletLine}>\'95 {renderLatex(trimmed.slice(2))}</div>;
         }
 
-        if (trimmed.startsWith("• ")) {
-          return <div key={key} style={s.bulletLine}>• {renderLatex(trimmed.slice(2))}</div>;
+        if (trimmed.startsWith("\'95 ")) {
+          return <div key={key} style={s.bulletLine}>\'95 {renderLatex(trimmed.slice(2))}</div>;
         }
 
         return <div key={key} style={s.messageLine}>{renderLatex(line)}</div>;
@@ -2368,17 +2431,17 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
 
       {pendingFile && (
         <div style={{ ...s.pendingFileChip, border: `1px solid ${theme.border}` }}>
-          <div style={{ ...s.fileIcon, background: theme.primary }}>📄</div>
+          <div style={{ ...s.fileIcon, background: theme.primary }}>\uc0\u55357 \u56516 </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <strong>{pendingFile.fileAttachment.name}</strong>
-            <div style={s.muted}>{(pendingFile.fileAttachment.size / 1024).toFixed(1)} KB · pronto da inviare al backend</div>
+            <div style={s.muted}>{(pendingFile.fileAttachment.size / 1024).toFixed(1)} KB \'b7 pronto da inviare al backend</div>
           </div>
-          <button style={s.roundBtn} onClick={removePendingFile} type="button">×</button>
+          <button style={s.roundBtn} onClick={removePendingFile} type="button">\'d7</button>
         </div>
       )}
 
       <div style={s.searchBarInner}>
-        <button style={{ ...s.fileBtn, color: theme.primary }} onClick={() => fileInputRef.current?.click()} type="button">📎</button>
+        <button style={{ ...s.fileBtn, color: theme.primary }} onClick={() => fileInputRef.current?.click()} type="button">\uc0\u55357 \u56526 </button>
         <textarea
           style={{ ...s.textarea, color: theme.text }}
           rows={1}
@@ -2392,7 +2455,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
             }
           }}
         />
-        <button style={{ ...s.sendBtn, color: theme.primary }} onClick={callAI} disabled={loading || (!query.trim() && !pendingFile)} type="button">➤</button>
+        <button style={{ ...s.sendBtn, color: theme.primary }} onClick={callAI} disabled={loading || (!query.trim() && !pendingFile)} type="button">\uc0\u10148 </button>
       </div>
     </div>
   );
@@ -2408,7 +2471,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
           type="button"
           onClick={() => showLoginPanel ? setShowLoginPanel(false) : setLoginDismissed(true)}
           style={{ position: "absolute", top: 14, right: 14, background: "transparent", border: "none", cursor: "pointer", fontSize: 22, lineHeight: 1, color: theme.text, opacity: 0.5, padding: 4 }}
-        >✕</button>
+        >\uc0\u10005 </button>
 
         <h1>TECH<span style={{ color: theme.primary }}>AI</span></h1>
 
@@ -2436,7 +2499,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         </div>
 
         <button style={{ ...s.secondaryBtn, color: theme.text, border: `1px solid ${theme.border}`, fontSize: 14, opacity: 0.75 }} onClick={handleGuestAccess} type="button">
-          Continua come ospite · {Math.max(GUEST_LIMIT - guestUsed, 0)}/{GUEST_LIMIT} richieste rimaste nelle 24h
+          Continua come ospite \'b7 {Math.max(GUEST_LIMIT - guestUsed, 0)}/{GUEST_LIMIT} richieste rimaste nelle 24h
         </button>
       </div>
     );
@@ -2458,9 +2521,9 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
     if (type === "stato_piano") {
       return (
         <div style={s.checklistGrid}>
-          <Field label="σx [MPa]" value={quickCalcForm.sigmaX} onChange={v => updateQuickCalcField("sigmaX", v)} placeholder="80" theme={theme} isDark={isDark} />
-          <Field label="σy [MPa]" value={quickCalcForm.sigmaY} onChange={v => updateQuickCalcField("sigmaY", v)} placeholder="20" theme={theme} isDark={isDark} />
-          <Field label="τxy [MPa]" value={quickCalcForm.tauXY} onChange={v => updateQuickCalcField("tauXY", v)} placeholder="30" theme={theme} isDark={isDark} />
+          <Field label="\uc0\u963 x [MPa]" value={quickCalcForm.sigmaX} onChange={v => updateQuickCalcField("sigmaX", v)} placeholder="80" theme={theme} isDark={isDark} />
+          <Field label="\uc0\u963 y [MPa]" value={quickCalcForm.sigmaY} onChange={v => updateQuickCalcField("sigmaY", v)} placeholder="20" theme={theme} isDark={isDark} />
+          <Field label="\uc0\u964 xy [MPa]" value={quickCalcForm.tauXY} onChange={v => updateQuickCalcField("tauXY", v)} placeholder="30" theme={theme} isDark={isDark} />
         </div>
       );
     }
@@ -2468,8 +2531,8 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
     if (type === "fatica") {
       return (
         <div style={s.checklistGrid}>
-          <Field label="σmax [MPa]" value={quickCalcForm.sigmaMax} onChange={v => updateQuickCalcField("sigmaMax", v)} placeholder="180" theme={theme} isDark={isDark} />
-          <Field label="σmin [MPa]" value={quickCalcForm.sigmaMin} onChange={v => updateQuickCalcField("sigmaMin", v)} placeholder="20" theme={theme} isDark={isDark} />
+          <Field label="\uc0\u963 max [MPa]" value={quickCalcForm.sigmaMax} onChange={v => updateQuickCalcField("sigmaMax", v)} placeholder="180" theme={theme} isDark={isDark} />
+          <Field label="\uc0\u963 min [MPa]" value={quickCalcForm.sigmaMin} onChange={v => updateQuickCalcField("sigmaMin", v)} placeholder="20" theme={theme} isDark={isDark} />
           <Field label="Sn limite fatica [MPa]" value={quickCalcForm.fatigueLimit} onChange={v => updateQuickCalcField("fatigueLimit", v)} placeholder="Lascia vuoto per 0,5 Rm" theme={theme} isDark={isDark} />
         </div>
       );
@@ -2480,7 +2543,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         <Field label="Carico assiale N [N]" value={quickCalcForm.axialLoad} onChange={v => updateQuickCalcField("axialLoad", v)} placeholder="0" theme={theme} isDark={isDark} />
         <Field label="Forza tagliante T [N]" value={quickCalcForm.shearLoad} onChange={v => updateQuickCalcField("shearLoad", v)} placeholder="2500" theme={theme} isDark={isDark} />
         <Field label="Braccio L [mm]" value={quickCalcForm.distance} onChange={v => updateQuickCalcField("distance", v)} placeholder="120" theme={theme} isDark={isDark} />
-        <Field label="Momento flettente Mf [Nmm]" value={quickCalcForm.bendingMoment} onChange={v => updateQuickCalcField("bendingMoment", v)} placeholder="Vuoto = T·L" theme={theme} isDark={isDark} />
+        <Field label="Momento flettente Mf [Nmm]" value={quickCalcForm.bendingMoment} onChange={v => updateQuickCalcField("bendingMoment", v)} placeholder="Vuoto = T\'b7L" theme={theme} isDark={isDark} />
         <Field label="Momento torcente Mt [Nmm]" value={quickCalcForm.torque} onChange={v => updateQuickCalcField("torque", v)} placeholder="80000" theme={theme} isDark={isDark} />
       </div>
     );
@@ -2616,7 +2679,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
       return;
     }
 
-    // Fallback: apre comunque il pannello più adatto
+    // Fallback: apre comunque il pannello pi\'f9 adatto
     if (item.type === "bom") { setShowProjects(true); return; }
     setShowProjects(true);
   };
@@ -2713,9 +2776,9 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
 
         {item.type === "revision" && item.payload && (
           <div style={s.projectInlineDataGrid}>
-            <span>Data: {item.payload.date || "—"}</span>
-            <span>Autore: {item.payload.author || "—"}</span>
-            <span>Rev.: {item.payload.code || "—"}</span>
+            <span>Data: {item.payload.date || "\'97"}</span>
+            <span>Autore: {item.payload.author || "\'97"}</span>
+            <span>Rev.: {item.payload.code || "\'97"}</span>
           </div>
         )}
 
@@ -2727,9 +2790,9 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
 
         {item.type === "material" && item.payload?.material && (
           <div style={s.projectInlineDataGrid}>
-            <span>Rm: {item.payload.material.rm || "—"} MPa</span>
-            <span>Re: {item.payload.material.re || "—"} MPa</span>
-            <span>Norma: {item.payload.material.en || item.payload.material.uni || "—"}</span>
+            <span>Rm: {item.payload.material.rm || "\'97"} MPa</span>
+            <span>Re: {item.payload.material.re || "\'97"} MPa</span>
+            <span>Norma: {item.payload.material.en || item.payload.material.uni || "\'97"}</span>
           </div>
         )}
       </div>
@@ -2881,14 +2944,14 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
               }}
               value={projectDecisionText}
               onChange={(e) => setProjectDecisionText(e.target.value)}
-              placeholder="Scrivi cosa è stato deciso..."
+              placeholder="Scrivi cosa \'e8 stato deciso..."
             />
 
             <Field
               label="Motivo / alternativa valutata"
               value={projectDecisionReason}
               onChange={setProjectDecisionReason}
-              placeholder="Es. compromesso tra resistenza, costo e lavorabilità"
+              placeholder="Es. compromesso tra resistenza, costo e lavorabilit\'e0"
               theme={theme}
               isDark={isDark}
             />
@@ -2946,7 +3009,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
               }}
               value={projectRevisionChanges}
               onChange={(e) => setProjectRevisionChanges(e.target.value)}
-              placeholder="Es. Aggiunta tolleranza Ø20 H7, aggiornata rugosità Ra 1.6, modificato materiale..."
+              placeholder="Es. Aggiunta tolleranza \'d820 H7, aggiornata rugosit\'e0 Ra 1.6, modificato materiale..."
             />
 
             <label style={s.label}>Note revisione</label>
@@ -3027,19 +3090,19 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
               <div style={s.logoText}>TECH<span style={{ color: theme.primary }}>AI</span></div>
             </div>
           )}
-          <button style={{ ...s.collapseBtn, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => setSidebarOpen(prev => !prev)} type="button">☰</button>
+          <button style={{ ...s.collapseBtn, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => setSidebarOpen(prev => !prev)} type="button">\uc0\u9776 </button>
         </div>
 
         <div style={s.iconNav}>
-          {iconBtn("＋", "Nuova", createNewChat)}
+          {iconBtn("\uc0\u65291 ", "Nuova", createNewChat)}
           <div style={{ ...s.toolsGroup, background: theme.surface, border: `1px solid ${theme.border}` }}>
             {sidebarOpen && <div style={{ ...s.toolsTitle, color: theme.primary }}>Strumenti tecnici</div>}
-            {/* {iconBtn("✓", "Checklist", () => setShowChecklist(true))} */}
-            {iconBtn("∑", "Verifica", () => setShowQuickCalc(true))}
-            {iconBtn("📐", "Calcoli", () => setShowComponentCalculator(true))}
-            {iconBtn("▦", "Materiali", () => setShowMaterials(true))}
-            {iconBtn("▣", "Tavole", () => setShowDrawingGenerator(true))}
-            {iconBtn("⌘", "Progetti", () => setShowProjects(true))}
+            {/* {iconBtn("\uc0\u10003 ", "Checklist", () => setShowChecklist(true))} */}
+            {iconBtn("\uc0\u8721 ", "Verifica", () => setShowQuickCalc(true))}
+            {iconBtn("\uc0\u55357 \u56528 ", "Calcoli", () => setShowComponentCalculator(true))}
+            {iconBtn("\uc0\u9638 ", "Materiali", () => setShowMaterials(true))}
+            {iconBtn("\uc0\u9635 ", "Tavole", () => setShowDrawingGenerator(true))}
+            {iconBtn("\uc0\u8984 ", "Progetti", () => setShowProjects(true))}
           </div>
         </div>
 
@@ -3055,25 +3118,25 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
             {chats.map(chat => (
               <div key={chat.id} style={{ ...s.historyItem, background: chat.id === activeChatId ? theme.surface : "transparent", border: `1px solid ${chat.id === activeChatId ? theme.border : "transparent"}` }}>
                 <div style={s.historyTitle} onClick={() => setActiveChatId(chat.id)}>{chat.title}</div>
-                <button style={{ ...s.deleteBtn, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => deleteChat(chat.id)} type="button">×</button>
+                <button style={{ ...s.deleteBtn, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => deleteChat(chat.id)} type="button">\'d7</button>
               </div>
             ))}
           </div>
         )}
 
         <div style={s.sidebarBottomActions}>
-          {iconBtn("⚙", "Impostazioni", () => { setActiveTab("Aspetto"); setShowSettings(true); })}
+          {iconBtn("\uc0\u9881 ", "Impostazioni", () => { setActiveTab("Aspetto"); setShowSettings(true); })}
         </div>
       </aside>
 
       <main style={s.main}>
-        <button style={{ ...s.floatingAccountBtn, background: theme.surface, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => { setActiveTab("Account"); setShowSettings(true); }} type="button">👤</button>
+        <button style={{ ...s.floatingAccountBtn, background: theme.surface, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => { setActiveTab("Account"); setShowSettings(true); }} type="button">\uc0\u55357 \u56420 </button>
 
         <section style={{ ...s.content, justifyContent: currentMessages.length === 0 ? "center" : "flex-start" }}>
           {currentMessages.length === 0 ? (
             <div style={s.homeWrapper}>
               <h1 style={s.welcomeText}>Benvenuto {user.name.split(" ")[0]}, come posso aiutarti?</h1>
-              {isGuest && <p style={{ ...s.fileHint, color: theme.primary, fontWeight: 800 }}>Modalità ospite attiva · {Math.max(GUEST_LIMIT - guestUsed, 0)}/{GUEST_LIMIT} richieste rimaste nelle 24h · {GUEST_FILE_LIMIT} file ogni 24h</p>}
+              {isGuest && <p style={{ ...s.fileHint, color: theme.primary, fontWeight: 800 }}>Modalit\'e0 ospite attiva \'b7 {Math.max(GUEST_LIMIT - guestUsed, 0)}/{GUEST_LIMIT} richieste rimaste nelle 24h \'b7 {GUEST_FILE_LIMIT} file ogni 24h</p>}
               {renderInputBar("Chiedi a TechAI o carica un file...")}
             </div>
           ) : (
@@ -3093,7 +3156,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                       color: theme.text,
                     }}
                   >
-                    <strong style={{ color: theme.primary }}>Modalità selezione attiva</strong>
+                    <strong style={{ color: theme.primary }}>Modalit\'e0 selezione attiva</strong>
                     <div style={{ ...s.muted, marginTop: 4 }}>
                       Clicca sui messaggi che vuoi salvare nella memoria del progetto.
                     </div>
@@ -3140,7 +3203,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                             cursor: "pointer",
                           }}
                         >
-                          {isSelectedForProject ? "✓" : ""}
+                          {isSelectedForProject ? "\uc0\u10003 " : ""}
                         </button>
                       )}
 
@@ -3153,12 +3216,12 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                         }}
                       >
                         {renderFormattedText(message.text)}
-                        {message.fileAttachment && <div style={s.attachmentBox}>📄 {message.fileAttachment.name} · {(message.fileAttachment.size / 1024).toFixed(1)} KB</div>}
+                        {message.fileAttachment && <div style={s.attachmentBox}>\uc0\u55357 \u56516  {message.fileAttachment.name} \'b7 {(message.fileAttachment.size / 1024).toFixed(1)} KB</div>}
                       </div>
                     </div>
                   );
                 })}
-                {loading && <div style={{ textAlign: "center", color: theme.primary }}>✨ TechAI sta elaborando...</div>}
+                {loading && <div style={{ textAlign: "center", color: theme.primary }}>\uc0\u10024  TechAI sta elaborando...</div>}
                 <div ref={chatEndRef} />
               </div>
               <div style={s.bottomInput}>{renderInputBar("Scrivi qui o carica un file...")}</div>
@@ -3239,7 +3302,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                 onClick={() => setShowSaveChatModal(false)}
                 type="button"
               >
-                ×
+                \'d7
               </button>
             </div>
 
@@ -3286,8 +3349,8 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
               </div>
               <Field label="Ambiente d'uso" value={checklistForm.environment} onChange={v => updateChecklistField("environment", v)} placeholder="Interno, esterno, umido, corrosivo, olio..." theme={theme} isDark={isDark} />
               <Field label="Lavorazione prevista" value={checklistForm.machining} onChange={v => updateChecklistField("machining", v)} placeholder="Tornitura, fresatura, saldatura, rettifica..." theme={theme} isDark={isDark} />
-              <Field label="Tolleranze / accoppiamenti presenti" value={checklistForm.tolerances} onChange={v => updateChecklistField("tolerances", v)} placeholder="Ø20 h6, foro Ø10 H7..." theme={theme} isDark={isDark} />
-              <Field label="Rugosità" value={checklistForm.roughness} onChange={v => updateChecklistField("roughness", v)} placeholder="Ra 3.2 generale, Ra 1.6 sedi..." theme={theme} isDark={isDark} />
+              <Field label="Tolleranze / accoppiamenti presenti" value={checklistForm.tolerances} onChange={v => updateChecklistField("tolerances", v)} placeholder="\'d820 h6, foro \'d810 H7..." theme={theme} isDark={isDark} />
+              <Field label="Rugosit\'e0" value={checklistForm.roughness} onChange={v => updateChecklistField("roughness", v)} placeholder="Ra 3.2 generale, Ra 1.6 sedi..." theme={theme} isDark={isDark} />
               <label style={s.label}>Note tecniche</label>
               <textarea style={{ ...s.checklistTextarea, background: isDark ? "#050505" : "#fff", color: theme.text, border: `1px solid ${theme.border}` }} value={checklistForm.notes} onChange={e => updateChecklistField("notes", e.target.value)} placeholder="Smussi, raggi, filetti, trattamenti..." />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -3323,7 +3386,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
             </div>
 
             <div style={s.checklistResultsArea}>
-              {checklistResults.length === 0 ? <div style={{ ...s.emptyChecklist, border: `1px dashed ${theme.border}` }}>Inserisci i dati del pezzo e premi “Esegui checklist”.</div> : checklistResults.map((item, index) => <ResultCard key={index} item={item} theme={theme} isDark={isDark} />)}
+              {checklistResults.length === 0 ? <div style={{ ...s.emptyChecklist, border: `1px dashed ${theme.border}` }}>Inserisci i dati del pezzo e premi \'93Esegui checklist\'94.</div> : checklistResults.map((item, index) => <ResultCard key={index} item={item} theme={theme} isDark={isDark} />)}
             </div>
           </div>
         </Modal>
@@ -3570,12 +3633,12 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
               )}
 
               <div style={{ ...s.warningBox, border: `1px solid ${theme.border}` }}>
-                Calcolo preliminare. Per progetto reale controllare norme, intagli, fatica, saldature, vincoli, frecce, instabilità, coefficienti correttivi e dati certificati del materiale.
+                Calcolo preliminare. Per progetto reale controllare norme, intagli, fatica, saldature, vincoli, frecce, instabilit\'e0, coefficienti correttivi e dati certificati del materiale.
               </div>
             </div>
 
             <div style={s.checklistResultsArea}>
-              {!quickCalcResult ? <div style={{ ...s.emptyChecklist, border: `1px dashed ${theme.border}` }}>Inserisci i dati e premi “Calcola verifica”.</div> : <QuickCalcCard result={quickCalcResult} theme={theme} isDark={isDark} />}
+              {!quickCalcResult ? <div style={{ ...s.emptyChecklist, border: `1px dashed ${theme.border}` }}>Inserisci i dati e premi \'93Calcola verifica\'94.</div> : <QuickCalcCard result={quickCalcResult} theme={theme} isDark={isDark} />}
             </div>
           </div>
         </Modal>
@@ -3635,7 +3698,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                 addProjectItem({
                   type: "material",
                   title: `Materiale scelto - ${material.name}`,
-                  summary: `Materiale collegato al progetto. Rm ${material.rm || "—"} MPa · Re ${material.re || "—"} MPa.`,
+                  summary: `Materiale collegato al progetto. Rm ${material.rm || "\'97"} MPa \'b7 Re ${material.re || "\'97"} MPa.`,
                   payload: {
                     material,
                     reason: "Selezionato dalla libreria materiali.",
@@ -3665,17 +3728,17 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                 <strong>Revisione tavola</strong>
                 <p style={s.muted}>Carica un'immagine o PDF della tavola. I PDF vengono convertiti automaticamente in vista completa + crop leggibili di cartiglio, viste, sezioni e dettagli.</p>
                 <div style={s.drawingUploadGridSingle}>
-                  <button style={{ ...s.drawingUploadBtn, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => drawingReviewInputRef.current?.click()} type="button">📐 Carica tavola tecnica<small>PNG, JPG, JPEG, WebP, PDF</small></button>
+                  <button style={{ ...s.drawingUploadBtn, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => drawingReviewInputRef.current?.click()} type="button">\uc0\u55357 \u56528  Carica tavola tecnica<small>PNG, JPG, JPEG, WebP, PDF</small></button>
                 </div>
-                {drawingReviewFile && <FileCard upload={drawingReviewFile} icon={drawingReviewFile.isPdf ? "📄" : "🖼️"} theme={theme} isDark={isDark} onRemove={removeDrawingReviewFile} />}
-                {drawingReviewFile?.isPdf && drawingReviewFile.totalPages && <p style={{ ...s.muted, marginTop: 4 }}>PDF · {drawingReviewFile.totalPages} {drawingReviewFile.totalPages === 1 ? "pagina" : "pagine"} · analisi pagina 1 con crop automatici</p>}
+                {drawingReviewFile && <FileCard upload={drawingReviewFile} icon={drawingReviewFile.isPdf ? "\uc0\u55357 \u56516 " : "\u55357 \u56764 \u65039 "} theme={theme} isDark={isDark} onRemove={removeDrawingReviewFile} />}
+                {drawingReviewFile?.isPdf && drawingReviewFile.totalPages && <p style={{ ...s.muted, marginTop: 4 }}>PDF \'b7 {drawingReviewFile.totalPages} {drawingReviewFile.totalPages === 1 ? "pagina" : "pagine"} \'b7 analisi pagina 1 con crop automatici</p>}
               </div>
 
               <div style={s.checklistGrid}>
                 <Field label="Nome pezzo" value={drawingForm.partName} onChange={v => updateDrawingField("partName", v)} placeholder="Es. Albero intermedio" theme={theme} isDark={isDark} />
                 <Field label="Tipo pezzo" value={drawingForm.partType} onChange={v => updateDrawingField("partType", v)} placeholder="Albero, perno, staffa..." theme={theme} isDark={isDark} />
                 <Field label="Materiale" value={drawingForm.material} onChange={v => updateDrawingField("material", v)} placeholder="C45, S235..." theme={theme} isDark={isDark} />
-                <Field label="Quantità / lotto" value={drawingForm.productionQuantity} onChange={v => updateDrawingField("productionQuantity", v)} placeholder="1 pezzo, 100 pezzi..." theme={theme} isDark={isDark} />
+                <Field label="Quantit\'e0 / lotto" value={drawingForm.productionQuantity} onChange={v => updateDrawingField("productionQuantity", v)} placeholder="1 pezzo, 100 pezzi..." theme={theme} isDark={isDark} />
                 <div>
                   <label style={s.label}>Formato foglio <span style={{ color: "#ef4444", fontWeight: 900 }}>*</span></label>
                   <select
@@ -3683,12 +3746,12 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                     value={drawingForm.sheetFormat}
                     onChange={e => updateDrawingField("sheetFormat", e.target.value)}
                   >
-                    <option value="">— Seleziona formato —</option>
-                    <option value="A4">A4 (210×297 mm)</option>
-                    <option value="A3">A3 (297×420 mm)</option>
-                    <option value="A2">A2 (420×594 mm)</option>
-                    <option value="A1">A1 (594×841 mm)</option>
-                    <option value="A0">A0 (841×1189 mm)</option>
+                    <option value="">\'97 Seleziona formato \'97</option>
+                    <option value="A4">A4 (210\'d7297 mm)</option>
+                    <option value="A3">A3 (297\'d7420 mm)</option>
+                    <option value="A2">A2 (420\'d7594 mm)</option>
+                    <option value="A1">A1 (594\'d7841 mm)</option>
+                    <option value="A0">A0 (841\'d71189 mm)</option>
                   </select>
                 </div>
               </div>
@@ -3696,10 +3759,10 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
               <Field label="Geometrie principali" value={drawingForm.mainFeatures} onChange={v => updateDrawingField("mainFeatures", v)} placeholder="Fori, cave, asole..." theme={theme} isDark={isDark} />
               <Field label="Funzione del pezzo nell'assieme" value={drawingForm.assemblyFunction} onChange={v => updateDrawingField("assemblyFunction", v)} placeholder="Cosa fa il pezzo?" theme={theme} isDark={isDark} />
               <Field label="Superfici funzionali" value={drawingForm.functionalSurfaces} onChange={v => updateDrawingField("functionalSurfaces", v)} placeholder="Sedi, appoggi, scorrimenti..." theme={theme} isDark={isDark} />
-              <Field label="Fori / filetti / lamature" value={drawingForm.holesThreads} onChange={v => updateDrawingField("holesThreads", v)} placeholder="M8, Ø10 H7, lamature..." theme={theme} isDark={isDark} />
+              <Field label="Fori / filetti / lamature" value={drawingForm.holesThreads} onChange={v => updateDrawingField("holesThreads", v)} placeholder="M8, \'d810 H7, lamature..." theme={theme} isDark={isDark} />
               <Field label="Accoppiamenti" value={drawingForm.fits} onChange={v => updateDrawingField("fits", v)} placeholder="H7/g6, sede cuscinetto..." theme={theme} isDark={isDark} />
-              <Field label="Tolleranze già previste" value={drawingForm.tolerances} onChange={v => updateDrawingField("tolerances", v)} placeholder="ISO 2768, geometriche..." theme={theme} isDark={isDark} />
-              <Field label="Rugosità già previste" value={drawingForm.roughness} onChange={v => updateDrawingField("roughness", v)} placeholder="Ra 3.2, Ra 1.6..." theme={theme} isDark={isDark} />
+              <Field label="Tolleranze gi\'e0 previste" value={drawingForm.tolerances} onChange={v => updateDrawingField("tolerances", v)} placeholder="ISO 2768, geometriche..." theme={theme} isDark={isDark} />
+              <Field label="Rugosit\'e0 gi\'e0 previste" value={drawingForm.roughness} onChange={v => updateDrawingField("roughness", v)} placeholder="Ra 3.2, Ra 1.6..." theme={theme} isDark={isDark} />
 
               <label style={s.label}>Altro / indicazioni aggiuntive</label>
               <textarea
@@ -3712,7 +3775,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                 }}
                 value={drawingExtraNotes}
                 onChange={(e) => setDrawingExtraNotes(e.target.value)}
-                placeholder={"Scrivi qui richieste specifiche per l'analisi:\nEs. controlla quote funzionali e critiche, verifica rugosità, controlla tolleranze H7, guarda solo cartiglio, analizza fori/filetti/lamature..."}
+                placeholder={"Scrivi qui richieste specifiche per l'analisi:\\nEs. controlla quote funzionali e critiche, verifica rugosit\'e0, controlla tolleranze H7, guarda solo cartiglio, analizza fori/filetti/lamature..."}
               />
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
@@ -3733,11 +3796,11 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                   style={{ ...s.secondaryBtn, color: theme.primary, border: `1px solid ${theme.border}`, marginTop: 0 }}
                   onClick={() =>
                     setDrawingExtraNotes(
-                      "Controlla soprattutto tolleranze dimensionali, tolleranze geometriche, rugosità e coerenza con superfici funzionali, sedi, fori, filetti e accoppiamenti. Per ogni criticità aggiungi motivazione, confidenza, riferimento tecnico e correzione consigliata."
+                      "Controlla soprattutto tolleranze dimensionali, tolleranze geometriche, rugosit\'e0 e coerenza con superfici funzionali, sedi, fori, filetti e accoppiamenti. Per ogni criticit\'e0 aggiungi motivazione, confidenza, riferimento tecnico e correzione consigliata."
                     )
                   }
                 >
-                  Tolleranze/Rugosità
+                  Tolleranze/Rugosit\'e0
                 </button>
               </div>
 
@@ -3787,7 +3850,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                     onClick={() => askTechAIFromDrawing()}
                     type="button"
                   >
-                    💬 Approfondisci le criticità
+                    \uc0\u55357 \u56492  Approfondisci le criticit\'e0
                   </button>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", overflow: "hidden" }}>
                     <input
@@ -3802,7 +3865,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                       onClick={() => { if (drawingCustomQuery.trim()) { askTechAIFromDrawing(drawingCustomQuery.trim()); setDrawingCustomQuery(""); } }}
                       type="button"
                     >
-                      ➤
+                      \uc0\u10148 
                     </button>
                   </div>
                 </div>
@@ -3855,9 +3918,9 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
             <div style={s.settingsSidePanel}>
               <div style={s.settingsTabsArea}>
                 {[
-                  { key: "Account", icon: "♙", subtitle: "Profilo" },
-                  { key: "Aspetto", icon: "◒", subtitle: "Tema" },
-                  { key: "AI Focus", icon: "◎", subtitle: "Preferenze" },
+                  { key: "Account", icon: "\uc0\u9817 ", subtitle: "Profilo" },
+                  { key: "Aspetto", icon: "\uc0\u9682 ", subtitle: "Tema" },
+                  { key: "AI Focus", icon: "\uc0\u9678 ", subtitle: "Preferenze" },
                 ].map(tab => {
                   const selected = activeTab === tab.key;
 
@@ -3895,7 +3958,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
               <div style={s.settingsSideFooter}>
                 <div style={s.settingsFooterLine} />
                 <div style={s.settingsInfoRow}>
-                  <span style={s.settingsInfoIcon}>ⓘ</span>
+                  <span style={s.settingsInfoIcon}>\uc0\u9432 </span>
                   <div>
                     <strong>Impostazioni</strong>
                     <small>Gestisci le tue preferenze</small>
@@ -3911,7 +3974,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                 type="button"
                 aria-label="Chiudi impostazioni"
               >
-                ×
+                \'d7
               </button>
 
               <div style={s.settingsHeader}>
@@ -3936,7 +3999,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                         border: `1px solid ${isDark ? "#262626" : "#dbe3ee"}`,
                       }}
                     >
-                      <span style={s.settingsInputIcon}>♙</span>
+                      <span style={s.settingsInputIcon}>\uc0\u9817 </span>
                       <input
                         style={{ ...s.settingsInlineInput, color: isDark ? "#f8fafc" : "#1e293b" }}
                         value={user.name}
@@ -3955,7 +4018,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                         border: `1px solid ${isDark ? "#262626" : "#dbe3ee"}`,
                       }}
                     >
-                      <span style={s.settingsInputIcon}>✉</span>
+                      <span style={s.settingsInputIcon}>\uc0\u9993 </span>
                       <input
                         style={{ ...s.settingsInlineInput, color: isDark ? "#f8fafc" : "#1e293b", cursor: "default" }}
                         value={user.email}
@@ -3972,16 +4035,16 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                         border: `1px solid ${isDark ? "rgba(245,158,11,0.26)" : "#fde68a"}`,
                       }}
                     >
-                      <strong>Modalità ospite attiva</strong>
+                      <strong>Modalit\'e0 ospite attiva</strong>
                       <span>
-                        Richieste rimaste: {Math.max(GUEST_LIMIT - guestUsed, 0)}/{GUEST_LIMIT} nelle 24h · massimo {GUEST_FILE_LIMIT} file ogni 24h.
+                        Richieste rimaste: {Math.max(GUEST_LIMIT - guestUsed, 0)}/{GUEST_LIMIT} nelle 24h \'b7 massimo {GUEST_FILE_LIMIT} file ogni 24h.
                       </span>
                     </div>
                   )}
 
                   <button style={s.settingsLogoutBtn} onClick={handleLogout} type="button">
-                    <span style={s.settingsLogoutIcon}>↪</span>
-                    <strong>{isGuest ? "Esci dalla modalità ospite" : "Logout"}</strong>
+                    <span style={s.settingsLogoutIcon}>\uc0\u8618 </span>
+                    <strong>{isGuest ? "Esci dalla modalit\'e0 ospite" : "Logout"}</strong>
                   </button>
                 </div>
               )}
@@ -4019,7 +4082,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                           }}
                         />
                         <span>{t.name}</span>
-                        {selected && <span style={{ marginLeft: "auto", color: t.primary, fontWeight: 950 }}>✓</span>}
+                        {selected && <span style={{ marginLeft: "auto", color: t.primary, fontWeight: 950 }}>\uc0\u10003 </span>}
                       </button>
                     );
                   })}
@@ -4037,7 +4100,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                         border: `1px solid ${isDark ? "#262626" : "#dbe3ee"}`,
                       }}
                     >
-                      <span style={s.settingsInputIcon}>◎</span>
+                      <span style={s.settingsInputIcon}>\uc0\u9678 </span>
                       <input
                         style={{ ...s.settingsInlineInput, color: isDark ? "#f8fafc" : "#1e293b" }}
                         value={interest}
@@ -4065,4 +4128,4 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
       )}
     </div>
   );
-}
+}}
