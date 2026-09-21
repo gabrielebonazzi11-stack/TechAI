@@ -45,8 +45,7 @@ import type {
 // Windows, dove il protocollo risulta comunque "http:" e quindi non è
 // affidabile per distinguere desktop da browser).
 const IS_DESKTOP_APP = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-const API_BASE_URL = IS_DESKTOP_APP ? "https://techai.vercel.app" : "";
-
+const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
   export default function App() {
   const [query, setQuery] = useState("");
   const [chats, setChats] = useState<ChatSession[]>([]);
