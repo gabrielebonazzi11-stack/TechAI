@@ -41,3 +41,13 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+
+      - name: Carica installer con nome fisso
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $exe = Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter *-setup.exe | Select-Object -First 1
+          Copy-Item $exe.FullName TechAI-setup.exe
+          gh release upload "${{ github.ref_name }}" TechAI-setup.exe --clobber --repo "${{ github.repository }}"
