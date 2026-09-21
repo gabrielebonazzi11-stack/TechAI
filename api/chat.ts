@@ -1866,7 +1866,7 @@ async function incrementGuestUsage(supabase: any, guestId: string, hasFile: bool
     windowStartedAt,
   };
 }
-export default async function handler(req: Request) {
+async function handlerInner(req: Request) {
   if (req.method === "GET") {
     return jsonResponse({
       ok: true,
@@ -1999,4 +1999,42 @@ export default async function handler(req: Request) {
       500
     );
   }
+}
+// ===== CORS: permette all'app desktop (Tauri) di chiamare questa API =====
+const CORS_ALLOWED_ORIGINS = [
+  "http://tauri.localhost",
+  "https://tauri.localhost",
+  "tauri://localhost",
+  "http://localhost:3000",
+  "https://onegearai.com",
+  "https://www.onegearai.com",
+  "https://techai.vercel.app",
+];
+
+function buildCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin") || "";
+  if (!CORS_ALLOWED_ORIGINS.includes(origin)) return {};
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      req.headers.get("access-control-request-headers") || "authorization, content-type",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin, Access-Control-Request-Headers",
+  };
+}
+
+export default async function handler(req: Request): Promise<Response> {
+  const cors = buildCorsHeaders(req);
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: cors });
+  }
+  const res = await handlerInner(req);
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
+  });
 }
