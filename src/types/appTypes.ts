@@ -224,6 +224,7 @@ export type DrawingForm = {
   roughness: string;
   assemblyFunction: string;
   productionQuantity: string;
+  sheetFormat: string;
 };
 
 export type ProjectSavedItem = {
@@ -271,6 +272,7 @@ export type ProjectMemoryTab =
   | "Tavole"
   | "Materiali"
   | "Verifiche"
+  | "Calcoli"
   | "Decisioni"
   | "Revisioni"
   | "Note";
