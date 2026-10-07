@@ -2,6 +2,7 @@
 
 
 import { createClient } from "@supabase/supabase-js";
+import { getAIProvider, type AIChatResult } from "./_lib/ai";
 
 export const config = {
   runtime: "edge",
@@ -1056,9 +1057,7 @@ async function callOpenAIText(params: {
   analysisMode: AnalysisMode;
   projectContext?: string;
 }): Promise<string> {
-  const openAiApiKey =
-    process.env.OPENAI_TEXT_API_KEY ||
-    process.env.OPENAI_API_KEY;
+  const aiProvider = getAIProvider();
 
   const route = chooseOpenAITextModel({
     message: params.message,
@@ -1067,8 +1066,8 @@ ${params.fileText}`,
     analysisMode: params.analysisMode,
   });
 
-  if (!openAiApiKey) {
-    console.error("Missing OPENAI_TEXT_API_KEY / OPENAI_API_KEY environment variable");
+  if (!aiProvider.isConfigured("text")) {
+    console.error(`AI provider "${aiProvider.name}" non configurato per il testo`);
 
     return (
       "⚠️ Chat AI temporaneamente non disponibile.\n\n" +
@@ -1104,7 +1103,14 @@ ${params.fileText}`,
     },
   ];
 
-  const uniqueRoutes = fallbackRoutes.filter((item, index, arr) => {
+  // I provider locali sostituiscono il modello con quello configurato: la deduplica
+  // evita di ripetere più volte lo stesso modello locale dopo un timeout.
+  const resolvedRoutes: ModelRoute[] = fallbackRoutes.map((item) => ({
+    ...item,
+    model: aiProvider.resolveModel(item.model, "text"),
+  }));
+
+  const uniqueRoutes = resolvedRoutes.filter((item, index, arr) => {
     return arr.findIndex((x) => x.model === item.model && x.level === item.level) === index;
   });
 
@@ -1119,7 +1125,7 @@ ${params.fileText}`,
           .slice(isFallback ? -3 : -6)
           .filter((m: ChatMessage) => String(m.text || "").trim())
           .map((m: ChatMessage) => ({
-            role: m.role === "AI" || m.role === "assistant" ? "assistant" : "user",
+            role: (m.role === "AI" || m.role === "assistant" ? "assistant" : "user") as "assistant" | "user",
             content: String(m.text || "").slice(0, isFallback ? 1400 : 3200),
           }))
       : [];
@@ -1157,41 +1163,32 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
             analysisMode: params.analysisMode,
           })) + projectSection;
 
-    let response: Response;
+    let response: AIChatResult;
 
     try {
-      response = await fetchWithTimeout(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${openAiApiKey}`,
+      response = await aiProvider.chat({
+        purpose: "text",
+        model: currentRoute.model,
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt,
           },
-          body: JSON.stringify({
-            model: currentRoute.model,
-            messages: [
-              {
-                role: "system",
-                content: systemPrompt,
-              },
-              ...cleanHistory,
-              {
-                role: "user",
-                content: finalUserContent,
-              },
-            ],
-            temperature:
-              currentRoute.level === "fast"
-                ? 0.3
-                : currentRoute.level === "medium"
-                  ? 0.35
-                  : 0.25,
-            max_tokens: currentRoute.maxTokens,
-          }),
-        },
-        currentRoute.timeoutMs
-      );
+          ...cleanHistory,
+          {
+            role: "user",
+            content: finalUserContent,
+          },
+        ],
+        temperature:
+          currentRoute.level === "fast"
+            ? 0.3
+            : currentRoute.level === "medium"
+              ? 0.35
+              : 0.25,
+        maxTokens: currentRoute.maxTokens,
+        timeoutMs: currentRoute.timeoutMs,
+      });
     } catch (error: any) {
       if (error?.name === "AbortError") {
         lastWasRateLimit = false;
@@ -1201,12 +1198,11 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
       throw error;
     }
 
-    const raw = await response.text();
-    const data = safeJsonParse<any>(raw, null);
+    const raw = response.raw;
 
     if (response.ok) {
       const content =
-        data?.choices?.[0]?.message?.content ||
+        response.content ||
         "Ho ricevuto la richiesta, ma il modello non ha restituito una risposta valida.";
 
       const cleanContent = cleanAiOutput(content);
@@ -1256,11 +1252,12 @@ async function callOpenAIVision(params: {
   fileMeta: string;
   analysisMode: AnalysisMode;
 }): Promise<string> {
-  const openAiDrawingKey =
-    process.env.OPENAI_DRAWING_READER_API_KEY ||
-    process.env.OPENAI_API_KEY;
+  const aiProvider = getAIProvider();
 
-  const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
+  const model = aiProvider.resolveModel(
+    process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
+    "vision"
+  );
   const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "45000");
   const imageDetail =
     process.env.OPENAI_DRAWING_IMAGE_DETAIL === "high" ||
@@ -1268,8 +1265,8 @@ async function callOpenAIVision(params: {
       ? process.env.OPENAI_DRAWING_IMAGE_DETAIL
       : "auto";
 
-  if (!openAiDrawingKey) {
-    console.error("Missing OpenAI API key for drawing reader");
+  if (!aiProvider.isConfigured("vision")) {
+    console.error(`AI provider "${aiProvider.name}" non configurato per l'analisi visiva`);
 
     return (
       "⚠️ Modulo di analisi visiva non disponibile.\n\n" +
@@ -1459,35 +1456,26 @@ ${extractedPdfText.slice(0, 26000)}
     });
   }
 
-  let response: Response;
+  let response: AIChatResult;
 
   try {
-    response = await fetchWithTimeout(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openAiDrawingKey}`,
+    response = await aiProvider.chat({
+      purpose: "vision",
+      model,
+      messages: [
+        {
+          role: "system",
+          content: visionSystemPrompt,
         },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: "system",
-              content: visionSystemPrompt,
-            },
-            {
-              role: "user",
-              content: visionContent,
-            },
-          ],
-          temperature: 0.15,
-          max_tokens: 8000,
-        }),
-      },
-      openAiTimeoutMs
-    );
+        {
+          role: "user",
+          content: visionContent,
+        },
+      ],
+      temperature: 0.15,
+      maxTokens: 8000,
+      timeoutMs: openAiTimeoutMs,
+    });
   } catch (error: any) {
     if (error?.name === "AbortError") {
       return (
@@ -1504,8 +1492,7 @@ ${extractedPdfText.slice(0, 26000)}
     throw error;
   }
 
-  const raw = await response.text();
-  const data = safeJsonParse<any>(raw, null);
+  const raw = response.raw;
 
   if (!response.ok) {
     return (
@@ -1519,7 +1506,7 @@ ${extractedPdfText.slice(0, 26000)}
   }
 
   const visionAnswer =
-    data?.choices?.[0]?.message?.content ||
+    response.content ||
     "Ho ricevuto l'immagine, ma OpenAI non ha restituito una risposta valida.";
 
   // Estrai PINS prima di cleanAiOutput (che corromperebbe il JSON interno)
