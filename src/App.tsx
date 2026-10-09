@@ -6,6 +6,7 @@ import ComponentCalculatorModal from "./components/ComponentCalculatorModal";
 import { Modal, Field, ResultCard, QuickCalcCard, FileCard, DrawingResultCard, DrawingPreview } from "./components/common/AppUiComponents";
 import { isImageFile, isPdfFile, isDrawingUpload, makeDrawingImagesFromImageFile, pdfPageToImageFile, compressImageForVision, extractPdfText } from "./utils/technicalDrawingUtils";
 import { supabase, isSupabaseConfigured } from "./lib/supabaseClient";
+import { getPasswordResetRedirectUrl } from "./lib/passwordRecovery";
 import { THEMES, STORAGE_KEY_BASE, GUEST_ID_KEY, GUEST_USED_KEY, GUEST_LIMIT, GUEST_FILE_LIMIT, DEFAULT_USER } from "./constants/appConstants";
 import { createId, makeAttachment, projectMemoryBucketFromType, normalizeProjectRecord, normalizeProjectRecords, safeParseJson, renderInlineMarkdown } from "./utils/appHelpers";
 import { makeUserStorageKey, makeGuestStorageKey } from "./utils/storage";
@@ -72,7 +73,8 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
   const [loginPassword, setLoginPassword] = useState("");
   const [loginName, setLoginName] = useState("");
   const [loginError, setLoginError] = useState("");
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot">("login");
+  const [loginInfo, setLoginInfo] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
@@ -1434,6 +1436,30 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
     setLoginPassword("");
   };
 
+  const handleForgotPassword = async () => {
+    const email = loginEmail.trim();
+    if (!email.includes("@")) { setLoginError("Inserisci una email valida."); return; }
+    if (!supabase) { setLoginError("Supabase non configurato."); return; }
+
+    setAuthLoading(true);
+    setLoginError("");
+    setLoginInfo("");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: getPasswordResetRedirectUrl(),
+    });
+    setAuthLoading(false);
+
+    if (error) {
+      const status = (error as { status?: number }).status;
+      setLoginError(status === 429
+        ? "Hai richiesto troppi link in poco tempo. Attendi qualche minuto e riprova."
+        : "Impossibile inviare l'email di recupero. Riprova tra poco.");
+      return;
+    }
+    // Messaggio neutro: non rivela se l'indirizzo è registrato.
+    setLoginInfo("Se l'indirizzo è registrato, riceverai a breve un'email con il link per impostare una nuova password.");
+  };
+
   const handleLogout = async () => {
     setStorageReady(false);
     setActiveStorageKey("");
@@ -2470,6 +2496,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
 
   const renderLoginCard = () => {
     const isRegister = authMode === "register";
+    const isForgot = authMode === "forgot";
     const inputStyle = { ...s.input, background: isDark ? "#050505" : "#fff", color: theme.text, border: `1px solid ${theme.border}` };
     const tabBase: React.CSSProperties = { flex: 1, padding: "8px 0", border: "none", cursor: "pointer", fontWeight: 600, fontSize: 15, borderRadius: 10, transition: "background 0.2s" };
 
@@ -2484,20 +2511,41 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         <h1>TECH<span style={{ color: theme.primary }}>AI</span></h1>
 
         <div style={{ display: "flex", gap: 6, marginBottom: 22, background: isDark ? "#1a1a1a" : "#f2f2f2", borderRadius: 12, padding: 4 }}>
-          <button style={{ ...tabBase, background: !isRegister ? theme.primary : "transparent", color: !isRegister ? "#fff" : theme.text }} onClick={() => { setAuthMode("login"); setLoginError(""); }} type="button">Accedi</button>
-          <button style={{ ...tabBase, background: isRegister ? theme.primary : "transparent", color: isRegister ? "#fff" : theme.text }} onClick={() => { setAuthMode("register"); setLoginError(""); }} type="button">Registrati</button>
+          <button style={{ ...tabBase, background: !isRegister ? theme.primary : "transparent", color: !isRegister ? "#fff" : theme.text }} onClick={() => { setAuthMode("login"); setLoginError(""); setLoginInfo(""); }} type="button">Accedi</button>
+          <button style={{ ...tabBase, background: isRegister ? theme.primary : "transparent", color: isRegister ? "#fff" : theme.text }} onClick={() => { setAuthMode("register"); setLoginError(""); setLoginInfo(""); }} type="button">Registrati</button>
         </div>
 
         {isRegister && <Field label="Nome" value={loginName} onChange={setLoginName} placeholder="Il tuo nome" theme={theme} isDark={isDark} />}
         <Field label="Email" value={loginEmail} onChange={setLoginEmail} placeholder="email@esempio.com" theme={theme} isDark={isDark} />
 
-        <label style={s.label}>Password</label>
-        <input style={inputStyle} value={loginPassword} onChange={e => setLoginPassword(e.target.value)} type="password" placeholder={isRegister ? "Minimo 6 caratteri" : ""} />
+        {isForgot ? (
+          <p style={{ fontSize: 13, lineHeight: 1.5, opacity: 0.7, margin: "0 0 6px" }}>
+            Inserisci l'email del tuo account: ti invieremo un link per impostare una nuova password.
+          </p>
+        ) : (
+          <>
+            <label style={s.label}>Password</label>
+            <input style={inputStyle} value={loginPassword} onChange={e => setLoginPassword(e.target.value)} type="password" placeholder={isRegister ? "Minimo 6 caratteri" : ""} />
+          </>
+        )}
+
+        {!isRegister && (
+          <div style={{ textAlign: "right", marginTop: -6, marginBottom: 4 }}>
+            <button
+              type="button"
+              onClick={() => { setAuthMode(isForgot ? "login" : "forgot"); setLoginError(""); setLoginInfo(""); }}
+              style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", color: theme.primary, fontSize: 13, fontWeight: 600 }}
+            >
+              {isForgot ? "Torna all'accesso" : "Password dimenticata?"}
+            </button>
+          </div>
+        )}
 
         {loginError && <div style={{ ...s.errorBox, color: loginError.startsWith("Registrazione") ? "#22c55e" : undefined }}>{loginError}</div>}
+        {isForgot && loginInfo && <div style={{ ...s.errorBox, color: "#15803d", background: "#dcfce7" }}>{loginInfo}</div>}
 
-        <button style={{ ...s.primaryBtn, background: theme.primary, opacity: authLoading ? 0.7 : 1 }} onClick={isRegister ? handleRegister : handleLogin} disabled={authLoading} type="button">
-          {authLoading ? "Attendere..." : isRegister ? "Crea account" : "Accedi"}
+        <button style={{ ...s.primaryBtn, background: theme.primary, opacity: authLoading ? 0.7 : 1 }} onClick={isForgot ? handleForgotPassword : isRegister ? handleRegister : handleLogin} disabled={authLoading} type="button">
+          {authLoading ? "Attendere..." : isForgot ? "Invia link di recupero" : isRegister ? "Crea account" : "Accedi"}
         </button>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "14px 0 2px" }}>
