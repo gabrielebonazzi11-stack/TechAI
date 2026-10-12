@@ -444,27 +444,94 @@ function buildChatCompletionBody(params: {
 
 const OPTIONAL_COMPLETION_PARAMS = ["temperature", "reasoning_effort", "max_tokens", "max_completion_tokens"];
 
+// Le funzioni Edge possono restare in streaming al massimo 300 s: si lascia margine per salvare l'uso.
+const OPENAI_MAX_TOTAL_MS = 280000;
+// Silenzio massimo ammesso da OpenAI. Con i modelli che ragionano il primo testo arriva solo dopo
+// la fase di ragionamento, quindi il primo intervallo è più lungo.
+const OPENAI_FIRST_TOKEN_IDLE_MS = 120000;
+const OPENAI_STREAM_IDLE_MS = 45000;
+
+/** Legge la risposta in streaming (SSE) di Chat Completions e restituisce il testo completo. */
+async function readChatCompletionStream(body: ReadableStream<Uint8Array>, controller: AbortController): Promise<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const armIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => controller.abort(), content ? OPENAI_STREAM_IDLE_MS : OPENAI_FIRST_TOKEN_IDLE_MS);
+  };
+
+  try {
+    armIdle();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let newline: number;
+      while ((newline = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line.startsWith("data:")) continue;
+
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") return content;
+
+        const event = safeJsonParse<any>(data, null);
+        if (event?.error) throw new Error(String(event.error.message || "Errore OpenAI durante lo streaming."));
+        const delta = event?.choices?.[0]?.delta?.content;
+        if (typeof delta === "string") content += delta;
+      }
+
+      armIdle();
+    }
+    return content;
+  } finally {
+    if (idleTimer) clearTimeout(idleTimer);
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+  }
+}
+
 /**
- * Chiama Chat Completions. Se il modello rifiuta un parametro (400 "unsupported parameter"),
- * riprova una volta senza quel parametro: così cambiare modello da Vercel non rompe l'app.
+ * Chiama Chat Completions in streaming: il testo arriva mentre il modello lo scrive, quindi
+ * un report lungo non va più in timeout (si interrompe solo se OpenAI resta fermo troppo a lungo).
+ * Se il modello rifiuta un parametro (400 "unsupported parameter"), riprova una volta senza quel parametro:
+ * così cambiare modello da Vercel non rompe l'app.
  */
 async function postChatCompletion(apiKey: string, body: Record<string, unknown>, timeoutMs: number) {
-  const send = (payload: Record<string, unknown>) =>
-    fetchWithTimeout(
-      "https://api.openai.com/v1/chat/completions",
-      {
+  const send = async (payload: Record<string, unknown>): Promise<{ response: Response; raw: string }> => {
+    const controller = new AbortController();
+    const totalTimer = setTimeout(() => controller.abort(), Math.min(timeoutMs, OPENAI_MAX_TOTAL_MS));
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify(payload),
-      },
-      timeoutMs
-    );
+        body: JSON.stringify({ ...payload, stream: true }),
+        signal: controller.signal,
+      });
 
-  let response = await send(body);
-  let raw = await response.text();
+      // Gli errori (400, 429, 5xx) arrivano come JSON normale, non in streaming.
+      if (!response.ok || !response.body) return { response, raw: await response.text() };
+
+      const content = await readChatCompletionStream(response.body, controller);
+      return { response, raw: JSON.stringify({ choices: [{ message: { content } }] }) };
+    } finally {
+      clearTimeout(totalTimer);
+    }
+  };
+
+  let { response, raw } = await send(body);
 
   if (response.status === 400) {
     const rejected = OPTIONAL_COMPLETION_PARAMS.filter((key) => key in body && raw.includes(key));
@@ -478,8 +545,7 @@ async function postChatCompletion(apiKey: string, body: Record<string, unknown>,
       if (rejected.includes("max_completion_tokens") && !("max_tokens" in retry)) retry.max_tokens = body.max_completion_tokens;
 
       console.warn("OpenAI: parametri non supportati da", body.model, "→ riprovo senza:", rejected.join(", "));
-      response = await send(retry);
-      raw = await response.text();
+      ({ response, raw } = await send(retry));
     }
   }
 
@@ -1401,8 +1467,8 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
         reasoningEffort: normalizeEffort(process.env.OPENAI_TEXT_REASONING_EFFORT, "low"),
       });
 
-      // I modelli con ragionamento impiegano di più: timeout raddoppiato (lo stream keep-alive copre l'attesa).
-      const timeoutMs = isReasoningModel(currentRoute.model) ? currentRoute.timeoutMs * 2 : currentRoute.timeoutMs;
+      // I modelli con ragionamento impiegano di più: tetto più largo (lo streaming controlla l'inattività).
+      const timeoutMs = isReasoningModel(currentRoute.model) ? Math.max(currentRoute.timeoutMs * 3, 150000) : currentRoute.timeoutMs * 2;
       ({ response, raw } = await postChatCompletion(openAiApiKey, body, timeoutMs));
     } catch (error: any) {
       if (error?.name === "AbortError") {
@@ -1466,6 +1532,123 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
   };
 }
 
+// ─── Claude (Anthropic) per l'analisi delle tavole ──────────────────────────
+const DEFAULT_ANTHROPIC_DRAWING_MODEL = "claude-sonnet-5-5";
+
+function getDrawingProvider(): "anthropic" | "openai" {
+  const explicit = String(process.env.DRAWING_AI_PROVIDER || "").trim().toLowerCase();
+  if (explicit === "openai") return "openai";
+  if (explicit === "anthropic" || explicit === "claude") return process.env.ANTHROPIC_API_KEY ? "anthropic" : "openai";
+  // Senza scelta esplicita: Claude se la chiave Anthropic è configurata.
+  return process.env.ANTHROPIC_API_KEY ? "anthropic" : "openai";
+}
+
+function parseImageDataUrl(dataUrl: string): { mediaType: string; data: string } | null {
+  const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|png|gif|webp));base64,(.+)$/i);
+  return match ? { mediaType: match[1].toLowerCase(), data: match[2] } : null;
+}
+
+/**
+ * Chiamata a Claude (Messages API) in streaming, stesso schema di timeout di OpenAI:
+ * si interrompe solo se il servizio resta fermo troppo a lungo.
+ */
+async function callAnthropicVision(params: {
+  systemPrompt: string;
+  promptText: string;
+  images: DrawingImageInput[];
+}): Promise<{ ok: boolean; text: string; status?: number }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY || "";
+  const model = process.env.ANTHROPIC_DRAWING_MODEL || DEFAULT_ANTHROPIC_DRAWING_MODEL;
+  const effort = normalizeEffort(process.env.ANTHROPIC_DRAWING_EFFORT, "low");
+
+  // Claude rende meglio con le immagini prima del testo; ogni immagine ha la sua etichetta.
+  const content: any[] = [];
+  params.images.slice(0, 12).forEach((img, index) => {
+    const parsed = parseImageDataUrl(String(img.dataUrl || ""));
+    if (!parsed) return;
+    const cleanLabel = String(img.label || "Immagine").replace(/^\d+\.\s*/, "");
+    content.push({ type: "text", text: `Immagine ${index + 1}: ${cleanLabel}` });
+    content.push({ type: "image", source: { type: "base64", media_type: parsed.mediaType, data: parsed.data } });
+  });
+  content.push({ type: "text", text: params.promptText });
+
+  const body: Record<string, unknown> = {
+    model,
+    max_tokens: 16000,
+    stream: true,
+    system: params.systemPrompt,
+    messages: [{ role: "user", content }],
+    output_config: { effort: ["low", "medium", "high", "xhigh", "max"].includes(effort) ? effort : "low" },
+  };
+
+  const controller = new AbortController();
+  const totalTimer = setTimeout(() => controller.abort(), OPENAI_MAX_TOTAL_MS);
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      const raw = await response.text();
+      console.error("Anthropic vision error", model, response.status, raw.slice(0, 800));
+      return { ok: false, status: response.status, text: `Errore Claude (codice ${response.status}).` };
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let text = "";
+
+    const armIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => controller.abort(), text ? OPENAI_STREAM_IDLE_MS : OPENAI_FIRST_TOKEN_IDLE_MS);
+    };
+
+    armIdle();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let newline: number;
+      while ((newline = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line.startsWith("data:")) continue;
+
+        const event = safeJsonParse<any>(line.slice(5).trim(), null);
+        if (!event) continue;
+        if (event.type === "error") {
+          console.error("Anthropic stream error", event.error);
+          return { ok: false, text: `Errore Claude: ${event.error?.type || "errore sconosciuto"}.` };
+        }
+        if (event.type === "content_block_delta" && event.delta?.type === "text_delta") text += String(event.delta.text || "");
+        if (event.type === "message_stop") return text.trim() ? { ok: true, text } : { ok: false, text: "Claude non ha restituito testo." };
+      }
+
+      armIdle();
+    }
+
+    return text.trim() ? { ok: true, text } : { ok: false, text: "Claude non ha restituito testo." };
+  } catch (error: any) {
+    if (error?.name === "AbortError") return { ok: false, text: "Timeout Claude." };
+    console.error("Anthropic vision exception", error);
+    return { ok: false, text: "Errore di connessione con Claude." };
+  } finally {
+    clearTimeout(totalTimer);
+    if (idleTimer) clearTimeout(idleTimer);
+  }
+}
+
 async function callOpenAIVision(params: {
   message: string;
   messages: ChatMessage[];
@@ -1484,8 +1667,9 @@ async function callOpenAIVision(params: {
 
   const model = process.env.OPENAI_DRAWING_READER_MODEL || DEFAULT_DRAWING_MODEL;
   const reasoningModel = isReasoningModel(model);
-  // Il ragionamento allunga i tempi: 120 s di default (lo stream keep-alive evita il timeout Edge).
-  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || (reasoningModel ? "120000" : "45000"));
+  // Tetto complessivo: con lo streaming conta soprattutto il controllo di inattività, quindi il limite è largo.
+  // OPENAI_DRAWING_TIMEOUT_MS può solo allungarlo (un vecchio valore basso, es. 45000, non deve più troncare l'analisi).
+  const openAiTimeoutMs = Math.max(Number(process.env.OPENAI_DRAWING_TIMEOUT_MS) || 0, reasoningModel ? OPENAI_MAX_TOTAL_MS : 120000);
   const isDrawingRequest = params.analysisMode === "drawing";
   const envDetail = process.env.OPENAI_DRAWING_IMAGE_DETAIL;
   // Tavole: dettaglio "high" di default, altrimenti quote e note piccole vengono lette male.
@@ -1496,7 +1680,9 @@ async function callOpenAIVision(params: {
         ? "high"
         : "auto";
 
-  if (!openAiDrawingKey) {
+  const useClaude = isDrawingRequest && getDrawingProvider() === "anthropic";
+
+  if (!openAiDrawingKey && !useClaude) {
     console.error("Missing OpenAI API key for drawing reader");
 
     return {
@@ -1552,109 +1738,32 @@ ${extractedPdfText.slice(0, 26000)}
     TECHNICAL_DEPTH_RULES +
     (params.appContext ? `\n\n${String(params.appContext).slice(0, 6000)}` : "");
 
+  // Report COMPATTO: il tempo di risposta dipende soprattutto da quanto testo il modello scrive.
+  // Prima il prompt imponeva 10 sezioni e una scheda di 7 righe per ogni quota (migliaia di token in uscita).
   const drawingVisionSystemPrompt =
-    `Sei TechAI Vision, un ingegnere meccanico senior specializzato in disegno tecnico secondo norme ISO 128, ISO 1101, ISO 286 e ISO 1302. ` +
-    `Utente: ${userName}. Settore: ${focus}. Modalità: ${params.analysisMode}. ` +
-    "Il tuo compito è analizzare tavole tecniche meccaniche, immagini CAD, screenshot SolidWorks, componenti meccanici e distinte visive con la massima precisione. " +
-    "Leggi quote, tolleranze, rugosità, filetti, fori, lamature, scale, materiale, trattamento e cartiglio quando visibili. " +
-    "Individua anche le quote probabilmente funzionali e critiche, spiegando sempre il motivo tecnico, il livello di confidenza e il riferimento tecnico quando applicabile. " +
-    "Non inventare valori: se un dato non è leggibile o non è presente, scrivi chiaramente 'non leggibile' oppure 'non indicato'. " +
-    "Quando la qualità dell'immagine è bassa, segnala il limite prima di giudicare la tavola. " +
-    "Rispondi in italiano tecnico preciso, completo e motivato. " +
+    `Sei TechAI Vision, ingegnere meccanico senior specializzato in disegno tecnico (ISO 128, ISO 1101, ISO 286, ISO 1302, ISO 2768). ` +
+    `Utente: ${userName}. Settore: ${focus}. ` +
+    "Analizzi tavole tecniche meccaniche: leggi quote, tolleranze, rugosità, filetti, fori, lamature, scala, materiale, trattamenti e cartiglio. " +
+    "Non inventare valori: se un dato non è leggibile scrivi 'non leggibile', se manca scrivi 'non indicato'. Non trasformare la scarsa leggibilità in un errore di progetto. " +
+    "Se la qualità dell'immagine è bassa, dillo in una riga prima del giudizio. Rispondi in italiano tecnico.\n" +
     TECHNICAL_STANDARDS_RULES +
-    TECHNICAL_DEPTH_RULES +
-    "\n\nREGOLE DI FORMATTAZIONE OBBLIGATORIE:\n" +
-    "Usa sempre uno di questi stati per ogni controllo tecnico:\n" +
-    "✅ OK = elemento presente, leggibile, coerente o apparentemente conforme.\n" +
-    "⚠️ Da verificare = dato assente, poco leggibile, incompleto o non confermabile dalla tavola.\n" +
-    "⚠️ Possibile anomalia = elemento potenzialmente errato, fuori standard o tecnicamente sospetto.\n" +
-    "⚠️ Possibile incoerenza = contrasto possibile tra quote, note, materiale, tolleranze, rugosità o funzione del pezzo.\n" +
-    "❌ Errore critico = problema evidente che può impedire produzione, montaggio o controllo.\n" +
-    "Puoi usare **testo** per evidenziare parole importanti: il frontend lo renderizza come grassetto senza mostrare gli asterischi.\n" +
-    "Esempio corretto: ✅ OK Materiale: 11SMnPb37 - UNI EN 10087.\n" +
-    "Esempio corretto: ⚠️ Da verificare Rugosità: non leggibile o non indicata chiaramente sulle superfici funzionali.\n" +
-    "Esempio corretto: ⚠️ Possibile anomalia Tolleranze geometriche: assenti su una sede probabilmente funzionale, da verificare con assieme.\n" +
-    "Esempio corretto: ⚠️ Possibile incoerenza Materiale indicato nel cartiglio diverso da quello richiamato nelle note.\n" +
-    "Esempio corretto: ❌ Errore critico Quota principale mancante e necessaria per la produzione.\n" +
-    "\n\nSTRUTTURA RISPOSTA OBBLIGATORIA PER TAVOLE TECNICHE:\n" +
-    "Usa titoli Markdown chiari, ad esempio ## 1. Cartiglio.\n" +
-    "## 1. Cartiglio\n" +
-    "Per ogni voce usa ✅ / ❌ / ⚠️. Controlla nome pezzo, numero disegno, materiale, scala, autore, data, revisione, unità.\n\n" +
-    "## 2. Viste e sezioni\n" +
-    "Controlla se le viste sono sufficienti, se servono sezioni A-A/B-B, dettagli, viste ausiliarie o ingrandimenti.\n\n" +
-    "## 3. Quotatura generale\n" +
-    "Cita solo le quote chiaramente leggibili. Segnala quote mancanti, ridondanti, catene chiuse, riferimenti poco chiari o quote funzionali assenti.\n" +
-    "Non ricavare quote dalla geometria se non sono esplicitamente leggibili. Se una quota sembra deducibile ma non è scritta chiaramente, indica: non valutabile dalla tavola.\n" +
-    "Non trasformare una quota non leggibile in un errore di progettazione.\n\n" +
-
-    "## 3B. Quote funzionali e critiche\n" +
-    "Questa sezione è obbligatoria quando l'utente chiede quote funzionali, quote critiche, controllo tavola o analisi tecnica del disegno.\n" +
-    "Non scrivere spiegazioni generiche tipo: Le quote funzionali sono quelle che... Vai direttamente all'elenco tecnico.\n" +
-    "Non usare una risposta discorsiva libera. Usa sempre blocchi ripetuti con lo schema sotto.\n\n" +
-
-    "SCHEMA OBBLIGATORIO PER OGNI QUOTA O SPECIFICA:\n" +
-    "Quota / specifica rilevata: ...\n" +
-    "Classificazione: funzionale probabile / critica / descrittiva-secondaria / non valutabile\n" +
-    "Motivazione tecnica: ...\n" +
-    "Confidenza: alta / media / bassa\n" +
-    "Controllo consigliato: ...\n" +
-    "Riferimento tecnico: ISO/UNI applicabile oppure principio tecnico generale.\n" +
-    "Nota: ...\n\n" +
-
-    "REGOLE DI CLASSIFICAZIONE:\n" +
-    "- Funzionale probabile: fori di fissaggio, filettature, interassi, sedi, cave, asole, battute, spessori di appoggio, diametri di accoppiamento, superfici di centraggio, superfici di scorrimento, superfici di tenuta e quote collegate al montaggio.\n" +
-    "- Critica: quote marcate come caratteristiche critiche, quote con tolleranze strette, accoppiamenti tipo H7/h6/g6/f7/k6/m6/s6, filettature funzionali, datum, tolleranze geometriche, quote che se errate impediscono montaggio, intercambiabilità o funzionamento.\n" +
-    "- Descrittiva-secondaria: raggi, smussi, raccordi o quote di forma che non risultano chiaramente collegate a montaggio, accoppiamento o funzione.\n" +
-    "- Non valutabile: quota non leggibile, non presente, parzialmente coperta o funzione non deducibile dalla tavola.\n\n" +
-
-    "REGOLE ANTI-INVENZIONE PER QUOTE FUNZIONALI:\n" +
-    "- Non dire mai che una quota è sicuramente funzionale se non conosci l'assieme.\n" +
-    "- Usa formule come: probabilmente funzionale, potenzialmente critica, da verificare con assieme.\n" +
-    "- Non inventare lunghezze, diametri, profondità, tolleranze o rugosità non leggibili.\n" +
-    "- Non scrivere che una lunghezza è ricavabile dalla sezione se non è quotata chiaramente. Scrivi: non valutabile dalla tavola.\n" +
-    "- Non scrivere frasi finali tipo: se vuoi posso continuare, fammi sapere, posso evidenziare graficamente. Il report deve sembrare un output tecnico di software industriale.\n\n" +
-
-    "ESEMPIO DI OUTPUT CORRETTO:\n" +
-    "Quota / specifica rilevata: M16x1 - 6H\n" +
-    "Classificazione: critica\n" +
-    "Motivazione tecnica: filettatura interna destinata ad accoppiamento con componente maschio; la classe 6H influisce sulla compatibilità del filetto.\n" +
-    "Confidenza: alta\n" +
-    "Controllo consigliato: verificare classe 6H, profondità utile, smusso di imbocco e compatibilità con componente accoppiato.\n" +
-    "Riferimento tecnico: ISO 965 per filettature metriche; principio di quotatura funzionale.\n" +
-    "Nota: funzione da confermare con assieme.\n\n" +
-
-    "Quota / specifica rilevata: Ø16,6 +0,1/0\n" +
-    "Classificazione: critica\n" +
-    "Motivazione tecnica: quota dimensionale tollerata e potenzialmente collegata ad accoppiamento interno o passaggio componente.\n" +
-    "Confidenza: alta se chiaramente leggibile; media se parzialmente leggibile.\n" +
-    "Controllo consigliato: verificare metodo di controllo, tolleranza, rugosità associata e funzione nell'assieme.\n" +
-    "Riferimento tecnico: ISO 286 per accoppiamenti dimensionali; ISO 1302 se è collegata a rugosità; principio di quotatura funzionale.\n" +
-    "Nota: se marcata come caratteristica critica, indicarla come prioritaria.\n\n" +
-    "## 4. Tolleranze dimensionali\n" +
-    "Controlla tolleranze ISO, accoppiamenti H7/h6, H7/g6, k6, m6, tolleranze generali e quote funzionali.\n\n" +
-    "## 5. Tolleranze geometriche\n" +
-    "Controlla planarità, parallelismo, perpendicolarità, concentricità/coassialità, posizione, riferimenti datum A/B/C.\n\n" +
-    "## 6. Rugosità\n" +
-    "Controlla simboli Ra/Rz, rugosità generale, rugosità specifiche su sedi, scorrimenti, appoggi, tenute e superfici funzionali.\n\n" +
-    "## 7. Filetti, fori e lamature\n" +
-    "Controlla designazioni filetti, profondità, lamature, svasature, fori passanti/ciechi, interassi e quantità fori.\n\n" +
-    "## 8. Materiale e trattamenti\n" +
-    "Controlla materiale, norma, trattamenti termici, trattamenti superficiali, durezza e note produttive.\n\n" +
-    "## 9. Errori critici e correzioni prioritarie\n" +
-    "Qui usa soprattutto ❌ e ⚠️. Elenca solo problemi concreti. Se non trovi errori critici scrivi: ✅ Errori critici: nessuno riscontrato.\n\n" +
-    "## 10. Giudizio finale\n" +
-    "Usa obbligatoriamente uno solo di questi tre esiti:\n" +
-    "✅ APPROVATA\n" +
-    "⚠️ APPROVATA CON NOTE / DA RIVEDERE\n" +
-    "❌ NON APPROVATA\n" +
-    "Poi aggiungi una frase breve con il motivo principale.\n\n" +
-    "CRITERIO GIUDIZIO:\n" +
-    "Se mancano dati fondamentali come materiale, quote principali o tolleranze funzionali, non dare ✅ APPROVATA piena. Usa ⚠️ o ❌. " +
-    "Se la tavola è leggibile e completa per produzione, usa ✅ APPROVATA. " +
-    "Se ci sono errori gravi che impediscono la produzione, usa ❌ NON APPROVATA. " +
-    "\n\nSE NON È UNA TAVOLA TECNICA:\n" +
-    "Mantieni comunque gli emoji ✅ / ❌ / ⚠️, ma adatta le sezioni al contenuto dell'immagine. " +
-    "Se è uno screenshot CAD/SolidWorks, aggiungi: Metodo consigliato, Comandi SolidWorks in italiano, Errori comuni e Quando NON usare questo metodo." +
+    "\nDATI DI RIFERIMENTO (usali per SUGGERIRE valori concreti, es. H7/k6, Ra 0,8, ISO 2768-mK):\n" +
+    MECHANICAL_KNOWLEDGE_BASE +
+    "\n\nSTILE: ESSENZIALE. Frasi brevi, niente premesse, niente spiegazioni generiche, niente ripetizioni tra sezioni. " +
+    "Scrivi solo ciò che serve a correggere la tavola. Lunghezza indicativa: 250-450 parole (di più solo se ci sono molte criticità reali).\n" +
+    "Stati da usare: ✅ OK · ⚠️ Da verificare · ❌ Errore critico.\n" +
+    "\nSTRUTTURA OBBLIGATORIA:\n" +
+    "1. QUALITÀ LETTURA: buona / media / bassa (una riga).\n" +
+    "2. DATI RILEVATI: una riga ciascuno per cartiglio, materiale, scala, viste/sezioni, tolleranze generali, rugosità generale (✅ / ⚠️ / ❌ + valore letto).\n" +
+    "CONTROLLO QUOTE MANCANTI (obbligatorio, è l'errore più frequente): verifica che ogni diametro, sede, gola, foro, spallamento, smusso funzionale e lunghezza visibile sia quotato in almeno una vista. " +
+    "Linee di riferimento senza linea di quota o senza valore, quote presenti in una vista ma assenti nelle altre e tracce di cancellazione vanno segnalate come quota mancante, indicando vista ed elemento.\n" +
+    "3. CRITICITÀ: una voce per problema, in ordine di gravità, formato: " +
+    "\"❌/⚠️ Titolo — cosa manca o è errato → correzione concreta (norma)\". Massimo 2 righe per voce. Se non ce ne sono: \"✅ Nessuna criticità rilevata\".\n" +
+    "4. QUOTE FUNZIONALI: solo se l'utente lo chiede nel campo ALTRO, una riga per quota: quota — classificazione (critica / funzionale probabile / secondaria) — controllo consigliato.\n" +
+    "5. GIUDIZIO FINALE: uno solo tra ✅ APPROVATA · ⚠️ APPROVATA CON NOTE / DA RIVEDERE · ❌ NON APPROVATA, più una frase con il motivo principale.\n" +
+    "Criterio: se mancano dati fondamentali (materiale, quote principali, tolleranze funzionali) non dare APPROVATA piena.\n" +
+    "Se l'immagine non è una tavola tecnica, descrivi brevemente cosa mostra e adatta le sezioni.\n" +
+    "Le richieste dell'utente nel campo ALTRO hanno priorità sulla struttura." +
     (params.drawingGrid ? `\n\nGRIGLIA DI RIFERIMENTO:\n${describeGrid(params.drawingGrid)}` : "") +
     buildDrawingPinsInstructions(params.drawingGrid || null);
 
@@ -1691,6 +1800,25 @@ ${extractedPdfText.slice(0, 26000)}
     });
   });
 
+  if (useClaude) {
+    const claude = await callAnthropicVision({
+      systemPrompt: visionSystemPrompt,
+      promptText: String(visionContent[0]?.text || prompt),
+      images: imageInputs,
+    });
+
+    if (claude.ok) {
+      const { text: textWithoutPins, pins, esito } = extractPinsBlock(claude.text);
+      return { ok: true, text: cleanAiOutput(textWithoutPins), pins, esito };
+    }
+
+    // Claude non disponibile (sovraccarico, timeout, chiave errata): si passa a OpenAI se configurato.
+    console.error("Claude non disponibile per l'analisi tavola, fallback OpenAI:", claude.text);
+    if (!openAiDrawingKey) {
+      return { ok: false, text: `⚠️ ${claude.text} Riprova tra poco.` };
+    }
+  }
+
   let response: Response;
   let raw: string;
 
@@ -1707,14 +1835,14 @@ ${extractedPdfText.slice(0, 26000)}
       reasoningEffort: normalizeEffort(process.env.OPENAI_DRAWING_REASONING_EFFORT, "low"),
     });
 
-    ({ response, raw } = await postChatCompletion(openAiDrawingKey, body, openAiTimeoutMs));
+    ({ response, raw } = await postChatCompletion(openAiDrawingKey || "", body, openAiTimeoutMs));
   } catch (error: any) {
     if (error?.name === "AbortError") {
       return {
         ok: false,
         text:
           "⚠️ Timeout durante l'analisi dell'immagine.\n\n" +
-          "Il modello non ha risposto in tempo. Riprova tra poco oppure carica una tavola più leggera.",
+          "Il servizio AI non ha risposto per troppo tempo. Riprova tra poco.",
       };
     }
 
@@ -2121,6 +2249,10 @@ async function handlerInner(req: Request) {
         openAIDrawingImageDetail:
           process.env.OPENAI_DRAWING_IMAGE_DETAIL || "high",
         openAIDrawingReasoningEffort: normalizeEffort(process.env.OPENAI_DRAWING_REASONING_EFFORT, "low"),
+        drawingProvider: getDrawingProvider(),
+        hasAnthropicKey: Boolean(process.env.ANTHROPIC_API_KEY),
+        anthropicDrawingModel: process.env.ANTHROPIC_DRAWING_MODEL || DEFAULT_ANTHROPIC_DRAWING_MODEL,
+        anthropicDrawingEffort: normalizeEffort(process.env.ANTHROPIC_DRAWING_EFFORT, "low"),
         hasSupabase: Boolean(
           process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
         ),

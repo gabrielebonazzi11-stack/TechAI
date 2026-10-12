@@ -2223,7 +2223,7 @@ ${drawingExtraNotes.trim() || "nessuna indicazione aggiuntiva"}
 
 Se l'utente ha compilato il campo ALTRO, dai priorità a quelle richieste (es. quote funzionali → sezione dedicata; rugosità → superfici funzionali; cartiglio → dati del cartiglio), senza inventare dati non leggibili.
 Se nel testo estratto dal PDF trovi un dato che non riesci a collegare chiaramente a una zona della tavola, scrivilo come dato da confermare.
-Per ogni criticità indica: descrizione, motivazione tecnica, confidenza, riferimento tecnico e suggerimento correttivo.`
+Sii essenziale: per ogni criticità una riga con problema, correzione concreta e norma.`
         );
         // Si inviano solo i crop già pronti (il file originale non serve al backend e pesa sull'upload).
         formData.append("fileName", upload.fileAttachment.name);
