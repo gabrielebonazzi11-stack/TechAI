@@ -444,27 +444,94 @@ function buildChatCompletionBody(params: {
 
 const OPTIONAL_COMPLETION_PARAMS = ["temperature", "reasoning_effort", "max_tokens", "max_completion_tokens"];
 
+// Le funzioni Edge possono restare in streaming al massimo 300 s: si lascia margine per salvare l'uso.
+const OPENAI_MAX_TOTAL_MS = 280000;
+// Silenzio massimo ammesso da OpenAI. Con i modelli che ragionano il primo testo arriva solo dopo
+// la fase di ragionamento, quindi il primo intervallo è più lungo.
+const OPENAI_FIRST_TOKEN_IDLE_MS = 120000;
+const OPENAI_STREAM_IDLE_MS = 45000;
+
+/** Legge la risposta in streaming (SSE) di Chat Completions e restituisce il testo completo. */
+async function readChatCompletionStream(body: ReadableStream<Uint8Array>, controller: AbortController): Promise<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const armIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => controller.abort(), content ? OPENAI_STREAM_IDLE_MS : OPENAI_FIRST_TOKEN_IDLE_MS);
+  };
+
+  try {
+    armIdle();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let newline: number;
+      while ((newline = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line.startsWith("data:")) continue;
+
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") return content;
+
+        const event = safeJsonParse<any>(data, null);
+        if (event?.error) throw new Error(String(event.error.message || "Errore OpenAI durante lo streaming."));
+        const delta = event?.choices?.[0]?.delta?.content;
+        if (typeof delta === "string") content += delta;
+      }
+
+      armIdle();
+    }
+    return content;
+  } finally {
+    if (idleTimer) clearTimeout(idleTimer);
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+  }
+}
+
 /**
- * Chiama Chat Completions. Se il modello rifiuta un parametro (400 "unsupported parameter"),
- * riprova una volta senza quel parametro: così cambiare modello da Vercel non rompe l'app.
+ * Chiama Chat Completions in streaming: il testo arriva mentre il modello lo scrive, quindi
+ * un report lungo non va più in timeout (si interrompe solo se OpenAI resta fermo troppo a lungo).
+ * Se il modello rifiuta un parametro (400 "unsupported parameter"), riprova una volta senza quel parametro:
+ * così cambiare modello da Vercel non rompe l'app.
  */
 async function postChatCompletion(apiKey: string, body: Record<string, unknown>, timeoutMs: number) {
-  const send = (payload: Record<string, unknown>) =>
-    fetchWithTimeout(
-      "https://api.openai.com/v1/chat/completions",
-      {
+  const send = async (payload: Record<string, unknown>): Promise<{ response: Response; raw: string }> => {
+    const controller = new AbortController();
+    const totalTimer = setTimeout(() => controller.abort(), Math.min(timeoutMs, OPENAI_MAX_TOTAL_MS));
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify(payload),
-      },
-      timeoutMs
-    );
+        body: JSON.stringify({ ...payload, stream: true }),
+        signal: controller.signal,
+      });
 
-  let response = await send(body);
-  let raw = await response.text();
+      // Gli errori (400, 429, 5xx) arrivano come JSON normale, non in streaming.
+      if (!response.ok || !response.body) return { response, raw: await response.text() };
+
+      const content = await readChatCompletionStream(response.body, controller);
+      return { response, raw: JSON.stringify({ choices: [{ message: { content } }] }) };
+    } finally {
+      clearTimeout(totalTimer);
+    }
+  };
+
+  let { response, raw } = await send(body);
 
   if (response.status === 400) {
     const rejected = OPTIONAL_COMPLETION_PARAMS.filter((key) => key in body && raw.includes(key));
@@ -478,8 +545,7 @@ async function postChatCompletion(apiKey: string, body: Record<string, unknown>,
       if (rejected.includes("max_completion_tokens") && !("max_tokens" in retry)) retry.max_tokens = body.max_completion_tokens;
 
       console.warn("OpenAI: parametri non supportati da", body.model, "→ riprovo senza:", rejected.join(", "));
-      response = await send(retry);
-      raw = await response.text();
+      ({ response, raw } = await send(retry));
     }
   }
 
@@ -1401,8 +1467,8 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
         reasoningEffort: normalizeEffort(process.env.OPENAI_TEXT_REASONING_EFFORT, "low"),
       });
 
-      // I modelli con ragionamento impiegano di più: timeout raddoppiato (lo stream keep-alive copre l'attesa).
-      const timeoutMs = isReasoningModel(currentRoute.model) ? currentRoute.timeoutMs * 2 : currentRoute.timeoutMs;
+      // I modelli con ragionamento impiegano di più: tetto più largo (lo streaming controlla l'inattività).
+      const timeoutMs = isReasoningModel(currentRoute.model) ? Math.max(currentRoute.timeoutMs * 3, 150000) : currentRoute.timeoutMs * 2;
       ({ response, raw } = await postChatCompletion(openAiApiKey, body, timeoutMs));
     } catch (error: any) {
       if (error?.name === "AbortError") {
@@ -1484,8 +1550,9 @@ async function callOpenAIVision(params: {
 
   const model = process.env.OPENAI_DRAWING_READER_MODEL || DEFAULT_DRAWING_MODEL;
   const reasoningModel = isReasoningModel(model);
-  // Il ragionamento allunga i tempi: 120 s di default (lo stream keep-alive evita il timeout Edge).
-  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || (reasoningModel ? "120000" : "45000"));
+  // Tetto complessivo: con lo streaming conta soprattutto il controllo di inattività, quindi il limite è largo.
+  // OPENAI_DRAWING_TIMEOUT_MS può solo allungarlo (un vecchio valore basso, es. 45000, non deve più troncare l'analisi).
+  const openAiTimeoutMs = Math.max(Number(process.env.OPENAI_DRAWING_TIMEOUT_MS) || 0, reasoningModel ? OPENAI_MAX_TOTAL_MS : 120000);
   const isDrawingRequest = params.analysisMode === "drawing";
   const envDetail = process.env.OPENAI_DRAWING_IMAGE_DETAIL;
   // Tavole: dettaglio "high" di default, altrimenti quote e note piccole vengono lette male.
@@ -1714,7 +1781,7 @@ ${extractedPdfText.slice(0, 26000)}
         ok: false,
         text:
           "⚠️ Timeout durante l'analisi dell'immagine.\n\n" +
-          "Il modello non ha risposto in tempo. Riprova tra poco oppure carica una tavola più leggera.",
+          "Il servizio AI non ha risposto per troppo tempo. Riprova tra poco.",
       };
     }
 
