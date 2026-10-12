@@ -1,10 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { shouldShowResetPasswordScreen } from "./lib/passwordRecovery";
-import App from "./App.tsx";
+import App from "./App";
 import ResetPasswordPage from "./components/auth/ResetPasswordPage";
 import UpdateChecker from "./UpdateChecker";
-import "./enhancers/pdfDrawingUploadEnhancer";
 import "./utils/globalNumberFallback";
 
 // /reset-password (o un link di recupero atterrato sul sito) mostra solo la

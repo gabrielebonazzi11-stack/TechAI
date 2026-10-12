@@ -1,6 +1,6 @@
 import CalculationBox from "./CalculationBox";
 import PdfExportButton from "./PdfExportButton";
-import { parseVerificationReport } from "./VerificationReport";
+import { parseVerificationReport } from "../VerificationReport";
 
 type Props = {
   content: string;

@@ -5,8 +5,7 @@ export type VerificationReportLine = {
 
 export function parseVerificationReport(content: string): VerificationReportLine[] {
   return String(content || "")
-    .split("
-")
+    .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
     .map((text) => {
