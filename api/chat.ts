@@ -406,6 +406,86 @@ function isOlderThan24Hours(dateValue: string | null | undefined) {
   return Date.now() - date.getTime() >= GUEST_WINDOW_MS;
 }
 
+// gpt-4o viene spento da OpenAI il 23/10/2026: il default "hard" passa al modello attuale.
+const DEFAULT_HARD_TEXT_MODEL = "gpt-6.1-sol";
+const DEFAULT_DRAWING_MODEL = "gpt-6.1-sol";
+
+/** Modelli con ragionamento (o-series, GPT-5.x, GPT-6.x): parametri diversi dai vecchi gpt-4o. */
+function isReasoningModel(model: string) {
+  return /^(o\d|gpt-5|gpt-6)/i.test(String(model || "").trim());
+}
+
+function normalizeEffort(value: string | undefined, fallback: string) {
+  const v = String(value || "").trim().toLowerCase();
+  return ["none", "minimal", "low", "medium", "high", "xhigh", "max"].includes(v) ? v : fallback;
+}
+
+function buildChatCompletionBody(params: {
+  model: string;
+  messages: any[];
+  maxTokens: number;
+  temperature: number;
+  reasoningEffort: string;
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = { model: params.model, messages: params.messages };
+
+  if (isReasoningModel(params.model)) {
+    // I modelli con ragionamento rifiutano max_tokens e temperature personalizzate.
+    // max_completion_tokens comprende anche i token di ragionamento, quindi serve più margine.
+    body.max_completion_tokens = Math.max(params.maxTokens * 3, 12000);
+    body.reasoning_effort = params.reasoningEffort;
+  } else {
+    body.max_tokens = params.maxTokens;
+    body.temperature = params.temperature;
+  }
+
+  return body;
+}
+
+const OPTIONAL_COMPLETION_PARAMS = ["temperature", "reasoning_effort", "max_tokens", "max_completion_tokens"];
+
+/**
+ * Chiama Chat Completions. Se il modello rifiuta un parametro (400 "unsupported parameter"),
+ * riprova una volta senza quel parametro: così cambiare modello da Vercel non rompe l'app.
+ */
+async function postChatCompletion(apiKey: string, body: Record<string, unknown>, timeoutMs: number) {
+  const send = (payload: Record<string, unknown>) =>
+    fetchWithTimeout(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(payload),
+      },
+      timeoutMs
+    );
+
+  let response = await send(body);
+  let raw = await response.text();
+
+  if (response.status === 400) {
+    const rejected = OPTIONAL_COMPLETION_PARAMS.filter((key) => key in body && raw.includes(key));
+
+    if (rejected.length) {
+      const retry: Record<string, unknown> = { ...body };
+      for (const key of rejected) delete retry[key];
+
+      // Il limite di output va mantenuto con il nome accettato dal modello.
+      if (rejected.includes("max_tokens") && !("max_completion_tokens" in retry)) retry.max_completion_tokens = body.max_tokens;
+      if (rejected.includes("max_completion_tokens") && !("max_tokens" in retry)) retry.max_tokens = body.max_completion_tokens;
+
+      console.warn("OpenAI: parametri non supportati da", body.model, "→ riprovo senza:", rejected.join(", "));
+      response = await send(retry);
+      raw = await response.text();
+    }
+  }
+
+  return { response, raw };
+}
+
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 18000) {
   const controller = new AbortController();
 
@@ -605,7 +685,7 @@ ${analysisMode}`.toLowerCase();
     process.env.OPENAI_TEXT_MODEL_HARD ||
     process.env.OPENAI_TEXT_MODEL ||
     process.env.OPENAI_API_MODEL ||
-    "gpt-4o";
+    DEFAULT_HARD_TEXT_MODEL;
 
   let score = 0;
   const reasons: string[] = [];
@@ -1306,40 +1386,24 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
       (appContext ? `\n\n${appContext.slice(0, isFallback ? 5000 : 14000)}` : "");
 
     let response: Response;
+    let raw: string;
 
     try {
-      response = await fetchWithTimeout(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${openAiApiKey}`,
-          },
-          body: JSON.stringify({
-            model: currentRoute.model,
-            messages: [
-              {
-                role: "system",
-                content: systemPrompt,
-              },
-              ...cleanHistory,
-              {
-                role: "user",
-                content: finalUserContent,
-              },
-            ],
-            temperature:
-              currentRoute.level === "fast"
-                ? 0.3
-                : currentRoute.level === "medium"
-                  ? 0.35
-                  : 0.25,
-            max_tokens: currentRoute.maxTokens,
-          }),
-        },
-        currentRoute.timeoutMs
-      );
+      const body = buildChatCompletionBody({
+        model: currentRoute.model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...cleanHistory,
+          { role: "user", content: finalUserContent },
+        ],
+        maxTokens: currentRoute.maxTokens,
+        temperature: currentRoute.level === "fast" ? 0.3 : currentRoute.level === "medium" ? 0.35 : 0.25,
+        reasoningEffort: normalizeEffort(process.env.OPENAI_TEXT_REASONING_EFFORT, "low"),
+      });
+
+      // I modelli con ragionamento impiegano di più: timeout raddoppiato (lo stream keep-alive copre l'attesa).
+      const timeoutMs = isReasoningModel(currentRoute.model) ? currentRoute.timeoutMs * 2 : currentRoute.timeoutMs;
+      ({ response, raw } = await postChatCompletion(openAiApiKey, body, timeoutMs));
     } catch (error: any) {
       if (error?.name === "AbortError") {
         lastWasRateLimit = false;
@@ -1349,7 +1413,6 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
       throw error;
     }
 
-    const raw = await response.text();
     const data = safeJsonParse<any>(raw, null);
 
     if (response.ok) {
@@ -1419,13 +1482,19 @@ async function callOpenAIVision(params: {
     process.env.OPENAI_DRAWING_READER_API_KEY ||
     process.env.OPENAI_API_KEY;
 
-  const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
-  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "45000");
+  const model = process.env.OPENAI_DRAWING_READER_MODEL || DEFAULT_DRAWING_MODEL;
+  const reasoningModel = isReasoningModel(model);
+  // Il ragionamento allunga i tempi: 120 s di default (lo stream keep-alive evita il timeout Edge).
+  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || (reasoningModel ? "120000" : "45000"));
+  const isDrawingRequest = params.analysisMode === "drawing";
+  const envDetail = process.env.OPENAI_DRAWING_IMAGE_DETAIL;
+  // Tavole: dettaglio "high" di default, altrimenti quote e note piccole vengono lette male.
   const imageDetail =
-    process.env.OPENAI_DRAWING_IMAGE_DETAIL === "high" ||
-    process.env.OPENAI_DRAWING_IMAGE_DETAIL === "low"
-      ? process.env.OPENAI_DRAWING_IMAGE_DETAIL
-      : "auto";
+    envDetail === "high" || envDetail === "low" || envDetail === "auto"
+      ? envDetail
+      : isDrawingRequest
+        ? "high"
+        : "auto";
 
   if (!openAiDrawingKey) {
     console.error("Missing OpenAI API key for drawing reader");
@@ -1623,34 +1692,22 @@ ${extractedPdfText.slice(0, 26000)}
   });
 
   let response: Response;
+  let raw: string;
 
   try {
-    response = await fetchWithTimeout(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openAiDrawingKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: "system",
-              content: visionSystemPrompt,
-            },
-            {
-              role: "user",
-              content: visionContent,
-            },
-          ],
-          temperature: 0.15,
-          max_tokens: 8000,
-        }),
-      },
-      openAiTimeoutMs
-    );
+    const body = buildChatCompletionBody({
+      model,
+      messages: [
+        { role: "system", content: visionSystemPrompt },
+        { role: "user", content: visionContent },
+      ],
+      maxTokens: 8000,
+      temperature: 0.15,
+      // "low": il modello ragiona quanto basta per leggere quote e norme senza allungare troppo i tempi.
+      reasoningEffort: normalizeEffort(process.env.OPENAI_DRAWING_REASONING_EFFORT, "low"),
+    });
+
+    ({ response, raw } = await postChatCompletion(openAiDrawingKey, body, openAiTimeoutMs));
   } catch (error: any) {
     if (error?.name === "AbortError") {
       return {
@@ -1664,7 +1721,6 @@ ${extractedPdfText.slice(0, 26000)}
     throw error;
   }
 
-  const raw = await response.text();
   const data = safeJsonParse<any>(raw, null);
 
   if (!response.ok) {
@@ -2052,7 +2108,7 @@ async function handlerInner(req: Request) {
           process.env.OPENAI_TEXT_MODEL_HARD ||
           process.env.OPENAI_TEXT_MODEL ||
           process.env.OPENAI_API_MODEL ||
-          "gpt-4o",
+          DEFAULT_HARD_TEXT_MODEL,
         hasOpenAIDrawingKey: Boolean(
           process.env.OPENAI_DRAWING_READER_API_KEY || process.env.OPENAI_API_KEY
         ),
@@ -2061,9 +2117,10 @@ async function handlerInner(req: Request) {
             ? "SET"
             : "MISSING",
         openAIDrawingModel:
-          process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
+          process.env.OPENAI_DRAWING_READER_MODEL || DEFAULT_DRAWING_MODEL,
         openAIDrawingImageDetail:
-          process.env.OPENAI_DRAWING_IMAGE_DETAIL || "auto",
+          process.env.OPENAI_DRAWING_IMAGE_DETAIL || "high",
+        openAIDrawingReasoningEffort: normalizeEffort(process.env.OPENAI_DRAWING_REASONING_EFFORT, "low"),
         hasSupabase: Boolean(
           process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
         ),
