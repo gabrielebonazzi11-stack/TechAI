@@ -27,6 +27,30 @@ type DrawingImageInput = {
   dataUrl?: string;
 };
 
+type DrawingGridInput = {
+  cols: number;
+  rows: number;
+};
+
+type DrawingPin = {
+  id: string;
+  label: string;
+  severity: "errore" | "attenzione" | "info";
+  celle: string[];
+  testo: string;
+  zona: string;
+  detail: string;
+};
+
+type DrawingVerdict = "approvata" | "con_note" | "non_approvata" | null;
+
+type AiResult = {
+  text: string;
+  ok: boolean;
+  pins?: DrawingPin[] | null;
+  esito?: DrawingVerdict;
+};
+
 type RequestBodyData = {
   message: string;
   messages: ChatMessage[];
@@ -38,6 +62,8 @@ type RequestBodyData = {
   hasFile: boolean;
   analysisMode: AnalysisMode;
   projectContext?: string;
+  appContext: string;
+  drawingGrid: DrawingGridInput | null;
 };
 
 type GuestUsageInfo = {
@@ -339,6 +365,25 @@ function normalizeAnalysisMode(value: string | null | undefined): AnalysisMode {
   return "chat";
 }
 
+function parseDrawingGrid(value: unknown): DrawingGridInput | null {
+  const raw = typeof value === "string" ? safeJsonParse<any>(value, null) : value;
+  const cols = Number((raw as any)?.cols);
+  const rows = Number((raw as any)?.rows);
+  if (!Number.isInteger(cols) || !Number.isInteger(rows) || cols < 2 || rows < 2 || cols > 16 || rows > 16) return null;
+  return { cols, rows };
+}
+
+function sanitizeDrawingImages(value: unknown): DrawingImageInput[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((img: DrawingImageInput) => img?.dataUrl && String(img.dataUrl).startsWith("data:image/"))
+    .map((img: DrawingImageInput) => ({
+      label: String(img.label || "Crop tavola").slice(0, 160),
+      dataUrl: String(img.dataUrl),
+    }))
+    .slice(0, 12);
+}
+
 function arrayBufferToBase64(buffer: ArrayBuffer) {
   let binary = "";
   const bytes = new Uint8Array(buffer);
@@ -359,6 +404,86 @@ function isOlderThan24Hours(dateValue: string | null | undefined) {
   if (Number.isNaN(date.getTime())) return true;
 
   return Date.now() - date.getTime() >= GUEST_WINDOW_MS;
+}
+
+// gpt-4o viene spento da OpenAI il 23/10/2026: il default "hard" passa al modello attuale.
+const DEFAULT_HARD_TEXT_MODEL = "gpt-6.1-sol";
+const DEFAULT_DRAWING_MODEL = "gpt-6.1-sol";
+
+/** Modelli con ragionamento (o-series, GPT-5.x, GPT-6.x): parametri diversi dai vecchi gpt-4o. */
+function isReasoningModel(model: string) {
+  return /^(o\d|gpt-5|gpt-6)/i.test(String(model || "").trim());
+}
+
+function normalizeEffort(value: string | undefined, fallback: string) {
+  const v = String(value || "").trim().toLowerCase();
+  return ["none", "minimal", "low", "medium", "high", "xhigh", "max"].includes(v) ? v : fallback;
+}
+
+function buildChatCompletionBody(params: {
+  model: string;
+  messages: any[];
+  maxTokens: number;
+  temperature: number;
+  reasoningEffort: string;
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = { model: params.model, messages: params.messages };
+
+  if (isReasoningModel(params.model)) {
+    // I modelli con ragionamento rifiutano max_tokens e temperature personalizzate.
+    // max_completion_tokens comprende anche i token di ragionamento, quindi serve più margine.
+    body.max_completion_tokens = Math.max(params.maxTokens * 3, 12000);
+    body.reasoning_effort = params.reasoningEffort;
+  } else {
+    body.max_tokens = params.maxTokens;
+    body.temperature = params.temperature;
+  }
+
+  return body;
+}
+
+const OPTIONAL_COMPLETION_PARAMS = ["temperature", "reasoning_effort", "max_tokens", "max_completion_tokens"];
+
+/**
+ * Chiama Chat Completions. Se il modello rifiuta un parametro (400 "unsupported parameter"),
+ * riprova una volta senza quel parametro: così cambiare modello da Vercel non rompe l'app.
+ */
+async function postChatCompletion(apiKey: string, body: Record<string, unknown>, timeoutMs: number) {
+  const send = (payload: Record<string, unknown>) =>
+    fetchWithTimeout(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(payload),
+      },
+      timeoutMs
+    );
+
+  let response = await send(body);
+  let raw = await response.text();
+
+  if (response.status === 400) {
+    const rejected = OPTIONAL_COMPLETION_PARAMS.filter((key) => key in body && raw.includes(key));
+
+    if (rejected.length) {
+      const retry: Record<string, unknown> = { ...body };
+      for (const key of rejected) delete retry[key];
+
+      // Il limite di output va mantenuto con il nome accettato dal modello.
+      if (rejected.includes("max_tokens") && !("max_completion_tokens" in retry)) retry.max_completion_tokens = body.max_tokens;
+      if (rejected.includes("max_completion_tokens") && !("max_tokens" in retry)) retry.max_tokens = body.max_completion_tokens;
+
+      console.warn("OpenAI: parametri non supportati da", body.model, "→ riprovo senza:", rejected.join(", "));
+      response = await send(retry);
+      raw = await response.text();
+    }
+  }
+
+  return { response, raw };
 }
 
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 18000) {
@@ -406,13 +531,16 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
     const preExtractedText = formData.get("fileText");
     const drawingImagesRaw = String(formData.get("drawingImages") || "[]");
     const projectContextRaw = String(formData.get("projectContext") || "");
+    const appContext = String(formData.get("appContext") || "").slice(0, 20000);
+    const drawingGrid = parseDrawingGrid(formData.get("drawingGrid"));
+    const declaredFileName = String(formData.get("fileName") || "").slice(0, 200);
     const analysisMode = normalizeAnalysisMode(String(formData.get("analysisMode") || "chat"));
     const preExtractedTextClean =
       typeof preExtractedText === "string" ? preExtractedText.trim() : "";
 
     const messages = safeJsonParse<ChatMessage[]>(messagesRaw, []);
     const profile = safeJsonParse<any>(profileRaw, {});
-    const drawingImagesParsed = safeJsonParse<DrawingImageInput[]>(drawingImagesRaw, []);
+    const drawingImagesParsed = sanitizeDrawingImages(safeJsonParse<DrawingImageInput[]>(drawingImagesRaw, []));
 
     let fileText = "";
     let imageDataUrl = "";
@@ -475,14 +603,23 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
       }
     }
 
-    if (Array.isArray(drawingImagesParsed) && drawingImagesParsed.length > 0) {
-      drawingImages = drawingImagesParsed
-        .filter((img) => img?.dataUrl && String(img.dataUrl).startsWith("data:image/"))
-        .map((img) => ({
-          label: String(img.label || "Crop tavola"),
-          dataUrl: String(img.dataUrl),
-        }))
-        .slice(0, 12);
+    if (drawingImagesParsed.length > 0) {
+      drawingImages = drawingImagesParsed;
+
+      // Il frontend invia solo i crop (non anche il file originale): conta comunque come file caricato.
+      if (!hasFile) {
+        hasFile = true;
+        if (preExtractedTextClean) {
+          fileText = `\n\nTesto estratto/preparato dal frontend:\n${preExtractedTextClean.slice(0, 26000)}`;
+        }
+      }
+
+      if (!fileMeta) {
+        fileMeta =
+          `File caricato:\n` +
+          `Nome: ${declaredFileName || "tavola tecnica"}\n` +
+          `Modalità analisi: ${analysisMode}\n`;
+      }
     }
 
     return {
@@ -496,6 +633,8 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
       hasFile,
       analysisMode,
       projectContext: projectContextRaw,
+      appContext,
+      drawingGrid,
     };
   }
 
@@ -507,18 +646,13 @@ async function readRequestBody(req: Request): Promise<RequestBodyData> {
     profile: body.profile || {},
     fileText: body.fileText || "",
     imageDataUrl: "",
-    drawingImages: Array.isArray(body.drawingImages)
-      ? body.drawingImages
-          .filter((img: DrawingImageInput) => img?.dataUrl && String(img.dataUrl).startsWith("data:image/"))
-          .map((img: DrawingImageInput) => ({
-            label: String(img.label || "Crop tavola"),
-            dataUrl: String(img.dataUrl),
-          }))
-          .slice(0, 12)
-      : [],
+    drawingImages: sanitizeDrawingImages(body.drawingImages),
     fileMeta: body.fileMeta || "",
     hasFile: Boolean(body.hasFile),
     analysisMode: normalizeAnalysisMode(body.analysisMode),
+    projectContext: typeof body.projectContext === "string" ? body.projectContext : "",
+    appContext: String(body.appContext || "").slice(0, 20000),
+    drawingGrid: parseDrawingGrid(body.drawingGrid),
   };
 }
 
@@ -551,7 +685,7 @@ ${analysisMode}`.toLowerCase();
     process.env.OPENAI_TEXT_MODEL_HARD ||
     process.env.OPENAI_TEXT_MODEL ||
     process.env.OPENAI_API_MODEL ||
-    "gpt-4o";
+    DEFAULT_HARD_TEXT_MODEL;
 
   let score = 0;
   const reasons: string[] = [];
@@ -664,7 +798,6 @@ function buildLightSystemPrompt(params: {
     `Per codice, dai modifiche complete e copiabili. Per problemi tecnici, includi motivazione, riferimenti normativi quando pertinenti e controlli consigliati.` +
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES +
-    MECHANICAL_KNOWLEDGE_BASE +
     TECHAI_FORMATTING_RULES
   );
 }
@@ -810,21 +943,7 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
     `- Posizione fori su cerchio bulloni: +/-0.1 mm o simbolo posizione con datum\n` +
     `ISTRUZIONE FONDAMENTALE: quando vedi un foro o sede senza tolleranza specificata, SUGGERISCI il valore ISO corretto in base alla funzione dedotta dalla geometria. Quando vedi superficie funzionale senza rugosita, SUGGERISCI Ra appropriato. Non limitarti a segnalare la mancanza: dai il valore concreto.\n` +
 
-    `PINS_JSON (obbligatorio, SEMPRE ALL'INIZIO della risposta - PRIMA di qualsiasi testo):\n` +
-    `PRIMA di scrivere qualsiasi analisi, scrivi subito il blocco JSON tra i tag <PINS> e </PINS>.\n` +
-    `REGOLA FONDAMENTALE: inserisci UN PIN SEPARATO per OGNI criticita trovata. Se hai trovato 4 problemi, inserisci 4 pin. Non raggruppare tutto in un solo pin.\n` +
-    `Ogni pin ha questi campi:\n` +
-    `- id: stringa univoca (p1, p2, p3...)\n` +
-    `- label: nome breve del problema\n` +
-    `- severity: errore (critico), attenzione (da verificare), info (nota positiva)\n` +
-    `- zona: OBBLIGATORIO, scegli tra: cartiglio, cartiglio_materiale, cartiglio_scala, vista_principale, vista_destra, vista_alto, sezione_aa, sezione_bb, quotatura, tolleranze, rugosita, fori_filetti, note_generali\n` +
-    `- detail: descrizione breve del problema (max 120 caratteri)\n` +
-    `Esempio con 3 errori trovati:\n` +
-    `<PINS>\n` +
-    `[{"id":"p1","label":"Materiale mancante","severity":"errore","zona":"cartiglio_materiale","detail":"Materiale non indicato nel cartiglio"},{"id":"p2","label":"Tolleranze geometriche","severity":"errore","zona":"tolleranze","detail":"Assenza GD&T su superfici funzionali"},{"id":"p3","label":"Rugosita mancante","severity":"attenzione","zona":"rugosita","detail":"Ra non specificato"}]\n` +
-    `</PINS>\n` +
-    `Se la tavola e corretta: [{"id":"p1","label":"Tavola approvata","severity":"info","zona":"cartiglio","detail":"Nessuna criticita rilevata"}]\n` +
-    `Non omettere mai il blocco PINS. Non mettere testo fuori dai tag PINS.\n`
+    buildDrawingPinsInstructions(null)
   );
 }
 
@@ -839,6 +958,100 @@ function buildModeInstructions(analysisMode: AnalysisMode) {
   return "";
 }
 
+
+const GRID_ROW_LETTERS = "ABCDEFGHJKLMNPQR";
+const DRAWING_ZONES =
+  "cartiglio, cartiglio_materiale, cartiglio_scala, vista_principale, vista_destra, vista_alto, sezione_aa, sezione_bb, quotatura, tolleranze, rugosita, fori_filetti, note_generali";
+
+function describeGrid(grid: DrawingGridInput) {
+  return (
+    `L'immagine 1 (tavola completa) ha una griglia blu di riferimento sovrapposta: ` +
+    `colonne numerate 1-${grid.cols} da sinistra a destra, righe con lettere A-${GRID_ROW_LETTERS[grid.rows - 1]} dall'alto in basso ` +
+    `(le lettere I e O non sono usate). Una cella si indica con lettera riga + numero colonna, es. C5. ` +
+    `La griglia serve SOLO per indicare la posizione delle criticità: non è parte del disegno, non leggerla come quote.`
+  );
+}
+
+function buildDrawingPinsInstructions(grid: DrawingGridInput | null) {
+  return (
+    `\n\nBLOCCO PINS (OBBLIGATORIO, È LA PRIMA COSA DELLA RISPOSTA, PRIMA DI QUALSIASI ALTRO TESTO):\n` +
+    `Scrivi un oggetto JSON valido, su una sola riga, tra i tag <PINS> e </PINS>. Poi scrivi l'analisi.\n` +
+    `Formato: <PINS>{"esito":"approvata|con_note|non_approvata","pins":[...]}</PINS>\n` +
+    `- esito: deve coincidere con il giudizio finale dell'analisi (approvata = ✅ APPROVATA, con_note = ⚠️ APPROVATA CON NOTE / DA RIVEDERE, non_approvata = ❌ NON APPROVATA).\n` +
+    `- pins: UN elemento per OGNI criticità (errori e punti da verificare). Non raggruppare più problemi in un pin.\n` +
+    `Campi di ogni pin:\n` +
+    `- id: "p1", "p2", ...\n` +
+    `- label: titolo breve, massimo 6 parole.\n` +
+    `- severity: "errore" (critico) | "attenzione" (da verificare) | "info" (nota positiva, da usare raramente).\n` +
+    (grid
+      ? `- celle: array di 1-4 celle ADIACENTI della griglia dell'immagine 1 che contengono esattamente l'elemento interessato (quota, simbolo, foro, campo del cartiglio). ` +
+        `Se l'errore è un dato mancante, indica le celle dove quel dato andrebbe scritto o l'elemento a cui si riferisce. Sii preciso: meno celle è meglio di troppe.\n`
+      : "") +
+    `- testo: il testo ESATTO come appare sulla tavola nel punto dell'errore (es. "Ø20 H7", "M6", "Ra 3,2", "C45"). Stringa vuota se nel punto non c'è testo.\n` +
+    `- zona: una tra ${DRAWING_ZONES}.\n` +
+    `- detail: descrizione breve con la correzione, massimo 140 caratteri.\n` +
+    `Esempio: <PINS>{"esito":"non_approvata","pins":[{"id":"p1","label":"Tolleranza sede mancante","severity":"errore",${grid ? '"celle":["D7","D8"],' : ""}"testo":"Ø30","zona":"quotatura","detail":"Sede cuscinetto Ø30 senza tolleranza: indicare Ø30 H7 (ISO 286)"}]}</PINS>\n` +
+    `Se non trovi criticità: "pins":[] ed esito "approvata". Niente Markdown e niente a capo dentro il JSON. Non omettere mai il blocco PINS.\n`
+  );
+}
+
+function sanitizeVerdict(value: unknown): DrawingVerdict {
+  const v = String(value || "").toLowerCase().replace(/[\s-]+/g, "_");
+  if (v.includes("non")) return "non_approvata";
+  if (v.includes("note") || v.includes("rivedere") || v.includes("verificare")) return "con_note";
+  if (v.includes("approvat")) return "approvata";
+  return null;
+}
+
+function sanitizePins(value: unknown): DrawingPin[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 25).map((raw: any, index: number) => {
+    const severity = String(raw?.severity || "").toLowerCase();
+    const celle = Array.isArray(raw?.celle ?? raw?.cells)
+      ? (raw.celle ?? raw.cells).map((c: unknown) => String(c).trim().toUpperCase()).filter(Boolean).slice(0, 6)
+      : typeof (raw?.celle ?? raw?.cells) === "string"
+        ? String(raw.celle ?? raw.cells).split(/[\s,;]+/).map((c) => c.trim().toUpperCase()).filter(Boolean).slice(0, 6)
+        : [];
+
+    return {
+      id: String(raw?.id || `p${index + 1}`).slice(0, 40),
+      label: String(raw?.label || "Criticità").slice(0, 80),
+      severity: severity === "errore" || severity === "attenzione" || severity === "info" ? severity : "attenzione",
+      celle,
+      testo: String(raw?.testo ?? raw?.text ?? "").slice(0, 80),
+      zona: String(raw?.zona || "").slice(0, 40),
+      detail: String(raw?.detail || "").slice(0, 300),
+    } as DrawingPin;
+  });
+}
+
+/** Estrae il blocco <PINS> (JSON) dalla risposta del modello e restituisce il testo pulito. */
+function extractPinsBlock(raw: string): { text: string; pins: DrawingPin[] | null; esito: DrawingVerdict } {
+  const source = String(raw || "");
+  const match = source.match(/<PINS>\s*([\s\S]*?)\s*<\/PINS>/i);
+
+  // Rimuove anche un blocco aperto e mai chiuso (risposta troncata).
+  const text = source
+    .replace(/<PINS>[\s\S]*?<\/PINS>/gi, "")
+    .replace(/<PINS>[^\n]*\n?/gi, "")
+    .replace(/<\/PINS>/gi, "")
+    .trim();
+
+  if (!match) return { text, pins: null, esito: null };
+
+  const body = match[1]
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/, "")
+    .replace(/,\s*([}\]])/g, "$1")
+    .trim();
+
+  const parsed = safeJsonParse<any>(body, null);
+  if (parsed === null) return { text, pins: null, esito: null };
+
+  if (Array.isArray(parsed)) return { text, pins: sanitizePins(parsed), esito: null };
+  return { text, pins: sanitizePins(parsed.pins), esito: sanitizeVerdict(parsed.esito) };
+}
 
 function buildProjectContextSection(projectContextRaw: string): string {
   try {
@@ -901,7 +1114,6 @@ function buildCompactTechAiSystemPrompt(params: {
     `- Se si parla di componenti, disegni tecnici, materiali, tolleranze o verifiche, indica norme ISO, UNI, EN, DIN o riferimenti tecnici applicabili quando pertinenti.\n` +
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES +
-    MECHANICAL_KNOWLEDGE_BASE +
     TECHAI_FORMATTING_RULES +
     `\nPROMEMORIA TECNICO COMPATTO:\n` +
     `Meccanica: equilibrio ΣF=0, ΣM=0; F=ma; P=Fv=Mω; Mt[Nm]=9550P[kW]/n[rpm]. Trazione σ=F/A; flessione σ=Mf/Wf; torsione τ=Mt/Wt. Von Mises σid=√(σ²+3τ²). Fatica: Goodman/Soderberg. Bulloni: precarico, taglio, trazione, classe 8.8/10.9. Tolleranze: H7, k6, m6, H7/f7. Rugosità: Ra 3,2÷6,3 generica; Ra 0,8÷1,6 sedi/tenute.\n` +
@@ -928,7 +1140,6 @@ function buildFullTechAiSystemPrompt(params: {
     `Se la richiesta riguarda codice, dai modifiche precise, copiabili e complete. Se chiede un file completo, riscrivi il file completo.\n` +
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES +
-    MECHANICAL_KNOWLEDGE_BASE +
     TECHAI_FORMATTING_RULES +
     buildModeInstructions(analysisMode) +
     `\n\n` +
@@ -1055,7 +1266,8 @@ async function callOpenAIText(params: {
   fileMeta: string;
   analysisMode: AnalysisMode;
   projectContext?: string;
-}): Promise<string> {
+  appContext?: string;
+}): Promise<AiResult> {
   const openAiApiKey =
     process.env.OPENAI_TEXT_API_KEY ||
     process.env.OPENAI_API_KEY;
@@ -1070,11 +1282,13 @@ ${params.fileText}`,
   if (!openAiApiKey) {
     console.error("Missing OPENAI_TEXT_API_KEY / OPENAI_API_KEY environment variable");
 
-    return (
-      "⚠️ Chat AI temporaneamente non disponibile.\n\n" +
-      "Il sistema non riesce ad avviare il modello di risposta in questo momento. " +
-      "Riprova tra poco o segnala il problema all’assistenza se persiste."
-    );
+    return {
+      ok: false,
+      text:
+        "⚠️ Chat AI temporaneamente non disponibile.\n\n" +
+        "Il sistema non riesce ad avviare il modello di risposta in questo momento. " +
+        "Riprova tra poco o segnala il problema all’assistenza se persiste.",
+    };
   }
 
   const userName = params.profile?.userName || "Utente";
@@ -1110,19 +1324,31 @@ ${params.fileText}`,
 
   let lastWasRateLimit = false;
 
+  // La cronologia non deve contenere il messaggio corrente (viene già inviato come ultimo messaggio utente).
+  const history = Array.isArray(params.messages) ? [...params.messages] : [];
+  const lastHistory = history[history.length - 1];
+  if (
+    lastHistory &&
+    lastHistory.role !== "AI" &&
+    lastHistory.role !== "assistant" &&
+    String(lastHistory.text || "").trim() === String(params.message || "").trim()
+  ) {
+    history.pop();
+  }
+
+  const appContext = String(params.appContext || "").trim();
+
   for (let i = 0; i < uniqueRoutes.length; i++) {
     const currentRoute = uniqueRoutes[i];
     const isFallback = i > 0 || currentRoute.level === "fast";
 
-    const cleanHistory = Array.isArray(params.messages)
-      ? params.messages
-          .slice(isFallback ? -3 : -6)
-          .filter((m: ChatMessage) => String(m.text || "").trim())
-          .map((m: ChatMessage) => ({
-            role: m.role === "AI" || m.role === "assistant" ? "assistant" : "user",
-            content: String(m.text || "").slice(0, isFallback ? 1400 : 3200),
-          }))
-      : [];
+    const cleanHistory = history
+      .slice(isFallback ? -3 : -6)
+      .filter((m: ChatMessage) => String(m.text || "").trim())
+      .map((m: ChatMessage) => ({
+        role: m.role === "AI" || m.role === "assistant" ? "assistant" : "user",
+        content: String(m.text || "").slice(0, isFallback ? 1400 : 3200),
+      }));
 
     const fileTextLimit = isFallback ? 5000 : currentRoute.level === "hard" ? 18000 : 12000;
 
@@ -1155,43 +1381,29 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
             focus,
             route: currentRoute,
             analysisMode: params.analysisMode,
-          })) + projectSection;
+          })) +
+      projectSection +
+      (appContext ? `\n\n${appContext.slice(0, isFallback ? 5000 : 14000)}` : "");
 
     let response: Response;
+    let raw: string;
 
     try {
-      response = await fetchWithTimeout(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${openAiApiKey}`,
-          },
-          body: JSON.stringify({
-            model: currentRoute.model,
-            messages: [
-              {
-                role: "system",
-                content: systemPrompt,
-              },
-              ...cleanHistory,
-              {
-                role: "user",
-                content: finalUserContent,
-              },
-            ],
-            temperature:
-              currentRoute.level === "fast"
-                ? 0.3
-                : currentRoute.level === "medium"
-                  ? 0.35
-                  : 0.25,
-            max_tokens: currentRoute.maxTokens,
-          }),
-        },
-        currentRoute.timeoutMs
-      );
+      const body = buildChatCompletionBody({
+        model: currentRoute.model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...cleanHistory,
+          { role: "user", content: finalUserContent },
+        ],
+        maxTokens: currentRoute.maxTokens,
+        temperature: currentRoute.level === "fast" ? 0.3 : currentRoute.level === "medium" ? 0.35 : 0.25,
+        reasoningEffort: normalizeEffort(process.env.OPENAI_TEXT_REASONING_EFFORT, "low"),
+      });
+
+      // I modelli con ragionamento impiegano di più: timeout raddoppiato (lo stream keep-alive copre l'attesa).
+      const timeoutMs = isReasoningModel(currentRoute.model) ? currentRoute.timeoutMs * 2 : currentRoute.timeoutMs;
+      ({ response, raw } = await postChatCompletion(openAiApiKey, body, timeoutMs));
     } catch (error: any) {
       if (error?.name === "AbortError") {
         lastWasRateLimit = false;
@@ -1201,23 +1413,26 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
       throw error;
     }
 
-    const raw = await response.text();
     const data = safeJsonParse<any>(raw, null);
 
     if (response.ok) {
-      const content =
-        data?.choices?.[0]?.message?.content ||
-        "Ho ricevuto la richiesta, ma il modello non ha restituito una risposta valida.";
+      const content = String(data?.choices?.[0]?.message?.content || "");
+
+      if (!content.trim()) {
+        lastWasRateLimit = false;
+        continue;
+      }
 
       const cleanContent = cleanAiOutput(content);
 
       if (isFallback && i > 0) {
-        return (
-          `${cleanContent}\n\nNota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite.`
-        );
+        return {
+          ok: true,
+          text: `${cleanContent}\n\nNota: ho usato automaticamente una modalità AI più leggera perché il modello principale era al limite.`,
+        };
       }
 
-      return cleanContent;
+      return { ok: true, text: cleanContent };
     }
 
     if (isOpenAIRateLimit(response.status, raw)) {
@@ -1230,20 +1445,25 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
       continue;
     }
 
-    return (
-      "⚠️ Non sono riuscito a completare la risposta con il modello AI.\n\n" +
-      "Riprova tra poco oppure semplifica la richiesta."
-    );
+    console.error("OpenAI text error", response.status, raw.slice(0, 500));
+    return {
+      ok: false,
+      text:
+        "⚠️ Non sono riuscito a completare la risposta con il modello AI.\n\n" +
+        "Riprova tra poco oppure semplifica la richiesta.",
+    };
   }
 
   if (lastWasRateLimit) {
-    return sanitizeOpenAIFailureMessage();
+    return { ok: false, text: sanitizeOpenAIFailureMessage() };
   }
 
-  return (
-    "⚠️ Il modello AI non ha risposto correttamente.\n\n" +
-    "Riprova tra poco oppure riduci la lunghezza del messaggio."
-  );
+  return {
+    ok: false,
+    text:
+      "⚠️ Il modello AI non ha risposto correttamente.\n\n" +
+      "Riprova tra poco oppure riduci la lunghezza del messaggio.",
+  };
 }
 
 async function callOpenAIVision(params: {
@@ -1255,28 +1475,38 @@ async function callOpenAIVision(params: {
   fileText: string;
   fileMeta: string;
   analysisMode: AnalysisMode;
-}): Promise<string> {
+  appContext?: string;
+  drawingGrid?: DrawingGridInput | null;
+}): Promise<AiResult> {
   const openAiDrawingKey =
     process.env.OPENAI_DRAWING_READER_API_KEY ||
     process.env.OPENAI_API_KEY;
 
-  const model = process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini";
-  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || "45000");
+  const model = process.env.OPENAI_DRAWING_READER_MODEL || DEFAULT_DRAWING_MODEL;
+  const reasoningModel = isReasoningModel(model);
+  // Il ragionamento allunga i tempi: 120 s di default (lo stream keep-alive evita il timeout Edge).
+  const openAiTimeoutMs = Number(process.env.OPENAI_DRAWING_TIMEOUT_MS || (reasoningModel ? "120000" : "45000"));
+  const isDrawingRequest = params.analysisMode === "drawing";
+  const envDetail = process.env.OPENAI_DRAWING_IMAGE_DETAIL;
+  // Tavole: dettaglio "high" di default, altrimenti quote e note piccole vengono lette male.
   const imageDetail =
-    process.env.OPENAI_DRAWING_IMAGE_DETAIL === "high" ||
-    process.env.OPENAI_DRAWING_IMAGE_DETAIL === "low"
-      ? process.env.OPENAI_DRAWING_IMAGE_DETAIL
-      : "auto";
+    envDetail === "high" || envDetail === "low" || envDetail === "auto"
+      ? envDetail
+      : isDrawingRequest
+        ? "high"
+        : "auto";
 
   if (!openAiDrawingKey) {
     console.error("Missing OpenAI API key for drawing reader");
 
-    return (
-      "⚠️ Modulo di analisi visiva non disponibile.\n\n" +
-      "Non è stato possibile avviare la lettura della tavola tecnica. " +
-      "Il problema non dipende dal file caricato, ma dalla configurazione del servizio AI.\n\n" +
-      "Riprova più tardi oppure segnala il problema all’assistenza."
-    );
+    return {
+      ok: false,
+      text:
+        "⚠️ Modulo di analisi visiva non disponibile.\n\n" +
+        "Non è stato possibile avviare la lettura della tavola tecnica. " +
+        "Il problema non dipende dal file caricato, ma dalla configurazione del servizio AI.\n\n" +
+        "Riprova più tardi oppure segnala il problema all’assistenza.",
+    };
   }
 
   const userName = params.profile?.userName || "Utente";
@@ -1320,7 +1550,7 @@ ${extractedPdfText.slice(0, 26000)}
     `Rispondi in italiano, in modo tecnico ma naturale. Usa titoli, elenchi e grassetto Markdown leggero quando utile. ` +
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES +
-    MECHANICAL_KNOWLEDGE_BASE;
+    (params.appContext ? `\n\n${String(params.appContext).slice(0, 6000)}` : "");
 
   const drawingVisionSystemPrompt =
     `Sei TechAI Vision, un ingegnere meccanico senior specializzato in disegno tecnico secondo norme ISO 128, ISO 1101, ISO 286 e ISO 1302. ` +
@@ -1333,7 +1563,6 @@ ${extractedPdfText.slice(0, 26000)}
     "Rispondi in italiano tecnico preciso, completo e motivato. " +
     TECHNICAL_STANDARDS_RULES +
     TECHNICAL_DEPTH_RULES +
-    MECHANICAL_KNOWLEDGE_BASE +
     "\n\nREGOLE DI FORMATTAZIONE OBBLIGATORIE:\n" +
     "Usa sempre uno di questi stati per ogni controllo tecnico:\n" +
     "✅ OK = elemento presente, leggibile, coerente o apparentemente conforme.\n" +
@@ -1425,7 +1654,9 @@ ${extractedPdfText.slice(0, 26000)}
     "Se ci sono errori gravi che impediscono la produzione, usa ❌ NON APPROVATA. " +
     "\n\nSE NON È UNA TAVOLA TECNICA:\n" +
     "Mantieni comunque gli emoji ✅ / ❌ / ⚠️, ma adatta le sezioni al contenuto dell'immagine. " +
-    "Se è uno screenshot CAD/SolidWorks, aggiungi: Metodo consigliato, Comandi SolidWorks in italiano, Errori comuni e Quando NON usare questo metodo.";
+    "Se è uno screenshot CAD/SolidWorks, aggiungi: Metodo consigliato, Comandi SolidWorks in italiano, Errori comuni e Quando NON usare questo metodo." +
+    (params.drawingGrid ? `\n\nGRIGLIA DI RIFERIMENTO:\n${describeGrid(params.drawingGrid)}` : "") +
+    buildDrawingPinsInstructions(params.drawingGrid || null);
 
   const visionSystemPrompt = isDrawingMode ? drawingVisionSystemPrompt : genericVisionSystemPrompt;
 
@@ -1436,8 +1667,8 @@ ${extractedPdfText.slice(0, 26000)}
         prompt +
         (isDrawingMode
           ? "\n\nIMPORTANTE LETTURA TAVOLA PDF/A1/A0:\n" +
-            "Le immagini allegate sono crop della stessa tavola tecnica generati dal frontend con src/utils/technicalDrawingUtils.ts: alcuni automatici da testo PDF, alcuni da aree grafiche dense, più crop di sicurezza. Non trattarle come tavole separate.\n" +
-            "Usa la vista completa solo per orientarti.\n" +
+            "Le immagini allegate sono porzioni della STESSA tavola tecnica: l'immagine 1 è la tavola completa, le altre sono ingrandimenti automatici (cartiglio, note, aree dense). Non trattarle come tavole separate.\n" +
+            "Usa la vista completa per orientarti e per indicare le celle della griglia nel blocco PINS.\n" +
             "Usa i crop dinamici per leggere cartiglio, note, viste, sezioni, quote, fori, filetti, lamature e lavorazioni.\n" +
             "Il testo estratto dal PDF serve come aiuto per riconoscere dati e parole, ma le conclusioni devono restare collegate alla tavola/crop visibili.\n" +
             "Distingui chiaramente: rilevato / incerto / non leggibile. Non inventare dati mancanti e non trasformare la scarsa leggibilità in errore tecnico.\n" +
@@ -1448,8 +1679,9 @@ ${extractedPdfText.slice(0, 26000)}
             "Se l'immagine mostra funzioni dell'app TechAI, descrivi le funzioni visibili e spiega a cosa servono.\n"),    },
   ];
 
-  for (const img of imageInputs.slice(0, 12)) {
-    visionContent.push({ type: "text", text: `Immagine/crop: ${img.label}` });
+  imageInputs.slice(0, 12).forEach((img, index) => {
+    const cleanLabel = String(img.label || "Immagine").replace(/^\d+\.\s*/, "");
+    visionContent.push({ type: "text", text: `Immagine ${index + 1}: ${cleanLabel}` });
     visionContent.push({
       type: "image_url",
       image_url: {
@@ -1457,77 +1689,62 @@ ${extractedPdfText.slice(0, 26000)}
         detail: imageDetail,
       },
     });
-  }
+  });
 
   let response: Response;
+  let raw: string;
 
   try {
-    response = await fetchWithTimeout(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${openAiDrawingKey}`,
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: "system",
-              content: visionSystemPrompt,
-            },
-            {
-              role: "user",
-              content: visionContent,
-            },
-          ],
-          temperature: 0.15,
-          max_tokens: 8000,
-        }),
-      },
-      openAiTimeoutMs
-    );
+    const body = buildChatCompletionBody({
+      model,
+      messages: [
+        { role: "system", content: visionSystemPrompt },
+        { role: "user", content: visionContent },
+      ],
+      maxTokens: 8000,
+      temperature: 0.15,
+      // "low": il modello ragiona quanto basta per leggere quote e norme senza allungare troppo i tempi.
+      reasoningEffort: normalizeEffort(process.env.OPENAI_DRAWING_REASONING_EFFORT, "low"),
+    });
+
+    ({ response, raw } = await postChatCompletion(openAiDrawingKey, body, openAiTimeoutMs));
   } catch (error: any) {
     if (error?.name === "AbortError") {
-      return (
-        "⚠️ Timeout OpenAI durante l'analisi immagine.\n\n" +
-        `Modello usato: ${model}\n\n` +
-        "La funzione ha interrotto la chiamata prima della risposta del modello.\n\n" +
-        "Prova con un'immagine più leggera oppure imposta in Vercel:\n\n" +
-        "```env\n" +
-        "OPENAI_DRAWING_READER_MODEL=gpt-4o-mini\n" +
-        "```"
-      );
+      return {
+        ok: false,
+        text:
+          "⚠️ Timeout durante l'analisi dell'immagine.\n\n" +
+          "Il modello non ha risposto in tempo. Riprova tra poco oppure carica una tavola più leggera.",
+      };
     }
 
     throw error;
   }
 
-  const raw = await response.text();
   const data = safeJsonParse<any>(raw, null);
 
   if (!response.ok) {
-    return (
-      "⚠️ OpenAI ha restituito un errore durante l'analisi immagine.\n\n" +
-      `Modello usato: ${model}\n` +
-      `Codice: ${response.status}\n\n` +
-      `Dettaglio: ${raw || "nessun dettaglio ricevuto"}\n\n` +
-      "Controlla che la chiave OpenAI sia valida e che il modello scelto supporti immagini. " +
-      "Variabili richieste: OPENAI_DRAWING_READER_API_KEY e OPENAI_DRAWING_READER_MODEL."
-    );
+    // Il dettaglio grezzo di OpenAI va nei log, non all'utente.
+    console.error("OpenAI vision error", model, response.status, raw.slice(0, 800));
+    return {
+      ok: false,
+      text:
+        (isOpenAIRateLimit(response.status, raw)
+          ? "⚠️ Il servizio di analisi immagini è momentaneamente al limite.\n\n"
+          : "⚠️ Errore del servizio AI durante l'analisi dell'immagine.\n\n") +
+        `Codice: ${response.status}. Riprova tra poco; se il problema persiste controlla OPENAI_DRAWING_READER_API_KEY e OPENAI_DRAWING_READER_MODEL su Vercel.`,
+    };
   }
 
-  const visionAnswer =
-    data?.choices?.[0]?.message?.content ||
-    "Ho ricevuto l'immagine, ma OpenAI non ha restituito una risposta valida.";
+  const visionAnswer = String(data?.choices?.[0]?.message?.content || "");
 
-  // Estrai PINS prima di cleanAiOutput (che corromperebbe il JSON interno)
-  const pinsMatchV = visionAnswer.match(/<PINS>[\s\S]*?<\/PINS>/i);
-  const pinsBlockV = pinsMatchV ? pinsMatchV[0] : "";
-  const textWithoutPinsV = visionAnswer.replace(/<PINS>[\s\S]*?<\/PINS>/gi, "").trim();
-  const cleanTextV = cleanAiOutput(textWithoutPinsV);
-  return pinsBlockV ? `${pinsBlockV}\n\n${cleanTextV}` : cleanTextV;
+  if (!visionAnswer.trim()) {
+    return { ok: false, text: "⚠️ Il modello non ha restituito una risposta valida per questa immagine. Riprova." };
+  }
+
+  // Estrae i PINS prima di cleanAiOutput (che corromperebbe il JSON interno).
+  const { text: textWithoutPins, pins, esito } = extractPinsBlock(visionAnswer);
+  return { ok: true, text: cleanAiOutput(textWithoutPins), pins, esito };
 }
 
 async function checkAuthAndRateLimit(
@@ -1891,7 +2108,7 @@ async function handlerInner(req: Request) {
           process.env.OPENAI_TEXT_MODEL_HARD ||
           process.env.OPENAI_TEXT_MODEL ||
           process.env.OPENAI_API_MODEL ||
-          "gpt-4o",
+          DEFAULT_HARD_TEXT_MODEL,
         hasOpenAIDrawingKey: Boolean(
           process.env.OPENAI_DRAWING_READER_API_KEY || process.env.OPENAI_API_KEY
         ),
@@ -1900,9 +2117,10 @@ async function handlerInner(req: Request) {
             ? "SET"
             : "MISSING",
         openAIDrawingModel:
-          process.env.OPENAI_DRAWING_READER_MODEL || "gpt-4o-mini",
+          process.env.OPENAI_DRAWING_READER_MODEL || DEFAULT_DRAWING_MODEL,
         openAIDrawingImageDetail:
-          process.env.OPENAI_DRAWING_IMAGE_DETAIL || "auto",
+          process.env.OPENAI_DRAWING_IMAGE_DETAIL || "high",
+        openAIDrawingReasoningEffort: normalizeEffort(process.env.OPENAI_DRAWING_REASONING_EFFORT, "low"),
         hasSupabase: Boolean(
           process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
         ),
@@ -1917,88 +2135,158 @@ async function handlerInner(req: Request) {
     return jsonResponse({ error: "Metodo non consentito. Usa POST." }, 405);
   }
 
+  let body: RequestBodyData;
+  let auth: Exclude<AuthResult, { ok: false }>;
+
   try {
-    const body = await readRequestBody(req);
+    body = await readRequestBody(req);
 
-    const auth = await checkAuthAndRateLimit(req, {
+    const authResult = await checkAuthAndRateLimit(req, {
       hasFile: body.hasFile,
     });
 
-    if (auth.ok === false) {
-      return auth.response;
+    if (authResult.ok === false) {
+      return authResult.response;
     }
 
-    const scopeCheck = isAllowedTechnicalScope({
-      message: body.message,
-      messages: body.messages,
-      hasFile: body.hasFile,
-      analysisMode: body.analysisMode,
-    });
-
-    if (!scopeCheck.allowed) {
-      return jsonResponse({
-        answer: OUT_OF_SCOPE_MESSAGE,
-        mode: auth.mode,
-        usage: auth.mode === "guest" ? auth.usage : null,
-        blockedByScope: true,
-        scopeReason: scopeCheck.reason,
-      });
-    }
-
-    const hasVisionInput =
-      Boolean(body.imageDataUrl) ||
-      Boolean(body.drawingImages && body.drawingImages.length > 0);
-
-    const rawAnswer: string = hasVisionInput
-      ? await callOpenAIVision({
-          message: body.message,
-          messages: body.messages,
-          profile: body.profile,
-          imageDataUrl: body.imageDataUrl,
-          drawingImages: body.drawingImages,
-          fileText: body.fileText,
-          fileMeta: body.fileMeta,
-          analysisMode: body.analysisMode,
-        })
-      : await callOpenAIText({
-          message: body.message,
-          messages: body.messages,
-          profile: body.profile,
-          fileText: body.fileText,
-          fileMeta: body.fileMeta,
-          analysisMode: body.analysisMode,
-          projectContext: body.projectContext,
-        });
-
-    // Ultima pulizia obbligatoria prima di mandare il testo al frontend.
-    // Per le risposte vision il rawAnswer è già pulito (cleanAiOutput è chiamato dentro callOpenAIVision
-    // con il blocco PINS protetto). Evitiamo di riprocessarlo per non corrompere i tag PINS.
-    // Serve anche se il modello ignora il prompt e produce ancora ** o tabelle Markdown.
-    const answer = hasVisionInput ? rawAnswer : cleanAiOutput(rawAnswer);
-
-    let usage: any = null;
-
-    if (auth.mode === "user") {
-      await incrementUserUsage(auth.supabase, auth.userId);
-    } else {
-      usage = await incrementGuestUsage(auth.supabase, auth.guestId, body.hasFile);
-    }
-
-    return jsonResponse({
-      answer,
-      mode: auth.mode,
-      usage,
-    });
+    auth = authResult;
   } catch (error: any) {
+    console.error("Errore preparazione richiesta /api/chat:", error);
     return jsonResponse(
       {
-        answer:
-          "⚠️ Errore interno nella rotta `/api/chat`.\n\n" +
-          `Dettaglio tecnico: ${error?.message || "errore sconosciuto"}`,
+        ok: false,
+        error: "Richiesta non valida o file troppo grande.",
+        answer: "⚠️ Non sono riuscito a leggere la richiesta. Se hai allegato un file molto grande, riprova con un file più leggero.",
       },
-      500
+      400
     );
   }
+
+  const scopeCheck = isAllowedTechnicalScope({
+    message: body.message,
+    messages: body.messages,
+    hasFile: body.hasFile,
+    analysisMode: body.analysisMode,
+  });
+
+  if (!scopeCheck.allowed) {
+    return jsonResponse({
+      answer: OUT_OF_SCOPE_MESSAGE,
+      mode: auth.mode,
+      usage: auth.mode === "guest" ? auth.usage : null,
+      blockedByScope: true,
+      scopeReason: scopeCheck.reason,
+    });
+  }
+
+  // Le funzioni Edge di Vercel devono iniziare a rispondere entro ~25 s, mentre l'analisi
+  // di una tavola può richiedere di più. Si apre subito lo stream e si inviano spazi
+  // di keep-alive fino alla risposta: gli spazi iniziali sono JSON valido (vengono ignorati
+  // da JSON.parse), quindi il frontend continua a usare res.text() + JSON.parse.
+  return streamJsonWithKeepAlive(async () => {
+    try {
+      const hasVisionInput =
+        Boolean(body.imageDataUrl) ||
+        Boolean(body.drawingImages && body.drawingImages.length > 0);
+
+      const result: AiResult = hasVisionInput
+        ? await callOpenAIVision({
+            message: body.message,
+            messages: body.messages,
+            profile: body.profile,
+            imageDataUrl: body.imageDataUrl,
+            drawingImages: body.drawingImages,
+            fileText: body.fileText,
+            fileMeta: body.fileMeta,
+            analysisMode: body.analysisMode,
+            appContext: body.appContext,
+            drawingGrid: body.drawingGrid,
+          })
+        : await callOpenAIText({
+            message: body.message,
+            messages: body.messages,
+            profile: body.profile,
+            fileText: body.fileText,
+            fileMeta: body.fileMeta,
+            analysisMode: body.analysisMode,
+            projectContext: body.projectContext,
+            appContext: body.appContext,
+          });
+
+      // Le risposte vision e testo sono già passate da cleanAiOutput (con il blocco PINS protetto).
+      const answer = result.text;
+
+      if (!result.ok) {
+        // Richiesta non riuscita: non viene scalata dal limite dell'utente/ospite.
+        return {
+          ok: false,
+          error: answer,
+          answer,
+          mode: auth.mode,
+          usage: auth.mode === "guest" ? auth.usage : null,
+        };
+      }
+
+      let usage: GuestUsageInfo | null = null;
+
+      if (auth.mode === "user") {
+        await incrementUserUsage(auth.supabase, auth.userId);
+      } else {
+        usage = await incrementGuestUsage(auth.supabase, auth.guestId, body.hasFile);
+      }
+
+      return {
+        ok: true,
+        answer,
+        mode: auth.mode,
+        usage,
+        ...(result.pins !== undefined ? { pins: result.pins, esito: result.esito ?? null } : {}),
+      };
+    } catch (error: any) {
+      console.error("Errore interno /api/chat:", error);
+      const message = "⚠️ Errore interno del server durante l'elaborazione. Riprova tra poco.";
+      return { ok: false, error: message, answer: message };
+    }
+  });
+}
+
+function streamJsonWithKeepAlive(work: () => Promise<unknown>): Response {
+  const encoder = new TextEncoder();
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      // Primo byte subito: la funzione Edge risulta "in risposta" immediatamente.
+      controller.enqueue(encoder.encode(" "));
+      const keepAlive = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(" "));
+        } catch {
+          clearInterval(keepAlive);
+        }
+      }, 8000);
+
+      try {
+        const payload = await work();
+        controller.enqueue(encoder.encode(JSON.stringify(payload)));
+      } catch (error: any) {
+        console.error("Errore stream /api/chat:", error);
+        const message = "⚠️ Errore interno del server durante l'elaborazione. Riprova tra poco.";
+        controller.enqueue(encoder.encode(JSON.stringify({ ok: false, error: message, answer: message })));
+      } finally {
+        clearInterval(keepAlive);
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }
 // ===== CORS: permette all'app desktop (Tauri) di chiamare questa API =====
 const CORS_ALLOWED_ORIGINS = [

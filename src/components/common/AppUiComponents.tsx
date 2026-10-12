@@ -1,4 +1,5 @@
 import React from "react";
+import type { ChecklistResult, QuickCalcResult, DrawingUpload, DrawingResult, DrawingIssue } from "../../types/appTypes";
 
 type Theme = {
   name?: string;
@@ -9,11 +10,6 @@ type Theme = {
   border: string;
 };
 
-type ChecklistResult = any;
-type QuickCalcResult = any;
-type DrawingUpload = any;
-type DrawingResult = any;
-type DrawingIssue = any;
 
 export function Modal({ title, subtitle, children, theme, isDark, onClose, wide = false }: { title: string; subtitle?: string; children: React.ReactNode; theme: Theme; isDark: boolean; onClose: () => void; wide?: boolean }) {
   return (
@@ -639,53 +635,214 @@ export function DrawingResultCard({ item, theme, isDark, renderFormattedText }: 
   );
 }
 
+const SEVERITY_STYLE: Record<string, { color: string; icon: string; label: string }> = {
+  errore: { color: "#dc2626", icon: "❌", label: "Errore" },
+  attenzione: { color: "#d97706", icon: "⚠️", label: "Da verificare" },
+  info: { color: "#16a34a", icon: "✅", label: "Nota" },
+};
+
+const LOCATION_LABEL: Record<string, string> = {
+  testo: "posizione precisa",
+  griglia: "zona della tavola",
+  zona: "posizione indicativa",
+};
+
+/** Riquadro da disegnare: usa il box dell'AI oppure, per i dati salvati in passato, un riquadro attorno al punto x/y. */
+function getIssueBox(issue: DrawingIssue): { x: number; y: number; w: number; h: number } | null {
+  if (issue.box && issue.box.w > 0 && issue.box.h > 0) return issue.box;
+  if (issue.box === null) return null;
+  if (!Number.isFinite(issue.x) || !Number.isFinite(issue.y)) return null;
+  const cx = issue.x / 100;
+  const cy = issue.y / 100;
+  return { x: Math.max(0, cx - 0.05), y: Math.max(0, cy - 0.04), w: 0.1, h: 0.08 };
+}
+
 export function DrawingPreview({ issues, previewUrl, fileName, theme, isDark }: { issues: DrawingIssue[]; previewUrl?: string; fileName?: string; theme: Theme; isDark: boolean }) {
-  const badgeColor = issues.length === 0 ? "#64748b" : issues.some(i => i.severity === "errore") ? "#dc2626" : issues.some(i => i.severity === "attenzione") ? "#f59e0b" : "#16a34a";
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [zoomed, setZoomed] = React.useState(false);
+  const [showBoxes, setShowBoxes] = React.useState(true);
+
+  // Nuova analisi o nuova tavola: azzera selezione e zoom.
+  React.useEffect(() => {
+    setSelectedId(null);
+    setZoomed(false);
+  }, [issues, previewUrl]);
+
+  const errorCount = issues.filter(i => i.severity === "errore").length;
+  const warningCount = issues.filter(i => i.severity === "attenzione").length;
+  const badgeColor = issues.length === 0 ? "#64748b" : errorCount > 0 ? "#dc2626" : warningCount > 0 ? "#f59e0b" : "#16a34a";
+
+  // Numerazione stabile: il numero sul riquadro è lo stesso dell'elenco.
+  const numbered = issues.map((issue, index) => ({ issue, number: index + 1, box: issue.severity === "info" ? null : getIssueBox(issue) }));
+  const drawable = numbered.filter(item => item.box);
+  const selected = numbered.find(item => item.issue.id === selectedId) || null;
+  const selectedBox = selected?.box || null;
+
+  const zoomScale = zoomed && selectedBox ? Math.min(3, Math.max(1.4, 0.5 / Math.max(selectedBox.w, selectedBox.h))) : 1;
+  const zoomTransform = zoomed && selectedBox
+    ? `scale(${zoomScale}) translate(${(0.5 - (selectedBox.x + selectedBox.w / 2)) * 100}%, ${(0.5 - (selectedBox.y + selectedBox.h / 2)) * 100}%)`
+    : "none";
+
+  const selectIssue = (id: string) => {
+    setSelectedId(prev => (prev === id ? null : id));
+    if (selectedId === id) setZoomed(false);
+  };
+
+  const toolbarBtn = (active: boolean): React.CSSProperties => ({
+    border: `1px solid ${active ? theme.primary : theme.border}`,
+    background: active ? `${theme.primary}1f` : "transparent",
+    color: active ? theme.primary : theme.text,
+    borderRadius: 999,
+    padding: "5px 10px",
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: "pointer",
+  });
 
   return (
     <div style={{ ...s.drawingPreviewPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
       <div style={s.drawingPreviewTop}>
         <div>
           <strong>Anteprima controllo tavola</strong>
-          <p style={s.muted}>{previewUrl ? `Anteprima reale: ${fileName || "tavola caricata"}` : "Carica un'immagine PNG/JPG/WebP per vedere la tavola a destra."}</p>
+          <p style={s.muted}>{previewUrl ? `Anteprima reale: ${fileName || "tavola caricata"}` : "Carica una tavola (PDF o immagine) per vederla qui con gli errori evidenziati."}</p>
         </div>
-        <span style={{ ...s.previewBadge, background: badgeColor, display: "flex", gap: 6, alignItems: "center" }}>
-          {issues.filter(i => i.severity === "errore").length > 0 && <span>❌ {issues.filter(i => i.severity === "errore").length}</span>}
-          {issues.filter(i => i.severity === "attenzione").length > 0 && <span>⚠️ {issues.filter(i => i.severity === "attenzione").length}</span>}
-        </span>
+        {(errorCount > 0 || warningCount > 0) && (
+          <span style={{ ...s.previewBadge, background: badgeColor, display: "flex", gap: 6, alignItems: "center", padding: "0 10px" }}>
+            {errorCount > 0 && <span>❌ {errorCount}</span>}
+            {warningCount > 0 && <span>⚠️ {warningCount}</span>}
+          </span>
+        )}
       </div>
 
-      <div style={{ ...s.realDrawingPreviewBox, background: isDark ? "#0b0b0b" : "#ffffff", border: `1px solid ${theme.border}` }}>
-        {previewUrl ? <img src={previewUrl} alt={fileName || "Anteprima tavola"} style={s.realDrawingPreviewImage} /> : <div style={s.noIssuesOverlay}>Nessuna anteprima immagine disponibile</div>}
-        {previewUrl && issues.filter(i => i.severity !== "info").map(issue => (
-          <div
-            key={issue.id}
-            title={`${issue.label}: ${issue.detail}`}
-            style={{
-              position: "absolute",
-              left: `${issue.x}%`,
-              top: `${issue.y}%`,
-              transform: "translate(-50%, -50%)",
-              fontSize: 14,
-              lineHeight: 1,
-              cursor: "pointer",
-              filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.7))",
-              zIndex: 10,
-              userSelect: "none",
-            }}
+      {previewUrl && drawable.length > 0 && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <button type="button" style={toolbarBtn(showBoxes)} onClick={() => setShowBoxes(v => !v)}>
+            {showBoxes ? "▣ Riquadri visibili" : "▢ Riquadri nascosti"}
+          </button>
+          <button
+            type="button"
+            style={{ ...toolbarBtn(zoomed), opacity: selectedBox ? 1 : 0.5, cursor: selectedBox ? "pointer" : "not-allowed" }}
+            disabled={!selectedBox}
+            onClick={() => setZoomed(v => !v)}
+            title={selectedBox ? "Ingrandisci la zona selezionata" : "Seleziona una criticità per ingrandire"}
           >
-            {issue.severity === "errore" ? "❌" : issue.severity === "attenzione" ? "⚠️" : "✅"}
+            🔍 {zoomed ? "Vista intera" : "Ingrandisci selezione"}
+          </button>
+        </div>
+      )}
+
+      <div style={{ ...s.realDrawingPreviewBox, background: "#ffffff", border: `1px solid ${theme.border}` }}>
+        {previewUrl ? (
+          <div style={{ position: "relative", display: "inline-block", maxWidth: "100%", lineHeight: 0, transform: zoomTransform, transformOrigin: "center center", transition: "transform 0.28s ease" }}>
+            <img
+              src={previewUrl}
+              alt={fileName || "Anteprima tavola"}
+              style={{ display: "block", maxWidth: "100%", maxHeight: 520, width: "auto", height: "auto" }}
+            />
+            {showBoxes && drawable.map(({ issue, number, box }) => {
+              const sev = SEVERITY_STYLE[issue.severity] || SEVERITY_STYLE.attenzione;
+              const isSelected = issue.id === selectedId;
+              const dimmed = selectedId !== null && !isSelected;
+              const approximate = issue.locationSource === "zona" || !issue.box;
+              const borderWidth = (isSelected ? 3 : 2) / zoomScale;
+
+              return (
+                <button
+                  key={issue.id}
+                  type="button"
+                  onClick={() => selectIssue(issue.id)}
+                  title={`${number}. ${issue.label}: ${issue.detail}`}
+                  aria-label={`Criticità ${number}: ${issue.label}`}
+                  style={{
+                    position: "absolute",
+                    left: `${box!.x * 100}%`,
+                    top: `${box!.y * 100}%`,
+                    width: `${box!.w * 100}%`,
+                    height: `${box!.h * 100}%`,
+                    padding: 0,
+                    margin: 0,
+                    border: `${borderWidth}px ${approximate ? "dashed" : "solid"} ${sev.color}`,
+                    borderRadius: 4 / zoomScale,
+                    background: isSelected ? `${sev.color}2e` : `${sev.color}14`,
+                    boxShadow: isSelected ? `0 0 0 ${3 / zoomScale}px ${sev.color}55` : "none",
+                    opacity: dimmed ? 0.35 : 1,
+                    cursor: "pointer",
+                    zIndex: isSelected ? 12 : 10,
+                    transition: "opacity 0.2s, background 0.2s",
+                  }}
+                >
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: -1,
+                      // Riquadri attaccati al bordo superiore: numero dentro il riquadro per non tagliarlo.
+                      ...(box!.y < 0.05 ? { top: 0 } : { bottom: "100%" }),
+                      transform: `scale(${1 / zoomScale})`,
+                      transformOrigin: box!.y < 0.05 ? "left top" : "left bottom",
+                      background: sev.color,
+                      color: "#ffffff",
+                      fontSize: 11,
+                      fontWeight: 900,
+                      lineHeight: "16px",
+                      minWidth: 18,
+                      padding: "0 5px",
+                      borderRadius: "4px 4px 4px 0",
+                      whiteSpace: "nowrap",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {number}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        ))}
+        ) : (
+          <div style={s.noIssuesOverlay}>Nessuna anteprima immagine disponibile</div>
+        )}
       </div>
+
+      {selected && (
+        <div style={{ marginBottom: 10, padding: "10px 12px", borderRadius: 12, border: `1px solid ${(SEVERITY_STYLE[selected.issue.severity] || SEVERITY_STYLE.attenzione).color}`, background: isDark ? "#0b0b0b" : "#ffffff", fontSize: 13, lineHeight: 1.45 }}>
+          <strong>{selected.number}. {selected.issue.label}</strong>
+          <div>{selected.issue.detail}</div>
+          {selected.issue.anchor && <div style={s.muted}>Riferimento sulla tavola: {selected.issue.anchor}</div>}
+        </div>
+      )}
 
       <div style={s.issueList}>
-        {issues.length === 0 ? <div style={s.emptyText}>Esegui il controllo per vedere gli errori evidenziati.</div> : issues.map(issue => (
-          <div key={issue.id} style={s.issueRow}>
-            <span style={{ fontSize: 16, lineHeight: 1, marginRight: 2 }}>{issue.severity === "errore" ? "❌" : issue.severity === "attenzione" ? "⚠️" : "✅"}</span>
-            <div><strong>{issue.label}</strong><p>{issue.detail}</p></div>
-          </div>
-        ))}
+        {issues.length === 0 ? <div style={s.emptyText}>Esegui il controllo per vedere gli errori evidenziati.</div> : numbered.map(({ issue, number, box }) => {
+          const sev = SEVERITY_STYLE[issue.severity] || SEVERITY_STYLE.attenzione;
+          const isSelected = issue.id === selectedId;
+          const clickable = Boolean(box && previewUrl);
+
+          return (
+            <div
+              key={issue.id}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={clickable ? () => selectIssue(issue.id) : undefined}
+              onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectIssue(issue.id); } } : undefined}
+              style={{
+                ...s.issueRow,
+                cursor: clickable ? "pointer" : "default",
+                padding: "6px 8px",
+                borderRadius: 10,
+                border: `1px solid ${isSelected ? sev.color : "transparent"}`,
+                background: isSelected ? `${sev.color}14` : "transparent",
+              }}
+            >
+              <span style={{ minWidth: 20, height: 20, borderRadius: 6, background: box ? sev.color : "#94a3b8", color: "#fff", fontSize: 11, fontWeight: 900, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{number}</span>
+              <span style={{ fontSize: 15, lineHeight: 1 }}>{sev.icon}</span>
+              <div style={{ minWidth: 0 }}>
+                <strong>{issue.label}</strong>
+                <p style={{ margin: "2px 0 0" }}>{issue.detail}</p>
+                {box && issue.locationSource && <small style={{ opacity: 0.6 }}>{LOCATION_LABEL[issue.locationSource]}</small>}
+                {!box && issue.severity !== "info" && previewUrl && <small style={{ opacity: 0.6 }}>posizione non individuabile sulla tavola</small>}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

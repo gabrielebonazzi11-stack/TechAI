@@ -1,4 +1,4 @@
-import type { DrawingCropImage } from "../utils/technicalDrawingUtils";
+import type { DrawingCropImage, DrawingLocationSource, DrawingTextBox, NormRect } from "../utils/technicalDrawingUtils";
 
 export type Role = "utente" | "AI";
 export type IssueSeverity = "errore" | "attenzione" | "info";
@@ -190,6 +190,8 @@ export type DrawingUpload = {
   convertedFile?: File;
   drawingImages?: DrawingCropImage[];
   extractedText?: string;
+  /** Testo vettoriale del PDF con posizione sul foglio: serve a centrare i riquadri sulle quote. */
+  textBoxes?: DrawingTextBox[];
   isPdf?: boolean;
   totalPages?: number;
 };
@@ -198,9 +200,18 @@ export type DrawingIssue = {
   id: string;
   label: string;
   severity: IssueSeverity;
+  /** Centro indicativo in % del foglio (compatibilità con i progetti salvati). */
   x: number;
   y: number;
   detail: string;
+  /** Riquadro della criticità sul foglio, coordinate normalizzate 0-1. */
+  box?: NormRect | null;
+  /** Come è stata trovata la posizione: testo PDF (preciso), griglia, zona generica. */
+  locationSource?: DrawingLocationSource;
+  /** Testo della tavola a cui si riferisce la criticità (es. "Ø20 H7"). */
+  anchor?: string;
+  /** Celle della griglia indicate dall'AI (es. ["C4","C5"]). */
+  cells?: string[];
 };
 
 export type DrawingResult = {

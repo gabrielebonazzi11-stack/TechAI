@@ -23,7 +23,7 @@ export const STORAGE_KEY_BASE = "techai_stable_app_v7_scoped";
 export const GUEST_ID_KEY = "techai_guest_id";
 export const GUEST_USED_KEY = "techai_guest_used";
 export const GUEST_LIMIT = 10;
-export const GUEST_FILE_LIMIT = 1;
+export const GUEST_FILE_LIMIT = 2; // deve coincidere con GUEST_FILE_LIMIT_24H in api/chat.ts
 
 export const DEFAULT_USER: UserProfile = {
   name: "Utente",

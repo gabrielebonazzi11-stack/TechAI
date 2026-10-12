@@ -4,20 +4,17 @@ import MaterialsLibrary from "./components/MaterialsLibrary";
 import ProjectsModal from "./components/projects/ProjectsModal";
 import ComponentCalculatorModal from "./components/ComponentCalculatorModal";
 import { Modal, Field, ResultCard, QuickCalcCard, FileCard, DrawingResultCard, DrawingPreview } from "./components/common/AppUiComponents";
-import { isImageFile, isPdfFile, isDrawingUpload, makeDrawingImagesFromImageFile, pdfPageToImageFile, compressImageForVision, extractPdfText } from "./utils/technicalDrawingUtils";
+import { isImageFile, isPdfFile, isDrawingUpload, makeDrawingImagesFromImageFile, pdfPageToImageFile, extractPdfText, locateDrawingPin } from "./utils/technicalDrawingUtils";
 import { supabase, isSupabaseConfigured } from "./lib/supabaseClient";
 import { getPasswordResetRedirectUrl } from "./lib/passwordRecovery";
 import { THEMES, STORAGE_KEY_BASE, GUEST_ID_KEY, GUEST_USED_KEY, GUEST_LIMIT, GUEST_FILE_LIMIT, DEFAULT_USER } from "./constants/appConstants";
-import { createId, makeAttachment, projectMemoryBucketFromType, normalizeProjectRecord, normalizeProjectRecords, safeParseJson, renderInlineMarkdown } from "./utils/appHelpers";
+import { createId, makeAttachment, projectMemoryBucketFromType, normalizeProjectRecord, normalizeProjectRecords, safeParseJson } from "./utils/appHelpers";
 import { makeUserStorageKey, makeGuestStorageKey } from "./utils/storage";
 import { toNumber } from "./utils/numberUtils";
 import { globalCss } from "./styles/globalCss";
 import { s } from "./styles/appStyles";
 import katex from "katex";
 import type {
-
-  
-  
   UserProfile,
   PendingFile,
   Message,
@@ -35,8 +32,7 @@ import type {
   ProjectRecord,
   ProjectFileMeta,
   BomIssue,
-  SectionData
-
+  SectionData,
 } from "./types/appTypes";
 
 // Nel browser (Vercel) usiamo percorsi relativi: stesso dominio, funziona sempre.
@@ -47,7 +43,11 @@ import type {
 // affidabile per distinguere desktop da browser).
 const IS_DESKTOP_APP = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
-  export default function App() {
+
+// Ritardo del salvataggio workspace: evita una scrittura (e un upsert su Supabase) a ogni tasto premuto.
+const WORKSPACE_SAVE_DELAY_MS = 700;
+
+export default function App() {
   const [query, setQuery] = useState("");
   const [chats, setChats] = useState<ChatSession[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -194,6 +194,11 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
   const projectFileInputRef = useRef<HTMLInputElement>(null);
   const bomFileInputRef = useRef<HTMLInputElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  // Utente Supabase del workspace caricato: evita di ricaricare tutto a ogni refresh del token.
+  const loadedSessionUserIdRef = useRef<string | null>(null);
+  const workspaceUserIdRef = useRef<string | null>(null);
+  const pendingWorkspaceSaveRef = useRef<{ key: string; json: () => string } | null>(null);
+  const formattedTextCacheRef = useRef<{ primary: string; cache: Map<string, React.ReactNode> }>({ primary: "", cache: new Map() });
 
   const isDark = theme.bg === "#050505";
   const activeChat = chats.find(chat => chat.id === activeChatId);
@@ -430,6 +435,13 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
 
     const applySession = (session: any) => {
       if (session?.user) {
+        workspaceUserIdRef.current = session.user.id;
+
+        // INITIAL_SESSION + getSession() e i refresh orari del token arrivano più volte per lo stesso
+        // utente: ricaricare il workspace cancellerebbe la domanda in scrittura e i file in attesa.
+        if (loadedSessionUserIdRef.current === session.user.id) return;
+        loadedSessionUserIdRef.current = session.user.id;
+
         const name = session.user.user_metadata?.name || session.user.email?.split("@")[0] || "Utente";
         const email = session.user.email || "";
         const profile = { name, email };
@@ -444,6 +456,8 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
 
         loadWorkspaceFromStorage(makeUserStorageKey(email), session.user.id);
       } else {
+        workspaceUserIdRef.current = null;
+        loadedSessionUserIdRef.current = null;
         setUser(DEFAULT_USER);
         setIsLoggedIn(false);
         setIsGuest(false);
@@ -474,49 +488,78 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
   useEffect(() => {
     if (!storageReady || !activeStorageKey) return;
 
-    const safeChats = chats.map(chat => ({
-      ...chat,
-      messages: chat.messages.map(message => ({
-        role: message.role,
-        text: message.text,
-        fileAttachment: message.fileAttachment,
-      })),
-    }));
+    const storageKey = activeStorageKey;
+    const buildSafeChats = () =>
+      chats.map(chat => ({
+        ...chat,
+        messages: chat.messages.map(message => ({
+          role: message.role,
+          text: message.text,
+          fileAttachment: message.fileAttachment,
+        })),
+      }));
 
-    const workspaceData = {
-      themeName: theme.name,
-      user,
-      interest,
-      chats: safeChats,
-      activeChatId,
-      sidebarOpen,
-      isLoggedIn,
-      isGuest,
-      customMaterials,
-      projects,
-      activeProjectId,
-      lastDrawingAnalysisText,
+    const buildLocalJson = () =>
+      JSON.stringify({
+        themeName: theme.name,
+        user,
+        interest,
+        chats: buildSafeChats(),
+        activeChatId,
+        sidebarOpen,
+        isLoggedIn,
+        isGuest,
+        customMaterials,
+        projects,
+        activeProjectId,
+        lastDrawingAnalysisText,
+      });
+
+    pendingWorkspaceSaveRef.current = { key: storageKey, json: buildLocalJson };
+
+    const timer = window.setTimeout(() => {
+      pendingWorkspaceSaveRef.current = null;
+
+      try {
+        localStorage.setItem(storageKey, buildLocalJson());
+      } catch (error) {
+        console.warn("Salvataggio locale workspace non riuscito:", error);
+      }
+
+      const userId = workspaceUserIdRef.current;
+      if (isLoggedIn && !isGuest && userId) {
+        syncToSupabase(userId, {
+          themeName: theme.name,
+          interest,
+          chats: buildSafeChats(),
+          activeChatId,
+          customMaterials,
+          projects,
+          activeProjectId,
+          lastDrawingAnalysisText,
+        });
+      }
+    }, WORKSPACE_SAVE_DELAY_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [theme, user, interest, chats, activeChatId, sidebarOpen, isLoggedIn, isGuest, customMaterials, projects, activeProjectId, lastDrawingAnalysisText, storageReady, activeStorageKey]);
+
+  // Chiusura/ricarica della pagina durante l'attesa del salvataggio: scrive subito in locale.
+  useEffect(() => {
+    const flush = () => {
+      const pending = pendingWorkspaceSaveRef.current;
+      if (!pending) return;
+      pendingWorkspaceSaveRef.current = null;
+      try {
+        localStorage.setItem(pending.key, pending.json());
+      } catch {
+        // ignore
+      }
     };
 
-    localStorage.setItem(activeStorageKey, JSON.stringify(workspaceData));
-
-    if (isLoggedIn && !isGuest && supabase && isSupabaseConfigured) {
-      supabase.auth.getUser().then(({ data: { user: authUser } }) => {
-        if (authUser?.id) {
-          syncToSupabase(authUser.id, {
-            themeName: theme.name,
-            interest,
-            chats: safeChats,
-            activeChatId,
-            customMaterials,
-            projects,
-            activeProjectId,
-            lastDrawingAnalysisText,
-          });
-        }
-      });
-    }
-  }, [theme, user, interest, chats, activeChatId, sidebarOpen, isLoggedIn, isGuest, customMaterials, projects, activeProjectId, lastDrawingAnalysisText, storageReady, activeStorageKey]);
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1208,6 +1251,10 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
       const Wf = Jf / (D / 2);
       const Jp = Math.PI * (D ** 4 - di ** 4) / 32;
       const Wt = Jp / (D / 2);
+      // τmax/τmedio per sezione anulare (Jourawski): 4/3 · (R² + Rr + r²)/(R² + r²) → 4/3 piena, 2 tubo sottile.
+      const R = D / 2;
+      const r = di / 2;
+      const shearFactor = (4 / 3) * (R ** 2 + R * r + r ** 2) / (R ** 2 + r ** 2);
 
       return {
         name: `Circolare cava Ø${D}/${di} mm`,
@@ -1216,7 +1263,7 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
         Wf,
         Jp,
         Wt,
-        shearFactor: 1.35,
+        shearFactor,
         values: [
           `Sezione: circolare cava`,
           `Diametro esterno: D = ${D.toFixed(2)} mm`,
@@ -1227,7 +1274,7 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
           `Momento polare: Jp = ${Jp.toFixed(2)} mm⁴`,
           `Modulo resistente a torsione: Wt = ${Wt.toFixed(2)} mm³`,
         ],
-        notes: ["Per il taglio su sezione cava il coefficiente è indicativo."],
+        notes: [`Taglio: τmax = k·T/A con k = ${shearFactor.toFixed(2)} (sezione anulare).`],
       };
     }
 
@@ -1243,7 +1290,9 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
       const longSide = Math.max(b, h);
       const shortSide = Math.min(b, h);
       const Jt = longSide * shortSide ** 3 * (1 / 3 - 0.21 * (shortSide / longSide) * (1 - shortSide ** 4 / (12 * longSide ** 4)));
-      const Wt = Jt / (shortSide / 2);
+      // Roark: τmax = Mt·(3a + 1,8b)/(a²b²) con a lato lungo, b lato corto → Wt = a²b²/(3a + 1,8b).
+      // (Prima era Jt/(b/2), che sottostimava la tensione tangenziale fino a 2 volte su sezioni sottili.)
+      const Wt = (longSide ** 2 * shortSide ** 2) / (3 * longSide + 1.8 * shortSide);
 
       return {
         name: `Rettangolare piena ${b}×${h} mm`,
@@ -1260,9 +1309,9 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
           `Area: A = ${A.toFixed(2)} mm²`,
           `Momento d'inerzia flessionale: Jf = ${Jf.toFixed(2)} mm⁴`,
           `Modulo resistente a flessione: Wf = ${Wf.toFixed(2)} mm³`,
-          `Modulo resistente torsionale indicativo: Wt ≈ ${Wt.toFixed(2)} mm³`,
+          `Modulo resistente torsionale (Roark): Wt ≈ ${Wt.toFixed(2)} mm³`,
         ],
-        notes: ["La torsione su sezione rettangolare è una stima preliminare."],
+        notes: ["Torsione su sezione rettangolare: Wt da formula di Roark (errore < 5%)."],
       };
     }
 
@@ -1275,15 +1324,21 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
       const Jf = (B * H ** 3 - bi * hi ** 3) / 12;
       const Wf = Jf / (H / 2);
 
-      const JpIndicativo = ((B * H ** 3 + H * B ** 3) - (bi * hi ** 3 + hi * bi ** 3)) / 12;
-      const Wt = JpIndicativo / (Math.min(B, H) / 2);
+      // Torsione con Bredt (sezione chiusa): τmax = Mt / (2·Am·tmin), Jt = 4Am² / ∮ds/t.
+      // Il momento polare usato prima sovrastimava Wt (fino a ~40% su scatolati comuni): verifica non conservativa.
+      const tWallSide = (B - bi) / 2;
+      const tWallTopBottom = (H - hi) / 2;
+      const Am = (B - tWallSide) * (H - tWallTopBottom);
+      const pathIntegral = 2 * (B - tWallSide) / tWallTopBottom + 2 * (H - tWallTopBottom) / tWallSide;
+      const Jt = (4 * Am ** 2) / pathIntegral;
+      const Wt = 2 * Am * Math.min(tWallSide, tWallTopBottom);
 
       return {
         name: `Rettangolare cava ${B}×${H} / ${bi}×${hi} mm`,
         A,
         Jf,
         Wf,
-        Jp: JpIndicativo,
+        Jp: Jt,
         Wt,
         shearFactor: 1.5,
         values: [
@@ -1295,9 +1350,11 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
           `Area: A = ${A.toFixed(2)} mm²`,
           `Momento d'inerzia flessionale: Jf = ${Jf.toFixed(2)} mm⁴`,
           `Modulo resistente a flessione: Wf = ${Wf.toFixed(2)} mm³`,
-          `Modulo torsionale indicativo: Wt ≈ ${Wt.toFixed(2)} mm³`,
+          `Area media racchiusa (Bredt): Am = ${Am.toFixed(2)} mm²`,
+          `Costante torsionale (Bredt): Jt = ${Jt.toFixed(2)} mm⁴`,
+          `Modulo torsionale (Bredt): Wt = 2·Am·tmin = ${Wt.toFixed(2)} mm³`,
         ],
-        notes: ["La torsione su sezione rettangolare cava è molto semplificata: per progetto reale usare formule da manuale o FEM."],
+        notes: ["Torsione con formula di Bredt per sezioni chiuse: precisa per pareti sottili, approssimata per pareti spesse."],
       };
     }
 
@@ -1461,6 +1518,17 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
   };
 
   const handleLogout = async () => {
+    // Salva subito le ultime modifiche ancora in attesa del salvataggio ritardato.
+    const pending = pendingWorkspaceSaveRef.current;
+    if (pending) {
+      pendingWorkspaceSaveRef.current = null;
+      try {
+        localStorage.setItem(pending.key, pending.json());
+      } catch {
+        // ignore
+      }
+    }
+
     setStorageReady(false);
     setActiveStorageKey("");
     resetWorkspace();
@@ -1541,7 +1609,10 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
           "\n[FINE ULTIMA ANALISI TAVOLA]\n"
         : "";
 
-      formData.append("message", text + techAiSoftwareContext + lastDrawingAnalysisContext);
+      // Il contesto interno va in un campo separato: così non gonfia il messaggio dell'utente,
+      // non viene duplicato nella cronologia e non falsa la scelta del modello sul backend.
+      formData.append("message", text);
+      formData.append("appContext", techAiSoftwareContext + lastDrawingAnalysisContext);
       if (activeProject) {
         const p = normalizeProjectRecord(activeProject);
         const projectPayload = {
@@ -1556,7 +1627,8 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
         };
         formData.append("projectContext", JSON.stringify(projectPayload));
       }
-      formData.append("messages", JSON.stringify(updatedMessages.map(m => ({ role: m.role, text: m.text }))));
+      // Cronologia senza il messaggio corrente (che viaggia già in "message").
+      formData.append("messages", JSON.stringify(oldMessages.slice(-8).map(m => ({ role: m.role, text: m.text }))));
       formData.append("profile", JSON.stringify({ userName: user.name, focus: interest }));
       formData.append("analysisMode", "chat");
 
@@ -1631,10 +1703,13 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
         throw new Error(errMsg);
       }
 
-      const answer = data?.answer || data?.message || raw;
+      if (!data) throw new Error(raw.trim() ? "Risposta del server non leggibile." : "Il server non ha restituito una risposta.");
+
+      const answer = String(data.answer || data.message || "");
       if (!answer) throw new Error("Il backend non ha restituito una risposta valida.");
 
-      syncGuestUsageFromBackend(data);
+      // ok === false: errore del servizio AI già spiegato nel testo; la richiesta non viene scalata.
+      if (data.ok !== false) syncGuestUsageFromBackend(data);
       replaceMessagesInChat(chatId, [...updatedMessages, { role: "AI", text: answer }]);
     } catch (error: any) {
       replaceMessagesInChat(chatId, [
@@ -1642,8 +1717,8 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
         {
           role: "AI",
           text:
-            `⚠️ Backend non collegato correttamente.\n\n` +
-            `Controlla che la rotta \`/api/chat\` esista su Vercel e che le variabili ambiente siano configurate.\n\n` +
+            `⚠️ Non sono riuscito a completare la richiesta a TechAI.\n\n` +
+            `Controlla la connessione e riprova tra poco.\n\n` +
             `Dettaglio tecnico: ${error?.message || "errore sconosciuto"}`,
         },
       ]);
@@ -1715,7 +1790,15 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
       const nRequired = toNumber(quickCalcForm.safetyFactorRequired, 2) || 2;
       const type = quickCalcForm.verificationType;
 
-      const section = getSectionData();
+      if (!type) {
+        throw new Error("Seleziona il tipo di verifica (es. flessione, torsione, fatica).");
+      }
+
+      // Pressione interna, stato piano e fatica lavorano su tensioni/geometria proprie: la sezione non serve.
+      const needsSection = !["pressione_interna", "stato_piano", "fatica"].includes(type);
+      const section: SectionData = needsSection
+        ? getSectionData()
+        : { name: "Non richiesta per questa verifica", A: 0, Jf: 0, Wf: 0, Jp: 0, Wt: 0, shearFactor: 1, values: [], notes: [] };
 
       const N = toNumber(quickCalcForm.axialLoad);
       const T = toNumber(quickCalcForm.shearLoad);
@@ -1953,7 +2036,8 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
 
         const denominator = sa / Sn + Math.max(sm, 0) / Rm;
         safetyFactor = denominator > 0 ? 1 / denominator : 999;
-        sigmaVM = sa;
+        // Tensione di riferimento: alternata; se il carico è costante (σa = 0) si usa la media.
+        sigmaVM = sa > 0 ? sa : Math.abs(sm);
         sigmaTresca = undefined;
 
         title = "Verifica a fatica semplificata";
@@ -2046,7 +2130,7 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
     if (isPdf) {
       setDrawingAiLoading(true);
       try {
-        const { dataUrl, jpegFile, totalPages, drawingImages, extractedText } = await pdfPageToImageFile(file);
+        const { dataUrl, jpegFile, totalPages, drawingImages, extractedText, textBoxes } = await pdfPageToImageFile(file);
         setDrawingReviewFile({
           file,
           fileAttachment: makeAttachment(file),
@@ -2054,10 +2138,13 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
           convertedFile: jpegFile,
           drawingImages,
           extractedText,
+          textBoxes,
           isPdf: true,
           totalPages,
         });
-      } catch {
+      } catch (error) {
+        console.error("Conversione PDF tavola non riuscita:", error);
+        setDrawingReviewFile(null);
         alert("Errore nella conversione del PDF. Prova con un altro file.");
       } finally {
         setDrawingAiLoading(false);
@@ -2104,23 +2191,25 @@ const API_BASE_URL = IS_DESKTOP_APP ? "https://onegearai.com" : "";
       setDrawingIssues([]);
 
       try {
-        const sourceFileToSend = drawingReviewFile!.convertedFile ?? drawingReviewFile!.file;
-        const fileToSend = await compressImageForVision(sourceFileToSend, 1800, 0.86);
-        const drawingImages = drawingReviewFile!.drawingImages?.length
-          ? drawingReviewFile!.drawingImages
-          : await makeDrawingImagesFromImageFile(fileToSend);
+        const upload = drawingReviewFile!;
+        const drawingImages = upload.drawingImages?.length
+          ? upload.drawingImages
+          : await makeDrawingImagesFromImageFile(upload.convertedFile ?? upload.file);
+        const grid = drawingImages.find(img => img.grid)?.grid || null;
         const formData = new FormData();
 
+        // Struttura del report, regole e formato PINS sono nel prompt di sistema del backend:
+        // qui vanno solo i dati del pezzo e le richieste dell'utente.
         formData.append(
           "message",
-          `Sei un esperto di disegno tecnico meccanico secondo le norme ISO 128, ISO 1101 e ISO 286.
-Analizza con MASSIMA PRECISIONE questa tavola tecnica. Le immagini inviate sono crop automatici dinamici preparati da src/utils/technicalDrawingUtils.ts: alcuni vengono da parole chiave del PDF, altri da aree grafiche dense, più alcuni crop di sicurezza. Sono tutte porzioni della stessa tavola, non tavole diverse. Leggi ogni quota, simbolo e annotazione visibile.
+          `Analizza con la massima precisione questa tavola tecnica meccanica (norme ISO 128, ISO 1101, ISO 286, ISO 1302). Leggi ogni quota, simbolo e annotazione visibile.
 
 DATI DEL PEZZO FORNITI DALL'UTENTE:
 - Nome pezzo: ${f.partName || "non indicato"}
 - Tipo pezzo: ${f.partType || "non indicato"}
 - Materiale: ${f.material || "non indicato"}
 - Quantità/lotto: ${f.productionQuantity || "non indicato"}
+- Formato foglio: ${f.sheetFormat || "non indicato"}
 - Lavorazione prevista: ${f.manufacturing || "non indicata"}
 - Geometrie principali: ${f.mainFeatures || "non indicate"}
 - Funzione nell'assieme: ${f.assemblyFunction || "non indicata"}
@@ -2128,43 +2217,16 @@ DATI DEL PEZZO FORNITI DALL'UTENTE:
 - Fori/filetti/lamature: ${f.holesThreads || "non indicati"}
 - Accoppiamenti/tolleranze: ${f.fits || f.tolerances || "non indicati"}
 - Rugosità: ${f.roughness || "non indicate"}
-- Indicazioni aggiuntive / ALTRO: ${drawingExtraNotes.trim() || "nessuna indicazione aggiuntiva"}
 
-SEZIONE ALTRO / INDICAZIONI AGGIUNTIVE:
-Se l'utente ha compilato il campo ALTRO, usa quelle indicazioni come priorità dell'analisi.
-Esempi: se chiede quote funzionali, crea una sezione dedicata alle quote funzionali e critiche; se chiede rugosità, concentrati sulle superfici funzionali; se chiede cartiglio, controlla soprattutto dati cartiglio.
-Non ignorare il campo ALTRO, ma non inventare dati non leggibili dalla tavola.
+RICHIESTE SPECIFICHE DELL'UTENTE (campo ALTRO, hanno priorità):
+${drawingExtraNotes.trim() || "nessuna indicazione aggiuntiva"}
 
-COSA DEVI CONTROLLARE:
-1. CARTIGLIO: nome pezzo, numero disegno, materiale, scala, data, revisione, autore.
-2. VISTE E SEZIONI: viste sufficienti, sezioni A-A/B-B, linee di taglio.
-3. QUOTATURA: cita quote leggibili, quote mancanti, duplicate o in conflitto.
-4. TOLLERANZE DIMENSIONALI: ISO visibili, coerenza con funzione.
-5. TOLLERANZE GEOMETRICHE: simboli GD&T e datum.
-6. RUGOSITÀ: simboli Ra/Rz visibili.
-7. FILETTI E FORI: designazioni, profondità, lamature.
-8. TRATTAMENTI E MATERIALE.
-9. ERRORI CRITICI.
-10. VERIFICHE SPIEGABILI: per ogni criticità o quota funzionale indica motivazione tecnica, confidenza, riferimento tecnico ISO/UNI o principio tecnico e suggerimento correttivo.
-
-Rispondi SOLO con quanto vedi realmente. Se non è leggibile, dillo.
-Se nel testo estratto dal PDF trovi un dato ma non riesci a collegarlo chiaramente alla zona della tavola, scrivilo come dato da confermare e non usarlo per conclusioni definitive.
-
-Struttura:
-## 1. Cartiglio
-## 2. Viste e sezioni
-## 3. Quotatura
-## 4. Tolleranze dimensionali
-## 5. Tolleranze geometriche
-## 6. Rugosità
-## 7. Filetti e fori
-## 8. Materiale e trattamenti
-## 9. Errori critici e correzioni prioritarie
-## 10. Verifiche spiegabili
-Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Riferimento tecnico, Suggerimento correttivo.
-## 11. Giudizio finale (Approvata / Da correggere / Non producibile)`
+Se l'utente ha compilato il campo ALTRO, dai priorità a quelle richieste (es. quote funzionali → sezione dedicata; rugosità → superfici funzionali; cartiglio → dati del cartiglio), senza inventare dati non leggibili.
+Se nel testo estratto dal PDF trovi un dato che non riesci a collegare chiaramente a una zona della tavola, scrivilo come dato da confermare.
+Per ogni criticità indica: descrizione, motivazione tecnica, confidenza, riferimento tecnico e suggerimento correttivo.`
         );
-        formData.append("file", fileToSend);
+        // Si inviano solo i crop già pronti (il file originale non serve al backend e pesa sull'upload).
+        formData.append("fileName", upload.fileAttachment.name);
         formData.append(
           "drawingImages",
           JSON.stringify(
@@ -2174,8 +2236,9 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
             }))
           )
         );
-        if (drawingReviewFile!.extractedText?.trim()) {
-          formData.append("fileText", drawingReviewFile!.extractedText.slice(0, 26000));
+        if (grid) formData.append("drawingGrid", JSON.stringify(grid));
+        if (upload.extractedText?.trim()) {
+          formData.append("fileText", upload.extractedText.slice(0, 26000));
         }
         formData.append("profile", JSON.stringify({ userName: user.name, focus: interest }));
         formData.append("messages", JSON.stringify([]));
@@ -2197,91 +2260,103 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
         }
 
         if (res.status === 403 && data?.error === "Limite ospite raggiunto") {
-          throw new Error(`Limite ospite raggiunto (${data.used}/${data.limit} richieste). Come ospite puoi fare massimo 10 richieste ogni 24 ore. Accedi o registrati per continuare.`);
+          throw new Error(`Limite ospite raggiunto (${data.used}/${data.limit} richieste). Come ospite puoi fare massimo ${data.limit || GUEST_LIMIT} richieste ogni 24 ore. Accedi o registrati per continuare.`);
         }
 
-        if (!res.ok) throw new Error(data?.error || raw || `Errore HTTP ${res.status}`);
+        if (!res.ok) throw new Error(data?.error || `Errore HTTP ${res.status}`);
+        if (!data) throw new Error("Risposta del server non leggibile.");
+        if (data.ok === false) throw new Error(String(data.error || data.answer || "Analisi non riuscita."));
 
-        const answer = data?.answer || data?.message || raw || "Nessuna risposta ricevuta dall'analisi immagine.";
-        setLastDrawingAnalysisText(String(answer));
         syncGuestUsageFromBackend(data);
 
-        // ── Lookup zone semantiche → coordinate per formato foglio ──
-        const ZONE_COORDS: Record<string, Record<string, {x: number, y: number}>> = {
-          A4:{ cartiglio:{x:82,y:90},vista_principale:{x:35,y:40},sezione_aa:{x:68,y:38},sezione_bb:{x:68,y:65},quotatura:{x:50,y:22},rugosita:{x:72,y:18},tolleranze:{x:45,y:30},fori_filetti:{x:38,y:55},note_generali:{x:20,y:85},cartiglio_materiale:{x:75,y:93},cartiglio_scala:{x:88,y:93},vista_destra:{x:65,y:42},vista_alto:{x:35,y:18} },
-          A3:{ cartiglio:{x:84,y:91},vista_principale:{x:32,y:42},sezione_aa:{x:65,y:36},sezione_bb:{x:65,y:62},quotatura:{x:50,y:20},rugosita:{x:75,y:16},tolleranze:{x:45,y:28},fori_filetti:{x:35,y:55},note_generali:{x:18,y:87},cartiglio_materiale:{x:77,y:94},cartiglio_scala:{x:89,y:94},vista_destra:{x:63,y:40},vista_alto:{x:32,y:16} },
-          A2:{ cartiglio:{x:85,y:92},vista_principale:{x:28,y:44},sezione_aa:{x:62,y:35},sezione_bb:{x:62,y:60},quotatura:{x:48,y:18},rugosita:{x:76,y:14},tolleranze:{x:42,y:26},fori_filetti:{x:32,y:55},note_generali:{x:15,y:88},cartiglio_materiale:{x:78,y:95},cartiglio_scala:{x:90,y:95},vista_destra:{x:60,y:38},vista_alto:{x:28,y:14} },
-          A1:{ cartiglio:{x:86,y:92},vista_principale:{x:25,y:45},sezione_aa:{x:58,y:34},sezione_bb:{x:58,y:60},quotatura:{x:45,y:16},rugosita:{x:78,y:12},tolleranze:{x:40,y:24},fori_filetti:{x:28,y:55},note_generali:{x:12,y:88},cartiglio_materiale:{x:80,y:95},cartiglio_scala:{x:91,y:95},vista_destra:{x:56,y:37},vista_alto:{x:25,y:12} },
-          A0:{ cartiglio:{x:87,y:93},vista_principale:{x:22,y:46},sezione_aa:{x:55,y:33},sezione_bb:{x:55,y:58},quotatura:{x:42,y:14},rugosita:{x:80,y:10},tolleranze:{x:38,y:22},fori_filetti:{x:25,y:55},note_generali:{x:10,y:89},cartiglio_materiale:{x:82,y:96},cartiglio_scala:{x:92,y:96},vista_destra:{x:52,y:36},vista_alto:{x:22,y:10} },
-        };
-        const sheetFmt = (drawingForm.sheetFormat || "A3").toUpperCase();
-        const zoneMap = ZONE_COORDS[sheetFmt] || ZONE_COORDS["A3"];
+        // Compatibilità: se il backend non ha già estratto i PINS, li legge dal testo.
+        let answerText = String(data.answer || data.message || "");
+        let pinsData: any[] | null = Array.isArray(data.pins) ? data.pins : null;
+        let verdict: string | null = typeof data.esito === "string" ? data.esito : null;
 
-        // ── Parsa PINS_JSON dalla risposta AI ──
-        const answerText = String(answer);
-        const pinsMatch = answerText.match(/<PINS>\s*([\s\S]*?)\s*<\/PINS>/i);
-        let parsedIssues: DrawingIssue[] = [];
-        if (pinsMatch) {
-          try {
-            const pinsData = JSON.parse(pinsMatch[1].trim());
-            if (Array.isArray(pinsData)) {
-              parsedIssues = pinsData.map((p: any, i: number) => {
-                const zona = String(p.zona || "").toLowerCase().replace(/[\s\-]/g, "_");
-                const coords = zona && zoneMap[zona] ? zoneMap[zona] : { x: Number(p.x) || 50, y: Number(p.y) || 50 };
-                return {
-                  id: String(p.id || `pin-${i}`),
-                  label: String(p.label || 'Criticità'),
-                  severity: ['errore','attenzione','info'].includes(p.severity) ? p.severity : 'attenzione',
-                  x: Math.min(100, Math.max(0, coords.x)),
-                  y: Math.min(100, Math.max(0, coords.y)),
-                  detail: String(p.detail || ''),
-                };
-              });
-            }
-          } catch { parsedIssues = []; }
+        if (!pinsData) {
+          const pinsMatch = answerText.match(/<PINS>\s*([\s\S]*?)\s*<\/PINS>/i);
+          if (pinsMatch) {
+            const parsed = safeParseJson<any>(pinsMatch[1].trim(), null);
+            pinsData = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.pins) ? parsed.pins : null;
+            if (!verdict && parsed && !Array.isArray(parsed) && typeof parsed.esito === "string") verdict = parsed.esito;
+          }
+          answerText = answerText.replace(/<PINS>[\s\S]*?<\/PINS>/gi, "").trim();
         }
-        //if (parsedIssues.length === 0) {
-          //parsedIssues = [{ id: 'ai-ok', label: 'Analisi completata', severity: 'info', x: 50, y: 50, detail: 'Nessuna criticità rilevata con evidenza chiara.' }];
-        
-        // Rimuovi il blocco PINS dal testo mostrato all'utente
-        const cleanAnswer = answerText.replace(/<PINS>[\s\S]*?<\/PINS>/gi, '').trim();
 
-        // ── Allinea status card al giudizio finale nel testo ──
-        // NON forziamo pin singolo: l'AI mette già tutti i pin necessari con le zone corrette
-        const isNotApproved = /non approvata|da correggere|non producibile/i.test(cleanAnswer);
-        const isApproved = /approvata(?! con riserva)|giudizio finale[^\n]*approvata/i.test(cleanAnswer);
+        const cleanAnswer = answerText.trim() || "Nessuna risposta ricevuta dall'analisi della tavola.";
 
-        // Se l'AI ha messo solo pin info ma il giudizio è NON APPROVATA,
-        // aggiunge un pin errore AGGIUNTIVO (non sostituisce gli altri)
-        if (isNotApproved && parsedIssues.every(p => p.severity === 'info')) {
+        const parsedIssues: DrawingIssue[] = (pinsData || []).map((p: any, i: number) => {
+          const cells = Array.isArray(p?.celle) ? p.celle.map(String) : Array.isArray(p?.cells) ? p.cells.map(String) : [];
+          const location = locateDrawingPin(p || {}, {
+            grid,
+            textBoxes: upload.textBoxes,
+            sheetFormat: f.sheetFormat,
+          });
+          const box = location?.box || null;
+
+          return {
+            id: String(p?.id || `pin-${i + 1}`),
+            label: String(p?.label || "Criticità"),
+            severity: ["errore", "attenzione", "info"].includes(p?.severity) ? p.severity : "attenzione",
+            x: box ? Math.round((box.x + box.w / 2) * 1000) / 10 : 50,
+            y: box ? Math.round((box.y + box.h / 2) * 1000) / 10 : 50,
+            detail: String(p?.detail || ""),
+            box,
+            locationSource: location?.source,
+            anchor: String(p?.testo || p?.text || "").trim() || undefined,
+            cells: cells.length ? cells : undefined,
+          };
+        });
+
+        // Esito: prima quello strutturato del blocco PINS, poi la sezione "Giudizio finale" del testo.
+        if (!verdict) {
+          const finalSection = cleanAnswer.slice(Math.max(0, cleanAnswer.toLowerCase().lastIndexOf("giudizio finale")));
+          if (/non approvata|non producibile/i.test(finalSection)) verdict = "non_approvata";
+          else if (/con note|da rivedere|da correggere|da verificare/i.test(finalSection)) verdict = "con_note";
+          else if (/approvata/i.test(finalSection)) verdict = "approvata";
+        }
+
+        // Tavola non approvata ma solo note positive: aggiunge una criticità senza posizione (non inventa un punto sul foglio).
+        if (verdict === "non_approvata" && parsedIssues.every(p => p.severity === "info")) {
           const motivoMatch = cleanAnswer.match(/(?:motivo principale|motivo)[^:]*:\s*([^\n.]+)/i);
-          const motivo = motivoMatch ? motivoMatch[1].trim() : 'Tavola non approvata: vedere analisi completa.';
-          parsedIssues.push({ id: 'ai-notapproved', label: 'Non approvata', severity: 'errore', x: 50, y: 88, detail: motivo });
+          parsedIssues.push({
+            id: "ai-notapproved",
+            label: "Non approvata",
+            severity: "errore",
+            x: 50,
+            y: 50,
+            box: null,
+            detail: motivoMatch ? motivoMatch[1].trim() : "Tavola non approvata: vedere analisi completa.",
+          });
         }
 
-        // Status card allineato al giudizio
-        const cardStatus = isNotApproved ? '❌ Non approvata' : isApproved ? '✅ Approvata' : '⚠️ Da verificare';
+        const cardStatus =
+          verdict === "non_approvata" ? "❌ Non approvata" :
+          verdict === "con_note" ? "⚠️ Approvata con note" :
+          verdict === "approvata" ? "✅ Approvata" :
+          "⚠️ Da verificare";
 
         setDrawingIssues(parsedIssues);
         setDrawingResults([
           {
             category: "Analisi AI immagine",
             status: cardStatus,
-            item: drawingReviewFile!.fileAttachment.name,
+            item: upload.fileAttachment.name,
             reason: cleanAnswer,
             suggestion: "Usa questa analisi come revisione preliminare: controlla manualmente la tavola originale.",
           },
         ]);
         setLastDrawingAnalysisText(cleanAnswer);
       } catch (error: any) {
-        setDrawingIssues([{ id: "ai-error", label: "Errore analisi", severity: "errore", x: 50, y: 50, detail: error?.message || "Errore durante l'analisi immagine." }]);
+        setDrawingIssues([{ id: "ai-error", label: "Errore analisi", severity: "errore", x: 50, y: 50, box: null, detail: error?.message || "Errore durante l'analisi immagine." }]);
         setDrawingResults([
           {
             category: "Errore analisi immagine",
             status: "❌ Errore",
             item: drawingReviewFile?.fileAttachment.name || "immagine",
             reason: error?.message || "Non sono riuscito ad analizzare l'immagine.",
-            suggestion: "Controlla OPENAI_DRAWING_READER_API_KEY, OPENAI_DRAWING_READER_MODEL e fai redeploy su Vercel.",
+            suggestion: "Riprova tra poco. Se l'errore persiste, verifica la configurazione del servizio AI su Vercel.",
           },
         ]);
       } finally {
@@ -2352,7 +2427,25 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
     return parts;
   };
 
-  const renderFormattedText = (text: string) => {
+  // Il rendering (KaTeX compreso) è costoso e prima veniva rifatto per tutti i messaggi a ogni tasto
+  // premuto nella chat: ora il risultato è memorizzato per testo e colore del tema.
+  const renderFormattedText = (text: string): React.ReactNode => {
+    const store = formattedTextCacheRef.current;
+    if (store.primary !== theme.primary) {
+      store.primary = theme.primary;
+      store.cache.clear();
+    }
+
+    const cached = store.cache.get(text);
+    if (cached !== undefined) return cached;
+
+    const rendered = renderFormattedTextUncached(text);
+    if (store.cache.size > 400) store.cache.clear();
+    store.cache.set(text, rendered);
+    return rendered;
+  };
+
+  const renderFormattedTextUncached = (text: string) => {
     const blocks = text.split(/(```[\s\S]*?```)/g);
 
     return blocks.map((block, index) => {
@@ -3782,7 +3875,7 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
               />
               <div style={{ ...s.drawingUploadPanel, background: isDark ? "#050505" : "#f8fafc", border: `1px solid ${theme.border}` }}>
                 <strong>Revisione tavola</strong>
-                <p style={s.muted}>Carica un'immagine o PDF della tavola. I PDF vengono convertiti automaticamente in vista completa + crop leggibili di cartiglio, viste, sezioni e dettagli.</p>
+                <p style={s.muted}>Carica un'immagine o PDF della tavola. Dopo l'analisi gli errori vengono evidenziati con un riquadro sull'anteprima: clicca un riquadro o una voce dell'elenco per vederne il dettaglio.</p>
                 <div style={s.drawingUploadGridSingle}>
                   <button style={{ ...s.drawingUploadBtn, color: theme.text, border: `1px solid ${theme.border}` }} onClick={() => drawingReviewInputRef.current?.click()} type="button">📄 Carica tavola tecnica<small>PNG, JPG, JPEG, WebP, PDF</small></button>
                 </div>
@@ -3796,13 +3889,13 @@ Per ogni criticità usa sempre: Descrizione, Motivazione tecnica, Confidenza, Ri
                 <Field label="Materiale" value={drawingForm.material} onChange={v => updateDrawingField("material", v)} placeholder="C45, S235..." theme={theme} isDark={isDark} />
                 <Field label="Quantità / lotto" value={drawingForm.productionQuantity} onChange={v => updateDrawingField("productionQuantity", v)} placeholder="1 pezzo, 100 pezzi..." theme={theme} isDark={isDark} />
                 <div>
-                  <label style={s.label}>Formato foglio <span style={{ color: "#ef4444", fontWeight: 900 }}>*</span></label>
+                  <label style={s.label}>Formato foglio</label>
                   <select
-                    style={{ ...s.input, background: isDark ? "#050505" : "#fff", color: theme.text, border: `1px solid ${!drawingForm.sheetFormat ? "#ef4444" : theme.border}` }}
+                    style={{ ...s.input, background: isDark ? "#050505" : "#fff", color: theme.text, border: `1px solid ${theme.border}` }}
                     value={drawingForm.sheetFormat}
                     onChange={e => updateDrawingField("sheetFormat", e.target.value)}
                   >
-                    <option value="">— Seleziona formato —</option>
+                    <option value="">Non indicato</option>
                     <option value="A4">A4 (210×297 mm)</option>
                     <option value="A3">A3 (297×420 mm)</option>
                     <option value="A2">A2 (420×594 mm)</option>
