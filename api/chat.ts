@@ -1532,6 +1532,123 @@ ${String(params.fileText).slice(0, fileTextLimit)}` : ""}`;
   };
 }
 
+// ─── Claude (Anthropic) per l'analisi delle tavole ──────────────────────────
+const DEFAULT_ANTHROPIC_DRAWING_MODEL = "claude-sonnet-5-5";
+
+function getDrawingProvider(): "anthropic" | "openai" {
+  const explicit = String(process.env.DRAWING_AI_PROVIDER || "").trim().toLowerCase();
+  if (explicit === "openai") return "openai";
+  if (explicit === "anthropic" || explicit === "claude") return process.env.ANTHROPIC_API_KEY ? "anthropic" : "openai";
+  // Senza scelta esplicita: Claude se la chiave Anthropic è configurata.
+  return process.env.ANTHROPIC_API_KEY ? "anthropic" : "openai";
+}
+
+function parseImageDataUrl(dataUrl: string): { mediaType: string; data: string } | null {
+  const match = String(dataUrl || "").match(/^data:(image\/(?:jpeg|png|gif|webp));base64,(.+)$/i);
+  return match ? { mediaType: match[1].toLowerCase(), data: match[2] } : null;
+}
+
+/**
+ * Chiamata a Claude (Messages API) in streaming, stesso schema di timeout di OpenAI:
+ * si interrompe solo se il servizio resta fermo troppo a lungo.
+ */
+async function callAnthropicVision(params: {
+  systemPrompt: string;
+  promptText: string;
+  images: DrawingImageInput[];
+}): Promise<{ ok: boolean; text: string; status?: number }> {
+  const apiKey = process.env.ANTHROPIC_API_KEY || "";
+  const model = process.env.ANTHROPIC_DRAWING_MODEL || DEFAULT_ANTHROPIC_DRAWING_MODEL;
+  const effort = normalizeEffort(process.env.ANTHROPIC_DRAWING_EFFORT, "low");
+
+  // Claude rende meglio con le immagini prima del testo; ogni immagine ha la sua etichetta.
+  const content: any[] = [];
+  params.images.slice(0, 12).forEach((img, index) => {
+    const parsed = parseImageDataUrl(String(img.dataUrl || ""));
+    if (!parsed) return;
+    const cleanLabel = String(img.label || "Immagine").replace(/^\d+\.\s*/, "");
+    content.push({ type: "text", text: `Immagine ${index + 1}: ${cleanLabel}` });
+    content.push({ type: "image", source: { type: "base64", media_type: parsed.mediaType, data: parsed.data } });
+  });
+  content.push({ type: "text", text: params.promptText });
+
+  const body: Record<string, unknown> = {
+    model,
+    max_tokens: 16000,
+    stream: true,
+    system: params.systemPrompt,
+    messages: [{ role: "user", content }],
+    output_config: { effort: ["low", "medium", "high", "xhigh", "max"].includes(effort) ? effort : "low" },
+  };
+
+  const controller = new AbortController();
+  const totalTimer = setTimeout(() => controller.abort(), OPENAI_MAX_TOTAL_MS);
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      const raw = await response.text();
+      console.error("Anthropic vision error", model, response.status, raw.slice(0, 800));
+      return { ok: false, status: response.status, text: `Errore Claude (codice ${response.status}).` };
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let text = "";
+
+    const armIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => controller.abort(), text ? OPENAI_STREAM_IDLE_MS : OPENAI_FIRST_TOKEN_IDLE_MS);
+    };
+
+    armIdle();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let newline: number;
+      while ((newline = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (!line.startsWith("data:")) continue;
+
+        const event = safeJsonParse<any>(line.slice(5).trim(), null);
+        if (!event) continue;
+        if (event.type === "error") {
+          console.error("Anthropic stream error", event.error);
+          return { ok: false, text: `Errore Claude: ${event.error?.type || "errore sconosciuto"}.` };
+        }
+        if (event.type === "content_block_delta" && event.delta?.type === "text_delta") text += String(event.delta.text || "");
+        if (event.type === "message_stop") return text.trim() ? { ok: true, text } : { ok: false, text: "Claude non ha restituito testo." };
+      }
+
+      armIdle();
+    }
+
+    return text.trim() ? { ok: true, text } : { ok: false, text: "Claude non ha restituito testo." };
+  } catch (error: any) {
+    if (error?.name === "AbortError") return { ok: false, text: "Timeout Claude." };
+    console.error("Anthropic vision exception", error);
+    return { ok: false, text: "Errore di connessione con Claude." };
+  } finally {
+    clearTimeout(totalTimer);
+    if (idleTimer) clearTimeout(idleTimer);
+  }
+}
+
 async function callOpenAIVision(params: {
   message: string;
   messages: ChatMessage[];
@@ -1563,7 +1680,9 @@ async function callOpenAIVision(params: {
         ? "high"
         : "auto";
 
-  if (!openAiDrawingKey) {
+  const useClaude = isDrawingRequest && getDrawingProvider() === "anthropic";
+
+  if (!openAiDrawingKey && !useClaude) {
     console.error("Missing OpenAI API key for drawing reader");
 
     return {
@@ -1636,6 +1755,8 @@ ${extractedPdfText.slice(0, 26000)}
     "\nSTRUTTURA OBBLIGATORIA:\n" +
     "1. QUALITÀ LETTURA: buona / media / bassa (una riga).\n" +
     "2. DATI RILEVATI: una riga ciascuno per cartiglio, materiale, scala, viste/sezioni, tolleranze generali, rugosità generale (✅ / ⚠️ / ❌ + valore letto).\n" +
+    "CONTROLLO QUOTE MANCANTI (obbligatorio, è l'errore più frequente): verifica che ogni diametro, sede, gola, foro, spallamento, smusso funzionale e lunghezza visibile sia quotato in almeno una vista. " +
+    "Linee di riferimento senza linea di quota o senza valore, quote presenti in una vista ma assenti nelle altre e tracce di cancellazione vanno segnalate come quota mancante, indicando vista ed elemento.\n" +
     "3. CRITICITÀ: una voce per problema, in ordine di gravità, formato: " +
     "\"❌/⚠️ Titolo — cosa manca o è errato → correzione concreta (norma)\". Massimo 2 righe per voce. Se non ce ne sono: \"✅ Nessuna criticità rilevata\".\n" +
     "4. QUOTE FUNZIONALI: solo se l'utente lo chiede nel campo ALTRO, una riga per quota: quota — classificazione (critica / funzionale probabile / secondaria) — controllo consigliato.\n" +
@@ -1679,6 +1800,25 @@ ${extractedPdfText.slice(0, 26000)}
     });
   });
 
+  if (useClaude) {
+    const claude = await callAnthropicVision({
+      systemPrompt: visionSystemPrompt,
+      promptText: String(visionContent[0]?.text || prompt),
+      images: imageInputs,
+    });
+
+    if (claude.ok) {
+      const { text: textWithoutPins, pins, esito } = extractPinsBlock(claude.text);
+      return { ok: true, text: cleanAiOutput(textWithoutPins), pins, esito };
+    }
+
+    // Claude non disponibile (sovraccarico, timeout, chiave errata): si passa a OpenAI se configurato.
+    console.error("Claude non disponibile per l'analisi tavola, fallback OpenAI:", claude.text);
+    if (!openAiDrawingKey) {
+      return { ok: false, text: `⚠️ ${claude.text} Riprova tra poco.` };
+    }
+  }
+
   let response: Response;
   let raw: string;
 
@@ -1695,7 +1835,7 @@ ${extractedPdfText.slice(0, 26000)}
       reasoningEffort: normalizeEffort(process.env.OPENAI_DRAWING_REASONING_EFFORT, "low"),
     });
 
-    ({ response, raw } = await postChatCompletion(openAiDrawingKey, body, openAiTimeoutMs));
+    ({ response, raw } = await postChatCompletion(openAiDrawingKey || "", body, openAiTimeoutMs));
   } catch (error: any) {
     if (error?.name === "AbortError") {
       return {
@@ -2109,6 +2249,10 @@ async function handlerInner(req: Request) {
         openAIDrawingImageDetail:
           process.env.OPENAI_DRAWING_IMAGE_DETAIL || "high",
         openAIDrawingReasoningEffort: normalizeEffort(process.env.OPENAI_DRAWING_REASONING_EFFORT, "low"),
+        drawingProvider: getDrawingProvider(),
+        hasAnthropicKey: Boolean(process.env.ANTHROPIC_API_KEY),
+        anthropicDrawingModel: process.env.ANTHROPIC_DRAWING_MODEL || DEFAULT_ANTHROPIC_DRAWING_MODEL,
+        anthropicDrawingEffort: normalizeEffort(process.env.ANTHROPIC_DRAWING_EFFORT, "low"),
         hasSupabase: Boolean(
           process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
         ),

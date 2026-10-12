@@ -210,7 +210,8 @@ const FULL_SHEET_CROP: DrawingCropDefinition = {
   y: 0,
   w: 1,
   h: 1,
-  maxSide: 1400,
+  // 2400 px: su A1/A0 le linee di riferimento sottili restano visibili (Claude legge fino a 2576 px).
+  maxSide: 2400,
   quality: 0.8,
   source: "safe",
 };
